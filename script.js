@@ -63,7 +63,17 @@ const MOTIVOS_CANCELAMENTO = [
 
 let MESU_DATA = [];
 let PRODUTOS_DATA = [];
-let STATUS_INDICADORES_DATA = [];
+const STATUS_LABELS = {
+  todos: "Todos",
+  atingidos: "Atingidos",
+  nao: "Não atingidos",
+};
+const DEFAULT_STATUS_INDICADORES = Object.entries(STATUS_LABELS).map(([id, nome]) => ({
+  id,
+  nome,
+  codigo: id,
+}));
+let STATUS_INDICADORES_DATA = DEFAULT_STATUS_INDICADORES.map(item => ({ ...item }));
 
 let MESU_BY_AGENCIA = new Map();
 
@@ -104,6 +114,27 @@ function readCell(raw, keys){
     }
   }
   return "";
+}
+
+function normalizeStatusKey(value) {
+  const text = sanitizeText(value);
+  if (!text) return "";
+  const ascii = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const lower = ascii.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!lower) return "";
+  if (/^(?:1|todos?)$/.test(lower) || lower.includes("todos")) return "todos";
+  if (/^(?:2)$/.test(lower)) return "atingidos";
+  if (/^(?:3)$/.test(lower)) return "nao";
+  if (/(?:^|\b)(?:nao|na|no)\s+atingid/.test(lower)) return "nao";
+  if (lower.includes("atingid")) return "atingidos";
+  if (lower.includes("nao")) return "nao";
+  const slug = lower.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  if (slug === "no_atingidos") return "nao";
+  return slug;
+}
+
+function getStatusLabelFromKey(key, fallback = "") {
+  return STATUS_LABELS[key] || sanitizeText(fallback) || key;
 }
 
 function detectCsvDelimiter(headerLine, sampleLines = []){
@@ -459,11 +490,22 @@ function buildProdutosData(rows){
 }
 
 function normalizeStatusRows(rows){
-  return rows.map(raw => {
+  const byId = new Map();
+  rows.forEach(raw => {
     const nome = readCell(raw, ["Status Nome", "Status", "Nome", "Descrição", "Descricao"]);
-    const id = readCell(raw, ["Status Id", "StatusID", "id", "ID", "Codigo", "Código"]) || nome;
-    return { id, nome: nome || id };
-  }).filter(row => row.id);
+    const codigo = readCell(raw, ["Status Id", "StatusID", "id", "ID", "Codigo", "Código"]);
+    const id = normalizeStatusKey(nome) || normalizeStatusKey(codigo);
+    if (!id) return;
+    const label = getStatusLabelFromKey(id, nome || codigo);
+    if (!byId.has(id)) {
+      byId.set(id, {
+        id,
+        nome: label,
+        codigo: codigo || id,
+      });
+    }
+  });
+  return Array.from(byId.values());
 }
 
 // Carrega os CSVs da pasta "Bases" usando o loader tolerante
@@ -481,13 +523,17 @@ async function loadBaseData(){
     const mesuRows    = normalizeMesuRows(mesuRaw);
     const produtoRows = normalizeProdutosRows(produtoRaw);
     const statusRows  = normalizeStatusRows(statusRaw);
+    const resolvedStatusRows = statusRows.length
+      ? statusRows
+      : DEFAULT_STATUS_INDICADORES.map(item => ({ ...item }));
+    STATUS_INDICADORES_DATA = resolvedStatusRows;
 
     // 3) Monta estruturas usadas pelos filtros
     buildProdutosData(produtoRows);     // preenche FAMILIA_DATA / PRODUTOS_BY_FAMILIA
     buildHierarchyFromMesu(mesuRows);   // preenche RANKING_* e SEGMENTOS_DATA
 
     // 4) Guarda no estado (já normalizado)
-    state._raw = { mesu: mesuRows, produto: produtoRows, status: statusRows };
+    state._raw = { mesu: mesuRows, produto: produtoRows, status: resolvedStatusRows };
   } finally {
     hideLoader();
   }
@@ -737,9 +783,12 @@ function filterCampaignUnits(sprint, filters = getFilterValues()) {
 }
 
 function campaignStatusMatches(score, statusFilter = "todos") {
-  if (statusFilter === "todos") return true;
+  const normalized = normalizeStatusKey(statusFilter) || "todos";
+  if (normalized === "todos") return true;
   const elegivel = score.finalStatus === "Parabéns" || score.finalStatus === "Elegível";
-  return statusFilter === "atingidos" ? elegivel : !elegivel;
+  if (normalized === "atingidos") return elegivel;
+  if (normalized === "nao") return !elegivel;
+  return true;
 }
 
 function aggregateCampaignUnitResults(unitResults, level, teamConfig) {
@@ -1905,7 +1954,13 @@ function filterRowsExcept(rows, except = {}, opts = {}) {
     const okDt  = (!startISO || r.data >= startISO) && (!endISO || r.data <= endISO);
 
     const ating = r.meta ? (r.realizado / r.meta) : 0;
-    const okStatus = (f.status === "todos") ? true : (f.status === "atingidos" ? (ating >= 1) : (ating < 1));
+    const statusKey = normalizeStatusKey(f.status) || "todos";
+    let okStatus = true;
+    if (statusKey === "atingidos") {
+      okStatus = ating >= 1;
+    } else if (statusKey === "nao") {
+      okStatus = ating < 1;
+    }
 
     const okSearch = rowMatchesSearch(r, searchTerm);
 
@@ -2469,14 +2524,25 @@ function initCombos() {
     });
   }
 
-  const statusOptions = [{ value: "todos", label: "Todos" }].concat(
-    dedupeOptions(
-      STATUS_INDICADORES_DATA,
-      st => st?.id,
-      st => st?.nome || st?.id
-    )
-  );
-  fill("#f-status-kpi", statusOptions);
+  const statusSet = new Set();
+  const statusList = [];
+  STATUS_INDICADORES_DATA.forEach(st => {
+    const base = st?.id ?? st?.codigo ?? st?.nome;
+    const key = normalizeStatusKey(base);
+    if (!key || statusSet.has(key)) return;
+    statusSet.add(key);
+    statusList.push({ value: key, label: getStatusLabelFromKey(key, st?.nome || base) });
+  });
+  statusList.sort(compareLabels);
+  const finalStatusOptions = [];
+  const appendUnique = (opt) => {
+    if (!opt || !opt.value) return;
+    if (finalStatusOptions.some(existing => existing.value === opt.value)) return;
+    finalStatusOptions.push(opt);
+  };
+  appendUnique({ value: "todos", label: STATUS_LABELS.todos });
+  statusList.forEach(appendUnique);
+  fill("#f-status-kpi", finalStatusOptions);
 }
 function bindEvents() {
   $("#btn-consultar")?.addEventListener("click", async () => {
@@ -3018,7 +3084,10 @@ function bindBadgeTooltip(card){
 }
 
 /* ===== Cards por seção ===== */
-function getStatusFilter(){ return $("#f-status-kpi")?.value || "todos"; }
+function getStatusFilter(){
+  const raw = $("#f-status-kpi")?.value;
+  return normalizeStatusKey(raw) || "todos";
+}
 function renderFamilias(sections, summary){
   const host = $("#grid-familias");
   host.innerHTML = "";
