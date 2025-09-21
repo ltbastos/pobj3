@@ -63,7 +63,17 @@ const MOTIVOS_CANCELAMENTO = [
 
 let MESU_DATA = [];
 let PRODUTOS_DATA = [];
-let STATUS_INDICADORES_DATA = [];
+const STATUS_LABELS = {
+  todos: "Todos",
+  atingidos: "Atingidos",
+  nao: "Não atingidos",
+};
+const DEFAULT_STATUS_INDICADORES = Object.entries(STATUS_LABELS).map(([id, nome]) => ({
+  id,
+  nome,
+  codigo: id,
+}));
+let STATUS_INDICADORES_DATA = DEFAULT_STATUS_INDICADORES.map(item => ({ ...item }));
 
 let MESU_BY_AGENCIA = new Map();
 
@@ -78,6 +88,16 @@ let PRODUTOS_BY_FAMILIA = new Map();
 let FAMILIA_DATA = [];
 let FAMILIA_BY_ID = new Map();
 let PRODUTO_TO_FAMILIA = new Map();
+
+let fDados = [];
+let fCampanhas = [];
+let fVariavel = [];
+let FACT_DADOS = [];
+let FACT_REALIZADOS = [];
+let FACT_METAS = [];
+let FACT_VARIAVEL = [];
+let FACT_CAMPANHAS = [];
+let DIM_CALENDARIO = [];
 
 let CURRENT_USER_CONTEXT = {
   diretoria: "",
@@ -104,6 +124,55 @@ function readCell(raw, keys){
     }
   }
   return "";
+}
+
+function parseISODate(value) {
+  const text = sanitizeText(value);
+  if (!text) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(text)) {
+    const [day, month, year] = text.split("/");
+    return `${year}-${month}-${day}`;
+  }
+  return text;
+}
+
+function parseBoolean(value, fallback = false) {
+  const text = sanitizeText(value).toLowerCase();
+  if (!text) return fallback;
+  if (/^(?:1|true|sim|yes|ativo|active|on)$/i.test(text)) return true;
+  if (/^(?:0|false|nao|não|inativo|inactive|off)$/i.test(text)) return false;
+  return fallback;
+}
+
+function pickFirstFilled(...values) {
+  for (const val of values) {
+    if (val !== undefined && val !== null && val !== "") {
+      return val;
+    }
+  }
+  return "";
+}
+
+function normalizeStatusKey(value) {
+  const text = sanitizeText(value);
+  if (!text) return "";
+  const ascii = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const lower = ascii.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!lower) return "";
+  if (/^(?:1|todos?)$/.test(lower) || lower.includes("todos")) return "todos";
+  if (/^(?:2)$/.test(lower)) return "atingidos";
+  if (/^(?:3)$/.test(lower)) return "nao";
+  if (/(?:^|\b)(?:nao|na|no)\s+atingid/.test(lower)) return "nao";
+  if (lower.includes("atingid")) return "atingidos";
+  if (lower.includes("nao")) return "nao";
+  const slug = lower.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  if (slug === "no_atingidos") return "nao";
+  return slug;
+}
+
+function getStatusLabelFromKey(key, fallback = "") {
+  return STATUS_LABELS[key] || sanitizeText(fallback) || key;
 }
 
 function detectCsvDelimiter(headerLine, sampleLines = []){
@@ -436,6 +505,23 @@ function buildProdutosData(rows){
     PRODUTO_TO_FAMILIA.set(row.produtoId, { id: row.familiaId, nome: row.familiaNome || row.familiaId });
   });
 
+  CARD_SECTIONS_DEF.forEach(sec => {
+    const famId = sec.id;
+    const famNome = sec.label || sec.id;
+    if (!famMap.has(famId)) {
+      famMap.set(famId, { id: famId, nome: famNome });
+    }
+    const list = byFamilia.get(famId) || [];
+    sec.items.forEach(item => {
+      if (!list.some(prod => prod.id === item.id)) {
+        list.push({ id: item.id, nome: item.nome || item.id, familiaId: famId });
+      }
+      PRODUTO_TO_FAMILIA.set(item.id, { id: famId, nome: famNome });
+    });
+    list.sort((a,b) => String(a.nome).localeCompare(String(b.nome), "pt-BR", { sensitivity: "base" }));
+    byFamilia.set(famId, list);
+  });
+
   famMap.forEach((value, key) => {
     const arr = byFamilia.get(key) || [];
     arr.sort((a,b) => String(a.nome).localeCompare(String(b.nome), "pt-BR", { sensitivity: "base" }));
@@ -458,12 +544,381 @@ function buildProdutosData(rows){
   });
 }
 
-function normalizeStatusRows(rows){
+function normalizeFactRealizadosRows(rows){
   return rows.map(raw => {
+    const registroId = readCell(raw, ["Registro ID", "ID", "registro", "registro_id"]);
+    if (!registroId) return null;
+
+    const segmento = readCell(raw, ["Segmento"]);
+    const segmentoId = readCell(raw, ["Segmento ID", "Id Segmento"]);
+    const diretoria = readCell(raw, ["Diretoria ID", "Diretoria", "Id Diretoria", "Diretoria Codigo"]);
+    const diretoriaNome = readCell(raw, ["Diretoria Nome", "Diretoria Regional"]) || diretoria;
+    const gerencia = readCell(raw, ["Gerencia ID", "Gerencia Regional", "Id Gerencia Regional"]);
+    const gerenciaNome = readCell(raw, ["Gerencia Nome", "Gerencia Regional", "Regional Nome"]) || gerencia;
+    const regionalNome = readCell(raw, ["Regional Nome", "Regional"]) || gerenciaNome;
+    const agenciaId = readCell(raw, ["Agencia ID", "Id Agencia", "Agência ID", "Agencia"]);
+    const agenciaNome = readCell(raw, ["Agencia Nome", "Agência Nome", "Agencia"]);
+    const agenciaCodigo = readCell(raw, ["Agencia Codigo", "Código Agência", "Codigo Agencia"]) || agenciaId || agenciaNome;
+    const gerenteGestao = readCell(raw, ["Gerente Gestao ID", "Gerente Gestao", "Id Gerente de Gestao"]);
+    const gerenteGestaoNome = readCell(raw, ["Gerente Gestao Nome", "Gerente de Gestao", "Gerente Gestao"]) || gerenteGestao;
+    const gerente = readCell(raw, ["Gerente ID", "Gerente"]);
+    const gerenteNome = readCell(raw, ["Gerente Nome", "Gerente"]) || gerente;
+    const familiaId = readCell(raw, ["Familia ID", "Familia", "Família ID"]) || "";
+    const familiaNome = readCell(raw, ["Familia Nome", "Família", "Familia"]) || familiaId;
+    const produtoId = readCell(raw, ["Produto ID", "Produto", "Id Produto"]);
+    if (!produtoId) return null;
+    const produtoNome = readCell(raw, ["Produto Nome", "Produto"]) || produtoId;
+    const subproduto = readCell(raw, ["Subproduto", "Sub produto", "Sub-Produto"]);
+    const carteira = readCell(raw, ["Carteira"]);
+    const canalVenda = readCell(raw, ["Canal Venda", "Canal"]);
+    const tipoVenda = readCell(raw, ["Tipo Venda", "Tipo"]);
+    const modalidadePagamento = readCell(raw, ["Modalidade Pagamento", "Modalidade"]);
+    let data = parseISODate(readCell(raw, ["Data", "Data Movimento", "Data Movimentacao", "Data Movimentação"]));
+    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    if (!data && competencia) {
+      data = competencia;
+    }
+    if (!competencia && data) {
+      competencia = `${data.slice(0, 7)}-01`;
+    }
+    const realizadoMens = toNumber(readCell(raw, ["Realizado Mensal", "Realizado"]));
+    const realizadoAcum = toNumber(readCell(raw, ["Realizado Acumulado", "Realizado Acum"]));
+    const quantidade = toNumber(readCell(raw, ["Quantidade", "Qtd"]));
+    const variavelReal = toNumber(readCell(raw, ["Variavel Real", "Variável Real"]));
+
+    return {
+      registroId,
+      segmento,
+      segmentoId,
+      diretoria,
+      diretoriaNome,
+      gerenciaRegional: gerencia,
+      gerenciaNome,
+      regional: regionalNome,
+      agencia: agenciaId || agenciaCodigo || agenciaNome,
+      agenciaNome: agenciaNome || agenciaId || agenciaCodigo,
+      agenciaCodigo: agenciaCodigo || agenciaId || agenciaNome,
+      gerenteGestao,
+      gerenteGestaoNome,
+      gerente,
+      gerenteNome,
+      familiaId,
+      familiaNome,
+      produtoId,
+      produtoNome,
+      prodOrSub: subproduto || produtoNome || produtoId,
+      subproduto,
+      carteira,
+      canalVenda,
+      tipoVenda,
+      modalidadePagamento,
+      data,
+      competencia,
+      realizado: realizadoMens,
+      real_mens: realizadoMens,
+      real_acum: realizadoAcum || realizadoMens,
+      qtd: quantidade,
+      variavelReal,
+    };
+  }).filter(Boolean);
+}
+
+function normalizeFactMetasRows(rows){
+  return rows.map(raw => {
+    const registroId = readCell(raw, ["Registro ID", "ID", "registro"]);
+    if (!registroId) return null;
+    const metaMens = toNumber(readCell(raw, ["Meta Mensal", "Meta"]));
+    const metaAcum = toNumber(readCell(raw, ["Meta Acumulada", "Meta Acum"]));
+    const variavelMeta = toNumber(readCell(raw, ["Variavel Meta", "Variável Meta"]));
+    const peso = toNumber(readCell(raw, ["Peso"]));
+    let data = parseISODate(readCell(raw, ["Data", "Data Competencia", "Data da Meta"]));
+    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    if (!data && competencia) {
+      data = competencia;
+    }
+    if (!competencia && data) {
+      competencia = `${data.slice(0, 7)}-01`;
+    }
+    return {
+      registroId,
+      data,
+      competencia,
+      meta: metaMens,
+      meta_mens: metaMens,
+      meta_acum: metaAcum || metaMens,
+      variavelMeta,
+      peso,
+    };
+  }).filter(Boolean);
+}
+
+function normalizeFactVariavelRows(rows){
+  return rows.map(raw => {
+    const registroId = readCell(raw, ["Registro ID", "ID", "registro"]);
+    if (!registroId) return null;
+    const variavelMeta = toNumber(readCell(raw, ["Variavel Meta", "Variável Meta"]));
+    const variavelReal = toNumber(readCell(raw, ["Variavel Real", "Variável Real"]));
+    let data = parseISODate(readCell(raw, ["Data"]));
+    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    if (!data && competencia) {
+      data = competencia;
+    }
+    if (!competencia && data) {
+      competencia = `${data.slice(0, 7)}-01`;
+    }
+    return { registroId, data, competencia, variavelMeta, variavelReal };
+  }).filter(Boolean);
+}
+
+function normalizeFactCampanhasRows(rows){
+  return rows.map(raw => {
+    const id = readCell(raw, ["Campanha ID", "ID"]);
+    if (!id) return null;
+    const sprintId = readCell(raw, ["Sprint ID", "Sprint"]);
+    const diretoria = readCell(raw, ["Diretoria", "Diretoria ID", "Id Diretoria"]);
+    const diretoriaNome = readCell(raw, ["Diretoria Nome", "Diretoria Regional"]) || diretoria;
+    const gerencia = readCell(raw, ["Gerencia Regional", "Gerencia ID", "Id Gerencia"]);
+    const regionalNome = readCell(raw, ["Regional Nome", "Regional"]) || gerencia;
+    const agenciaCodigo = readCell(raw, ["Agencia Codigo", "Agencia ID", "Código Agência", "Agência Codigo"]);
+    const agenciaNome = readCell(raw, ["Agencia Nome", "Agência Nome", "Agencia"]) || agenciaCodigo;
+    const gerenteGestao = readCell(raw, ["Gerente Gestao", "Gerente Gestao ID", "Gerente de Gestao"]);
+    const gerenteGestaoNome = readCell(raw, ["Gerente Gestao Nome", "Gerente de Gestao Nome"]) || gerenteGestao;
+    const gerente = readCell(raw, ["Gerente", "Gerente ID"]);
+    const gerenteNome = readCell(raw, ["Gerente Nome"]) || gerente;
+    const segmento = readCell(raw, ["Segmento"]);
+    const familiaId = readCell(raw, ["Familia ID", "Família ID", "Familia"]);
+    const familiaNome = readCell(raw, ["Familia Nome", "Família Nome"]) || familiaId;
+    const produtoId = readCell(raw, ["Produto ID", "Produto"]);
+    if (!produtoId) return null;
+    const produtoNome = readCell(raw, ["Produto Nome", "Produto"]) || produtoId;
+    const subproduto = readCell(raw, ["Subproduto", "Sub produto"]);
+    const carteira = readCell(raw, ["Carteira"]);
+    const linhas = toNumber(readCell(raw, ["Linhas"]));
+    const cash = toNumber(readCell(raw, ["Cash"]));
+    const conquista = toNumber(readCell(raw, ["Conquista"]));
+    const atividade = parseBoolean(readCell(raw, ["Atividade", "Ativo", "Status"]), true);
+    let data = parseISODate(readCell(raw, ["Data"]));
+    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    if (!data && competencia) {
+      data = competencia;
+    }
+    if (!competencia && data) {
+      competencia = `${data.slice(0, 7)}-01`;
+    }
+
+    return {
+      id,
+      sprintId,
+      diretoria,
+      diretoriaNome,
+      gerenciaRegional: gerencia,
+      regional: regionalNome,
+      agenciaCodigo: agenciaCodigo || agenciaNome,
+      agencia: agenciaNome || agenciaCodigo,
+      agenciaNome: agenciaNome || agenciaCodigo,
+      gerenteGestao,
+      gerenteGestaoNome,
+      gerente,
+      gerenteNome,
+      segmento,
+      familiaId,
+      familiaNome,
+      produtoId,
+      produtoNome,
+      subproduto,
+      carteira,
+      linhas,
+      cash,
+      conquista,
+      atividade,
+      data,
+      competencia,
+    };
+  }).filter(Boolean);
+}
+
+function normalizeFactDadosRows(rows){
+  return rows.map(raw => {
+    const registroId = readCell(raw, ["Registro ID", "ID", "registro"]);
+    if (!registroId) return null;
+
+    const segmento = readCell(raw, ["Segmento"]);
+    const segmentoId = readCell(raw, ["Segmento ID", "Id Segmento"]);
+    const diretoria = readCell(raw, ["Diretoria", "Diretoria ID", "Id Diretoria"]);
+    const diretoriaNome = readCell(raw, ["Diretoria Nome"]) || diretoria;
+    const gerenciaRegional = readCell(raw, ["Gerencia Regional", "Gerencia ID", "Id Gerencia"]);
+    const gerenciaNome = readCell(raw, ["Gerencia Nome"]) || gerenciaRegional;
+    const regional = readCell(raw, ["Regional Nome", "Regional"]) || gerenciaNome || gerenciaRegional;
+    const agenciaId = readCell(raw, ["Agencia ID", "Id Agencia"]);
+    const agenciaNome = readCell(raw, ["Agencia Nome", "Agência Nome"]) || agenciaId;
+    const agenciaCodigo = readCell(raw, ["Agencia Codigo", "Codigo Agencia", "Código Agência"]) || agenciaId || agenciaNome;
+    const gerenteGestao = readCell(raw, ["Gerente Gestao ID", "Gerente Gestao", "Id Gerente de Gestao"]);
+    const gerenteGestaoNome = readCell(raw, ["Gerente Gestao Nome", "Gerente de Gestao Nome"]) || gerenteGestao;
+    const gerente = readCell(raw, ["Gerente ID", "Gerente"]);
+    const gerenteNome = readCell(raw, ["Gerente Nome", "Gerente"]) || gerente;
+    const familiaId = readCell(raw, ["Familia ID", "Familia", "Família ID"]);
+    const familiaNome = readCell(raw, ["Familia Nome", "Familia", "Família Nome"]);
+    const produtoId = readCell(raw, ["Produto ID", "Produto"]);
+    if (!produtoId) return null;
+    const produtoNome = readCell(raw, ["Produto Nome", "Produto"]) || produtoId;
+    const subproduto = readCell(raw, ["Subproduto", "Sub produto", "Sub-Produto"]) || "";
+    const carteira = readCell(raw, ["Carteira"]);
+    const canalVenda = readCell(raw, ["Canal Venda", "Canal"]);
+    const tipoVenda = readCell(raw, ["Tipo Venda", "Tipo"]);
+    const modalidadePagamento = readCell(raw, ["Modalidade Pagamento", "Modalidade"]);
+    let data = parseISODate(readCell(raw, ["Data", "Data Movimento"]));
+    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    if (!data && competencia) {
+      data = competencia;
+    }
+    if (!competencia && data) {
+      competencia = `${data.slice(0, 7)}-01`;
+    }
+    const metaMens = toNumber(readCell(raw, ["Meta Mensal", "Meta"]));
+    const metaAcum = toNumber(readCell(raw, ["Meta Acumulada", "Meta Acum"])) || metaMens;
+    const realizadoMens = toNumber(readCell(raw, ["Realizado Mensal", "Realizado"]));
+    const realizadoAcum = toNumber(readCell(raw, ["Realizado Acumulado", "Realizado Acum"])) || realizadoMens;
+    const quantidade = toNumber(readCell(raw, ["Quantidade", "Qtd"]));
+    let peso = toNumber(readCell(raw, ["Peso"]));
+    const pontosRaw = toNumber(readCell(raw, ["Pontos", "Pontuacao", "Pontuação"]));
+    const variavelMeta = toNumber(readCell(raw, ["Variavel Meta", "Variável Meta"]));
+    const variavelReal = toNumber(readCell(raw, ["Variavel Real", "Variável Real"]));
+    const produtoMeta = PRODUCT_INDEX.get(produtoId) || {};
+    if (!peso) {
+      peso = toNumber(produtoMeta.peso ?? 1) || 1;
+    }
+    const ating = metaMens ? (realizadoMens / metaMens) : 0;
+    const pontos = pontosRaw || (peso * Math.max(0, Math.min(1.25, ating)));
+    const atingVariavel = variavelMeta ? (variavelReal / variavelMeta) : ating;
+
+    return {
+      registroId,
+      segmento,
+      segmentoId,
+      diretoria,
+      diretoriaNome,
+      gerenciaRegional,
+      gerenciaNome,
+      regional,
+      agencia: agenciaId || agenciaCodigo || agenciaNome,
+      agenciaNome: agenciaNome || agenciaId || agenciaCodigo,
+      agenciaCodigo: agenciaCodigo || agenciaId || agenciaNome,
+      gerenteGestao,
+      gerenteGestaoNome,
+      gerente,
+      gerenteNome,
+      familiaId: familiaId || produtoMeta.sectionId || "",
+      familia: familiaNome || familiaId || produtoMeta.sectionId || "",
+      familiaNome: familiaNome || familiaId || produtoMeta.sectionId || "",
+      produtoId,
+      produto: produtoNome,
+      produtoNome,
+      prodOrSub: subproduto || produtoNome || produtoId,
+      subproduto,
+      carteira,
+      canalVenda,
+      tipoVenda,
+      modalidadePagamento,
+      data,
+      competencia,
+      meta: metaMens,
+      meta_mens: metaMens,
+      meta_acum: metaAcum,
+      realizado: realizadoMens,
+      real_mens: realizadoMens,
+      real_acum: realizadoAcum,
+      qtd: quantidade,
+      peso,
+      pontos,
+      variavelMeta,
+      variavelReal,
+      ating,
+      atingVariavel,
+    };
+  }).filter(Boolean);
+}
+
+function normalizeCalendarioRows(rows){
+  return rows.map(raw => {
+    const data = parseISODate(readCell(raw, ["Data"]));
+    if (!data) return null;
+    const competencia = parseISODate(readCell(raw, ["Competencia", "Competência"])) || `${data.slice(0, 7)}-01`;
+    const ano = readCell(raw, ["Ano"]) || data.slice(0, 4);
+    const mes = readCell(raw, ["Mes", "Mês"]) || data.slice(5, 7);
+    const mesNome = readCell(raw, ["Mes Nome", "Mês Nome"]);
+    const dia = readCell(raw, ["Dia"]) || data.slice(8, 10);
+    const diaSemana = readCell(raw, ["Dia da Semana"]);
+    const semana = readCell(raw, ["Semana"]);
+    const trimestre = readCell(raw, ["Trimestre"]);
+    const semestre = readCell(raw, ["Semestre"]);
+    const ehDiaUtil = parseBoolean(readCell(raw, ["Eh Dia Util", "É Dia Útil", "Dia Util"]), false) ? 1 : 0;
+    return { data, competencia, ano, mes, mesNome, dia, diaSemana, semana, trimestre, semestre, ehDiaUtil };
+  }).filter(Boolean).sort((a, b) => (a.data || "").localeCompare(b.data || ""));
+}
+
+function normalizeStatusRows(rows){
+  const normalized = [];
+  const seen = new Set();
+  const missing = new Set();
+  const list = Array.isArray(rows) ? rows : [];
+
+  if (!list.length) {
+    console.warn("Status_Indicadores.csv não encontrado ou vazio; aplicando valores padrão.");
+  }
+
+  const register = (candidate) => {
+    if (!candidate || typeof candidate !== "object") return false;
+    const rawId = candidate.id;
+    const rawCodigo = candidate.codigo;
+    const rawNome = candidate.nome;
+    const resolvedId = normalizeStatusKey(rawId)
+      || normalizeStatusKey(rawCodigo)
+      || normalizeStatusKey(rawNome)
+      || normalizeStatusKey(pickFirstFilled(rawId, rawCodigo, rawNome));
+
+    if (!resolvedId) {
+      return false;
+    }
+    if (seen.has(resolvedId)) {
+      return true;
+    }
+
+    const codigo = sanitizeText(rawCodigo) || sanitizeText(rawId) || resolvedId;
+    const nome = sanitizeText(rawNome)
+      || getStatusLabelFromKey(resolvedId, codigo)
+      || codigo
+      || resolvedId;
+
+    normalized.push({ id: resolvedId, codigo, nome });
+    seen.add(resolvedId);
+    return true;
+  };
+
+  list.forEach(raw => {
+    if (!raw || typeof raw !== "object") return;
     const nome = readCell(raw, ["Status Nome", "Status", "Nome", "Descrição", "Descricao"]);
-    const id = readCell(raw, ["Status Id", "StatusID", "id", "ID", "Codigo", "Código"]) || nome;
-    return { id, nome: nome || id };
-  }).filter(row => row.id);
+    const codigo = readCell(raw, ["Status Id", "StatusID", "id", "ID", "Codigo", "Código"]);
+    const key = pickFirstFilled(
+      readCell(raw, ["Status Chave", "Status Key", "Chave", "Slug"]),
+      codigo,
+      nome
+    );
+    const ok = register({ id: key, codigo, nome });
+    if (!ok) {
+      const fallback = pickFirstFilled(nome, codigo);
+      if (fallback) missing.add(fallback);
+    }
+  });
+
+  DEFAULT_STATUS_INDICADORES.forEach(item => {
+    register({ id: item.id, codigo: item.codigo, nome: item.nome });
+  });
+
+  if (missing.size) {
+    console.warn(`Status sem identificador válido: ${Array.from(missing).join(", ")}`);
+  }
+
+  return normalized;
 }
 
 // Carrega os CSVs da pasta "Bases" usando o loader tolerante
@@ -472,22 +927,76 @@ async function loadBaseData(){
   try {
     const basePath = "Bases/";
 
-    // 1) Carrega CSVs
-    const mesuRaw   = await loadCSVAuto(`${basePath}mesu.csv`);
-    const produtoRaw= await loadCSVAuto(`${basePath}Produto.csv`);
-    const statusRaw = await loadCSVAuto(`${basePath}Status_Indicadores.csv`);
+    const [
+      mesuRaw,
+      produtoRaw,
+      statusRaw,
+      dadosRaw,
+      realizadosRaw,
+      metasRaw,
+      variavelRaw,
+      campanhasRaw,
+      calendarioRaw,
+    ] = await Promise.all([
+      loadCSVAuto(`${basePath}mesu.csv`),
+      loadCSVAuto(`${basePath}Produto.csv`),
+      loadCSVAuto(`${basePath}Status_Indicadores.csv`),
+      loadCSVAuto(`${basePath}fDados.csv`).catch(() => []),
+      loadCSVAuto(`${basePath}fRealizados.csv`).catch(() => []),
+      loadCSVAuto(`${basePath}fMetas.csv`).catch(() => []),
+      loadCSVAuto(`${basePath}fVariavel.csv`).catch(() => []),
+      loadCSVAuto(`${basePath}fCampanhas.csv`).catch(() => []),
+      loadCSVAuto(`${basePath}dCalendario.csv`).catch(() => []),
+    ]);
 
-    // 2) Normaliza linhas
-    const mesuRows    = normalizeMesuRows(mesuRaw);
+    const mesuRows = normalizeMesuRows(mesuRaw);
     const produtoRows = normalizeProdutosRows(produtoRaw);
-    const statusRows  = normalizeStatusRows(statusRaw);
+    const statusRows = normalizeStatusRows(statusRaw);
+    STATUS_INDICADORES_DATA = statusRows.length
+      ? statusRows
+      : DEFAULT_STATUS_INDICADORES.map(item => ({ ...item }));
 
-    // 3) Monta estruturas usadas pelos filtros
-    buildProdutosData(produtoRows);     // preenche FAMILIA_DATA / PRODUTOS_BY_FAMILIA
-    buildHierarchyFromMesu(mesuRows);   // preenche RANKING_* e SEGMENTOS_DATA
+    buildProdutosData(produtoRows);
+    buildHierarchyFromMesu(mesuRows);
 
-    // 4) Guarda no estado (já normalizado)
-    state._raw = { mesu: mesuRows, produto: produtoRows, status: statusRows };
+    FACT_DADOS = normalizeFactDadosRows(dadosRaw);
+    FACT_REALIZADOS = normalizeFactRealizadosRows(realizadosRaw);
+    FACT_METAS = normalizeFactMetasRows(metasRaw);
+    FACT_VARIAVEL = normalizeFactVariavelRows(variavelRaw);
+    FACT_CAMPANHAS = normalizeFactCampanhasRows(campanhasRaw);
+    if (FACT_CAMPANHAS.length) {
+      replaceCampaignUnitData(FACT_CAMPANHAS);
+    }
+    DIM_CALENDARIO = normalizeCalendarioRows(calendarioRaw);
+    updateCampaignSprintsUnits();
+
+    const availableDates = (DIM_CALENDARIO.length
+      ? DIM_CALENDARIO.map(row => row.data)
+      : [
+          ...FACT_DADOS.map(row => row.data),
+          ...FACT_REALIZADOS.map(row => row.data),
+          ...FACT_METAS.map(row => row.data),
+          ...FACT_VARIAVEL.map(row => row.data),
+        ]
+    ).filter(Boolean).sort();
+    if (availableDates.length) {
+      state.period = {
+        start: availableDates[0],
+        end: availableDates[availableDates.length - 1],
+      };
+    }
+
+    state._raw = {
+      mesu: mesuRows,
+      produto: produtoRows,
+      status: resolvedStatusRows,
+      dados: FACT_DADOS,
+      realizados: FACT_REALIZADOS,
+      metas: FACT_METAS,
+      variavel: FACT_VARIAVEL,
+      campanhas: FACT_CAMPANHAS,
+      calendario: DIM_CALENDARIO,
+    };
   } finally {
     hideLoader();
   }
@@ -560,7 +1069,7 @@ const PRODUCT_INDEX = (() => {
   return map;
 })();
 
-const CAMPAIGN_UNIT_DATA = [
+const DEFAULT_CAMPAIGN_UNIT_DATA = [
   { id: "nn-atlas", diretoria: "DR 01", diretoriaNome: "Norte & Nordeste", gerenciaRegional: "GR 01", regional: "Regional Fortaleza", gerenteGestao: "GG 01", agenciaCodigo: "Ag 1001", agencia: "Agência 1001 • Fortaleza Centro", segmento: "Negócios", produtoId: "captacao_bruta", subproduto: "Aplicação", gerente: "Gerente 1", gerenteNome: "Ana Lima", carteira: "Carteira Atlas", linhas: 132.4, cash: 118.2, conquista: 112.6, atividade: true, data: "2025-09-15" },
   { id: "nn-delta", diretoria: "DR 01", diretoriaNome: "Norte & Nordeste", gerenciaRegional: "GR 01", regional: "Regional Fortaleza", gerenteGestao: "GG 01", agenciaCodigo: "Ag 1001", agencia: "Agência 1001 • Fortaleza Centro", segmento: "Negócios", produtoId: "captacao_liquida", subproduto: "Resgate", gerente: "Gerente 1", gerenteNome: "Ana Lima", carteira: "Carteira Delta", linhas: 118.3, cash: 109.5, conquista: 104.1, atividade: true, data: "2025-09-16" },
   { id: "nn-iguatu", diretoria: "DR 01", diretoriaNome: "Norte & Nordeste", gerenciaRegional: "GR 02", regional: "Regional Recife", gerenteGestao: "GG 02", agenciaCodigo: "Ag 1002", agencia: "Agência 1002 • Recife Boa Vista", segmento: "Empresas", produtoId: "prod_credito_pj", subproduto: "À vista", gerente: "Gerente 2", gerenteNome: "Paulo Nunes", carteira: "Carteira Iguatu", linhas: 124.2, cash: 110.3, conquista: 102.1, atividade: true, data: "2025-09-12" },
@@ -573,6 +1082,24 @@ const CAMPAIGN_UNIT_DATA = [
   { id: "sc-litoral", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 04", regional: "Regional Curitiba", gerenteGestao: "GG 02", agenciaCodigo: "Ag 1003", agencia: "Agência 1003 • Curitiba Batel", segmento: "MEI", produtoId: "bradesco_expresso", subproduto: "Resgate", gerente: "Gerente 5", gerenteNome: "Carla Menezes", carteira: "Carteira Litoral", linhas: 95.4, cash: 90.1, conquista: 92.8, atividade: true, data: "2025-09-07" },
   { id: "sc-vale", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 04", regional: "Regional Curitiba", gerenteGestao: "GG 02", agenciaCodigo: "Ag 1003", agencia: "Agência 1003 • Curitiba Batel", segmento: "MEI", produtoId: "rec_credito", subproduto: "À vista", gerente: "Gerente 5", gerenteNome: "Carla Menezes", carteira: "Carteira Vale", linhas: 120.2, cash: 115.6, conquista: 110.4, atividade: true, data: "2025-09-17" }
 ];
+
+const CAMPAIGN_UNIT_DATA = [];
+
+function replaceCampaignUnitData(rows = []) {
+  CAMPAIGN_UNIT_DATA.length = 0;
+  const source = Array.isArray(rows) && rows.length ? rows : DEFAULT_CAMPAIGN_UNIT_DATA;
+  source.forEach(item => {
+    const dataISO = parseISODate(item.data);
+    let competencia = parseISODate(item.competencia);
+    const resolvedData = dataISO || "";
+    if (!competencia && resolvedData) {
+      competencia = `${resolvedData.slice(0, 7)}-01`;
+    }
+    CAMPAIGN_UNIT_DATA.push({ ...item, data: resolvedData, competencia: competencia || "" });
+  });
+}
+
+replaceCampaignUnitData(DEFAULT_CAMPAIGN_UNIT_DATA);
 
 CAMPAIGN_UNIT_DATA.forEach(unit => {
   const meta = PRODUCT_INDEX.get(unit.produtoId);
@@ -683,6 +1210,53 @@ const CAMPAIGN_SPRINTS = [
   }
 ];
 
+function updateCampaignSprintsUnits() {
+  CAMPAIGN_SPRINTS.forEach(sprint => {
+    const filtered = CAMPAIGN_UNIT_DATA.filter(unit => !unit.sprintId || unit.sprintId === sprint.id);
+    const effectiveUnits = filtered.length ? filtered : CAMPAIGN_UNIT_DATA;
+    sprint.units = effectiveUnits;
+
+    const summaryList = Array.isArray(sprint.summary) ? sprint.summary : [];
+    const summaryById = new Map(summaryList.map(item => [item.id, item]));
+    const totalUnits = effectiveUnits.length;
+
+    const equipesItem = summaryById.get("equipes");
+    if (equipesItem) {
+      equipesItem.value = totalUnits;
+      equipesItem.total = totalUnits;
+    }
+
+    const scores = effectiveUnits.map(unit => computeCampaignScore(sprint.team, {
+      linhas: unit.linhas,
+      cash: unit.cash,
+      conquista: unit.conquista,
+    }));
+
+    const mediaItem = summaryById.get("media");
+    if (mediaItem) {
+      const sum = scores.reduce((acc, score) => acc + (score?.totalPoints || 0), 0);
+      mediaItem.value = totalUnits ? sum / totalUnits : 0;
+    }
+
+    const recordItem = summaryById.get("recorde");
+    if (recordItem) {
+      let maxPoints = -Infinity;
+      let destaque = "";
+      effectiveUnits.forEach((unit, idx) => {
+        const pts = scores[idx]?.totalPoints ?? 0;
+        if (pts > maxPoints) {
+          maxPoints = pts;
+          destaque = unit.agenciaNome || unit.agencia || unit.regional || unit.diretoriaNome || "";
+        }
+      });
+      recordItem.value = maxPoints > 0 ? maxPoints : 0;
+      if (destaque) recordItem.complement = destaque;
+    }
+  });
+}
+
+updateCampaignSprintsUnits();
+
 const CAMPAIGN_LEVEL_META = {
   diretoria:     { groupField: "diretoria", displayField: "diretoriaNome", singular: "Diretoria", plural: "diretorias" },
   regional:      { groupField: "gerenciaRegional", displayField: "regional", singular: "Regional", plural: "regionais" },
@@ -719,9 +1293,15 @@ function determineCampaignDisplayLevel(filters = getFilterValues()) {
 }
 
 function filterCampaignUnits(sprint, filters = getFilterValues()) {
-  const units = sprint?.units || [];
   const startISO = state.period.start;
   const endISO = state.period.end;
+  const factRows = Array.isArray(state.facts?.campanhas) && state.facts.campanhas.length
+    ? state.facts.campanhas
+    : fCampanhas;
+  const base = sprint
+    ? (factRows.filter(row => row.sprintId === sprint.id) || [])
+    : [];
+  const units = base.length ? base : (sprint?.units || []);
   return units.filter(unit => {
     const okSegmento = (!filters.segmento || filters.segmento === "Todos" || unit.segmento === filters.segmento);
     const okDiretoria = (!filters.diretoria || filters.diretoria === "Todas" || unit.diretoria === filters.diretoria);
@@ -737,9 +1317,12 @@ function filterCampaignUnits(sprint, filters = getFilterValues()) {
 }
 
 function campaignStatusMatches(score, statusFilter = "todos") {
-  if (statusFilter === "todos") return true;
+  const normalized = normalizeStatusKey(statusFilter) || "todos";
+  if (normalized === "todos") return true;
   const elegivel = score.finalStatus === "Parabéns" || score.finalStatus === "Elegível";
-  return statusFilter === "atingidos" ? elegivel : !elegivel;
+  if (normalized === "atingidos") return elegivel;
+  if (normalized === "nao") return !elegivel;
+  return true;
 }
 
 function aggregateCampaignUnitResults(unitResults, level, teamConfig) {
@@ -826,14 +1409,14 @@ function buildCampaignRankingContext(sprint) {
 
   const filters = getFilterValues();
   const filteredUnits = filterCampaignUnits(sprint, filters);
-  const unitResults = filteredUnits.map(unit => ({
-    unit,
-    score: computeCampaignScore(sprint.team, {
+  const unitResults = filteredUnits.map(unit => {
+    const score = unit.score || computeCampaignScore(sprint.team, {
       linhas: unit.linhas,
       cash: unit.cash,
       conquista: unit.conquista
-    })
-  })).filter(({ score }) => campaignStatusMatches(score, filters.status || "todos"));
+    });
+    return { unit, score };
+  }).filter(({ score }) => campaignStatusMatches(score, filters.status || "todos"));
 
   const levelInfo = determineCampaignDisplayLevel(filters);
   const aggregated = aggregateCampaignUnitResults(unitResults, levelInfo.level, sprint.team);
@@ -868,10 +1451,10 @@ function businessDaysRemainingFromToday(startISO,endISO){
 }
 
 /* ===== Helpers de métrica ===== */
-const toNumber = (value) => {
+function toNumber(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
-};
+}
 
 const escapeHTML = (value = "") => String(value).replace(/[&<>"']/g, (ch) => ({
   "&":"&amp;",
@@ -959,6 +1542,395 @@ async function apiGet(path, params){
 async function getData(){
   const period = state.period || { start:firstDayOfMonthISO(), end: todayISO() };
 
+  const calendarioByDate = new Map(DIM_CALENDARIO.map(entry => [entry.data, entry]));
+  const calendarioByCompetencia = new Map(DIM_CALENDARIO.map(entry => [entry.competencia, entry]));
+
+  const buildCampanhaFacts = () => {
+    const campanhaFacts = [];
+    CAMPAIGN_SPRINTS.forEach(sprint => {
+      const units = CAMPAIGN_UNIT_DATA.filter(unit => !unit.sprintId || unit.sprintId === sprint.id);
+      const effectiveUnits = units.length ? units : sprint.units || CAMPAIGN_UNIT_DATA;
+      effectiveUnits.forEach(unit => {
+        const unitData = unit.data || "";
+        const unitCompetencia = unit.competencia || (unitData ? `${unitData.slice(0, 7)}-01` : "");
+        const score = computeCampaignScore(sprint.team, {
+          linhas: unit.linhas,
+          cash: unit.cash,
+          conquista: unit.conquista,
+        });
+        campanhaFacts.push({
+          ...unit,
+          data: unitData,
+          competencia: unitCompetencia,
+          sprintId: unit.sprintId || sprint.id,
+          sprintLabel: sprint.label,
+          realizado: score.totalPoints,
+          meta: score.eligibilityMinimum,
+          pontos: score.totalPoints,
+          finalStatus: score.finalStatus,
+          finalClass: score.finalClass,
+          score,
+        });
+      });
+    });
+    return campanhaFacts;
+  };
+
+  if (FACT_DADOS.length) {
+    const metasMap = new Map(FACT_METAS.map(entry => [entry.registroId, entry]));
+    const realizadosMap = new Map(FACT_REALIZADOS.map(entry => [entry.registroId, entry]));
+    const variavelMap = new Map(FACT_VARIAVEL.map(entry => [entry.registroId, entry]));
+
+    const factRows = FACT_DADOS.map(row => {
+      const registroId = row.registroId;
+      if (!registroId) return null;
+
+      const metaOverride = metasMap.get(registroId) || {};
+      const realOverride = realizadosMap.get(registroId) || {};
+      const variavelOverride = variavelMap.get(registroId) || {};
+      const produtoMeta = PRODUCT_INDEX.get(row.produtoId) || {};
+
+      const segmento = pickFirstFilled(row.segmento, realOverride.segmento);
+      const segmentoId = pickFirstFilled(row.segmentoId, realOverride.segmentoId);
+      const diretoria = pickFirstFilled(row.diretoria, realOverride.diretoria);
+      const diretoriaNome = pickFirstFilled(row.diretoriaNome, realOverride.diretoriaNome, diretoria);
+      const gerenciaRegional = pickFirstFilled(row.gerenciaRegional, realOverride.gerenciaRegional);
+      const gerenciaNome = pickFirstFilled(row.gerenciaNome, realOverride.gerenciaNome, gerenciaRegional);
+      const regional = pickFirstFilled(row.regional, realOverride.regional, gerenciaNome);
+      const agencia = pickFirstFilled(row.agencia, realOverride.agencia, row.agenciaCodigo, realOverride.agenciaCodigo);
+      const agenciaNome = pickFirstFilled(row.agenciaNome, realOverride.agenciaNome, agencia);
+      const agenciaCodigo = pickFirstFilled(row.agenciaCodigo, realOverride.agenciaCodigo, agencia);
+      const gerenteGestao = pickFirstFilled(row.gerenteGestao, realOverride.gerenteGestao);
+      const gerenteGestaoNome = pickFirstFilled(row.gerenteGestaoNome, realOverride.gerenteGestaoNome, gerenteGestao);
+      const gerente = pickFirstFilled(row.gerente, realOverride.gerente);
+      const gerenteNome = pickFirstFilled(row.gerenteNome, realOverride.gerenteNome, gerente);
+      const familiaId = pickFirstFilled(row.familiaId, row.familia, produtoMeta.sectionId);
+      const familiaNome = pickFirstFilled(row.familiaNome, row.familia, produtoMeta.sectionId, familiaId);
+      const produtoId = pickFirstFilled(row.produtoId, realOverride.produtoId);
+      if (!produtoId) return null;
+      const produtoNome = pickFirstFilled(row.produtoNome, realOverride.produtoNome, produtoId);
+      const subproduto = pickFirstFilled(row.subproduto, realOverride.subproduto, "");
+      const prodOrSub = pickFirstFilled(row.prodOrSub, subproduto, produtoNome, realOverride.prodOrSub, realOverride.produtoNome, produtoId);
+      const carteira = pickFirstFilled(row.carteira, realOverride.carteira);
+      const canalVenda = pickFirstFilled(row.canalVenda, realOverride.canalVenda);
+      const tipoVenda = pickFirstFilled(row.tipoVenda, realOverride.tipoVenda);
+      const modalidadePagamento = pickFirstFilled(row.modalidadePagamento, realOverride.modalidadePagamento);
+
+      let dataISO = pickFirstFilled(row.data, realOverride.data, metaOverride.data, variavelOverride.data);
+      let competencia = pickFirstFilled(row.competencia, realOverride.competencia, metaOverride.competencia, variavelOverride.competencia);
+      if (!competencia && dataISO) {
+        competencia = `${String(dataISO).slice(0, 7)}-01`;
+      }
+      if (!dataISO && competencia) {
+        dataISO = competencia;
+      }
+
+      const metaMens = toNumber(metaOverride.meta_mens ?? metaOverride.meta ?? row.meta_mens ?? row.meta ?? 0);
+      const metaAcum = toNumber(metaOverride.meta_acum ?? row.meta_acum ?? row.meta ?? metaMens);
+      const realMens = toNumber(realOverride.real_mens ?? realOverride.realizado ?? row.real_mens ?? row.realizado ?? 0);
+      const realAcum = toNumber(realOverride.real_acum ?? row.real_acum ?? row.realizado ?? realMens);
+      const qtd = toNumber(row.qtd ?? realOverride.qtd ?? realOverride.quantidade ?? 0);
+      let peso = toNumber(metaOverride.peso ?? row.peso ?? produtoMeta.peso ?? 1);
+      if (!peso) {
+        peso = toNumber(produtoMeta.peso ?? 1) || 1;
+      }
+      const variavelMeta = toNumber(variavelOverride.variavelMeta ?? row.variavelMeta ?? metaOverride.variavelMeta ?? 0);
+      const variavelReal = toNumber(variavelOverride.variavelReal ?? row.variavelReal ?? realOverride.variavelReal ?? 0);
+      const ating = metaMens ? (realMens / metaMens) : 0;
+      const pontos = toNumber(row.pontos ?? 0) || (peso * Math.max(0, Math.min(1.25, ating)));
+      const atingVariavel = variavelMeta ? (variavelReal / variavelMeta) : (row.atingVariavel ?? ating);
+
+      const calendario = calendarioByDate.get(dataISO) || calendarioByCompetencia.get(competencia);
+
+      const base = {
+        registroId,
+        segmento,
+        segmentoId,
+        diretoria,
+        diretoriaNome,
+        gerenciaRegional,
+        gerenciaNome,
+        regional,
+        agencia,
+        agenciaNome,
+        agenciaCodigo,
+        gerenteGestao,
+        gerenteGestaoNome,
+        gerente,
+        gerenteNome,
+        familiaId: familiaId || produtoMeta.sectionId || "",
+        familia: familiaNome || familiaId || produtoMeta.sectionId || "",
+        familiaNome: familiaNome || familiaId || produtoMeta.sectionId || "",
+        produtoId,
+        produto: produtoNome,
+        produtoNome,
+        prodOrSub,
+        subproduto,
+        carteira,
+        canalVenda,
+        tipoVenda,
+        modalidadePagamento,
+        data: dataISO,
+        competencia,
+        meta: metaMens,
+        meta_mens: metaMens,
+        meta_acum: metaAcum,
+        realizado: realMens,
+        real_mens: realMens,
+        real_acum: realAcum,
+        qtd,
+        peso,
+        pontos,
+        variavelMeta,
+        variavelReal,
+        ating,
+        atingVariavel,
+      };
+
+      if (calendario) {
+        base.ano = calendario.ano;
+        base.mes = calendario.mes;
+        base.mesNome = calendario.mesNome;
+        base.dia = calendario.dia;
+        base.diaSemana = calendario.diaSemana;
+        base.ehDiaUtil = calendario.ehDiaUtil;
+      } else if (dataISO) {
+        base.ano = String(dataISO).slice(0, 4);
+        base.mes = String(dataISO).slice(5, 7);
+        base.dia = String(dataISO).slice(8, 10);
+      }
+
+      return base;
+    }).filter(Boolean);
+
+    const baseByRegistro = new Map(factRows.map(row => [row.registroId, row]));
+    const variavelFacts = (FACT_VARIAVEL.length ? FACT_VARIAVEL : factRows).map(source => {
+      const registroId = source.registroId || source.registroid;
+      const base = baseByRegistro.get(registroId) || {};
+      if (!registroId || !base.registroId) return null;
+
+      let dataISO = pickFirstFilled(source.data, base.data, source.competencia, base.competencia);
+      let competencia = pickFirstFilled(source.competencia, base.competencia);
+      if (!competencia && dataISO) {
+        competencia = `${String(dataISO).slice(0, 7)}-01`;
+      }
+      if (!dataISO && competencia) {
+        dataISO = competencia;
+      }
+      const calendario = calendarioByDate.get(dataISO) || calendarioByCompetencia.get(competencia);
+      const variavelMeta = toNumber(source.variavelMeta ?? base.variavelMeta ?? 0);
+      const variavelReal = toNumber(source.variavelReal ?? base.variavelReal ?? 0);
+      const ating = variavelMeta ? (variavelReal / variavelMeta) : (base.atingVariavel ?? base.ating ?? 0);
+
+      const item = {
+        registroId,
+        segmento: base.segmento,
+        segmentoId: base.segmentoId,
+        diretoria: base.diretoria,
+        diretoriaNome: base.diretoriaNome,
+        gerenciaRegional: base.gerenciaRegional,
+        gerenciaNome: base.gerenciaNome,
+        regional: base.regional,
+        agencia: base.agencia,
+        agenciaNome: base.agenciaNome,
+        agenciaCodigo: base.agenciaCodigo,
+        gerenteGestao: base.gerenteGestao,
+        gerenteGestaoNome: base.gerenteGestaoNome,
+        gerente: base.gerente,
+        gerenteNome: base.gerenteNome,
+        familiaId: base.familiaId,
+        familia: base.familia,
+        familiaNome: base.familiaNome,
+        produtoId: base.produtoId,
+        produto: base.produtoNome,
+        produtoNome: base.produtoNome,
+        prodOrSub: base.prodOrSub,
+        data: dataISO,
+        competencia,
+        realizado: variavelReal,
+        meta: variavelMeta,
+        real_mens: variavelReal,
+        meta_mens: variavelMeta,
+        real_acum: variavelReal,
+        meta_acum: variavelMeta,
+        variavelMeta,
+        variavelReal,
+        peso: base.peso,
+        pontos: base.pontos,
+        ating,
+      };
+
+      if (calendario) {
+        item.ano = calendario.ano;
+        item.mes = calendario.mes;
+        item.mesNome = calendario.mesNome;
+        item.dia = calendario.dia;
+        item.diaSemana = calendario.diaSemana;
+        item.ehDiaUtil = calendario.ehDiaUtil;
+      } else if (dataISO) {
+        item.ano = String(dataISO).slice(0, 4);
+        item.mes = String(dataISO).slice(5, 7);
+        item.dia = String(dataISO).slice(8, 10);
+      }
+
+      return item;
+    }).filter(Boolean);
+
+    const campanhaFacts = buildCampanhaFacts();
+    fDados = factRows;
+    fVariavel = variavelFacts;
+    fCampanhas = campanhaFacts;
+
+    const baseDashboard = buildDashboardDatasetFromRows(factRows, period);
+    const ranking = factRows.map(row => ({ ...row }));
+
+    return {
+      sections: baseDashboard.sections,
+      summary: baseDashboard.summary,
+      ranking,
+      period,
+      facts: { dados: factRows, variavel: variavelFacts, campanhas: campanhaFacts }
+    };
+  }
+
+  if (FACT_REALIZADOS.length) {
+    const metasMap = new Map(FACT_METAS.map(entry => [entry.registroId, entry]));
+    const variavelMap = new Map(FACT_VARIAVEL.map(entry => [entry.registroId, entry]));
+
+    const factRows = FACT_REALIZADOS.map(row => {
+      const meta = metasMap.get(row.registroId) || {};
+      const variavel = variavelMap.get(row.registroId) || {};
+      const produtoMeta = PRODUCT_INDEX.get(row.produtoId) || {};
+      const peso = toNumber(meta.peso ?? produtoMeta.peso ?? 1);
+      const metaMens = toNumber(meta.meta_mens ?? meta.meta ?? 0);
+      const metaAcum = toNumber(meta.meta_acum ?? meta.meta ?? metaMens);
+      const realizadoMens = toNumber(row.real_mens ?? row.realizado ?? 0);
+      const realizadoAcum = toNumber(row.real_acum ?? row.realizadoAcumulado ?? realizadoMens);
+      const variavelMeta = toNumber(variavel.variavelMeta ?? meta.variavelMeta ?? row.variavelMeta ?? 0);
+      const variavelReal = toNumber(variavel.variavelReal ?? row.variavelReal ?? 0);
+      const qtd = toNumber(row.qtd ?? row.quantidade ?? 0);
+      let dataISO = row.data || meta.data || variavel.data || "";
+      let competencia = row.competencia || meta.competencia || variavel.competencia || "";
+      if (!competencia && dataISO) {
+        competencia = `${dataISO.slice(0, 7)}-01`;
+      }
+      if (!dataISO && competencia) {
+        dataISO = competencia;
+      }
+      const calendario = calendarioByDate.get(dataISO) || calendarioByCompetencia.get(competencia);
+      const ating = metaMens ? (realizadoMens / metaMens) : 0;
+      const pontos = peso * Math.max(0, Math.min(1.25, ating));
+
+      const base = {
+        registroId: row.registroId,
+        segmento: row.segmento,
+        segmentoId: row.segmentoId,
+        diretoria: row.diretoria,
+        diretoriaNome: row.diretoriaNome,
+        gerenciaRegional: row.gerenciaRegional,
+        gerenciaNome: row.gerenciaNome,
+        regional: row.regional,
+        agencia: row.agencia,
+        agenciaNome: row.agenciaNome,
+        agenciaCodigo: row.agenciaCodigo || row.agencia,
+        gerenteGestao: row.gerenteGestao,
+        gerenteGestaoNome: row.gerenteGestaoNome,
+        gerente: row.gerente,
+        gerenteNome: row.gerenteNome,
+        familiaId: row.familiaId || produtoMeta.sectionId || "",
+        familia: row.familiaNome || row.familiaId || produtoMeta.sectionId || "",
+        familiaNome: row.familiaNome || row.familiaId || produtoMeta.sectionId || "",
+        produtoId: row.produtoId,
+        produto: row.produtoNome || row.produtoId,
+        produtoNome: row.produtoNome || row.produtoId,
+        prodOrSub: row.prodOrSub || row.subproduto || row.produtoNome || row.produtoId,
+        subproduto: row.subproduto || "",
+        carteira: row.carteira,
+        canalVenda: row.canalVenda,
+        tipoVenda: row.tipoVenda,
+        modalidadePagamento: row.modalidadePagamento,
+        data: dataISO,
+        competencia,
+        realizado: realizadoMens,
+        real_mens: realizadoMens,
+        real_acum: realizadoAcum,
+        meta: metaMens,
+        meta_mens: metaMens,
+        meta_acum: metaAcum,
+        qtd,
+        peso,
+        pontos,
+        variavelMeta,
+        variavelReal,
+        ating,
+        atingVariavel: variavelMeta ? variavelReal / variavelMeta : 0,
+      };
+
+      if (calendario) {
+        base.ano = calendario.ano;
+        base.mes = calendario.mes;
+        base.mesNome = calendario.mesNome;
+        base.dia = calendario.dia;
+        base.diaSemana = calendario.diaSemana;
+        base.ehDiaUtil = calendario.ehDiaUtil;
+      }
+
+      return base;
+    });
+
+    fDados = factRows;
+    fVariavel = factRows.map(row => ({
+      registroId: row.registroId,
+      segmento: row.segmento,
+      segmentoId: row.segmentoId,
+      diretoria: row.diretoria,
+      diretoriaNome: row.diretoriaNome,
+      gerenciaRegional: row.gerenciaRegional,
+      gerenciaNome: row.gerenciaNome,
+      regional: row.regional,
+      agencia: row.agencia,
+      agenciaNome: row.agenciaNome,
+      agenciaCodigo: row.agenciaCodigo,
+      gerenteGestao: row.gerenteGestao,
+      gerenteGestaoNome: row.gerenteGestaoNome,
+      gerente: row.gerente,
+      gerenteNome: row.gerenteNome,
+      familiaId: row.familiaId,
+      familia: row.familia,
+      familiaNome: row.familiaNome,
+      produtoId: row.produtoId,
+      produto: row.produtoNome,
+      produtoNome: row.produtoNome,
+      data: row.data,
+      competencia: row.competencia,
+      realizado: row.variavelReal,
+      meta: row.variavelMeta,
+      real_mens: row.variavelReal,
+      meta_mens: row.variavelMeta,
+      real_acum: row.variavelReal,
+      meta_acum: row.variavelMeta,
+      variavelMeta: row.variavelMeta,
+      variavelReal: row.variavelReal,
+      peso: row.peso,
+      pontos: row.pontos,
+      ating: row.variavelMeta ? row.variavelReal / row.variavelMeta : 0,
+    }));
+
+    const campanhaFacts = buildCampanhaFacts();
+    fCampanhas = campanhaFacts;
+
+    const baseDashboard = buildDashboardDatasetFromRows(factRows, period);
+    const ranking = factRows.map(row => ({ ...row }));
+
+    return {
+      sections: baseDashboard.sections,
+      summary: baseDashboard.summary,
+      ranking,
+      period,
+      facts: { dados: factRows, variavel: fVariavel, campanhas: campanhaFacts }
+    };
+  }
+
   const startDt = dateUTCFromISO(period.start);
   const endDt = dateUTCFromISO(period.end);
   let startRef = startDt;
@@ -975,54 +1947,18 @@ async function getData(){
   };
 
   const periodYear = Number((period.start || todayISO()).slice(0, 4)) || new Date().getFullYear();
-  const endSafe = (endRef instanceof Date && !Number.isNaN(endRef.getTime())) ? endRef : null;
-  const monthsAvailable = endSafe ? Math.max(1, endSafe.getUTCMonth() + 1) : 12;
-
-  // MOCK
-  const sections = CARD_SECTIONS_DEF.map(sec=>{
-    const items = sec.items.map(it=>{
-      const { meta, realizado, variavelMeta } = makeRandomForMetric(it.metric);
-      const ating = it.metric==="perc" ? (realizado/100) : (meta ? realizado/meta : 0);
-      const variavelReal = Math.max(0, Math.round((variavelMeta || 0) * ating));
-      const atingVariavel = variavelMeta ? (variavelReal / variavelMeta) : ating;
-      return {
-        ...it,
-        meta,
-        realizado,
-        variavelMeta,
-        variavelReal,
-        ating,
-        atingVariavel,
-        atingido: ating>=1,
-        ultimaAtualizacao: formatBRDate(defaultISO)
-      };
-    });
-    return { id:sec.id, label:sec.label, items };
-  });
-
-  const totalsVar = sections.reduce((acc, sec)=>{
-    sec.items.forEach(item => {
-      acc.possivel += item.variavelMeta || 0;
-      acc.atingido += item.variavelReal || 0;
-    });
-    return acc;
-  }, { possivel:0, atingido:0 });
-
-  const allItems = sections.flatMap(s => s.items);
-  const indicadoresTotal = allItems.length;
-  const indicadoresAtingidos = allItems.filter(i => i.atingido).length;
-  const pontosPossiveis = allItems.reduce((acc,i)=> acc + (i.peso||0), 0);
-  const pontosAtingidos = allItems.filter(i=>i.atingido).reduce((acc,i)=> acc + (i.peso||0), 0);
+  const productDefs = CARD_SECTIONS_DEF.flatMap(sec =>
+    sec.items.map(item => ({
+      ...item,
+      sectionId: sec.id,
+      sectionLabel: sec.label
+    }))
+  );
 
   const segsBase = SEGMENTOS_DATA.length
     ? SEGMENTOS_DATA.map(seg => seg.nome || seg.id).filter(Boolean)
     : ["Empresas","Negócios","MEI"];
   const segs = segsBase.length ? segsBase : ["Empresas"];
-
-  const prodIdsBase = PRODUCT_INDEX.size
-    ? [...PRODUCT_INDEX.keys()]
-    : [...new Set(PRODUTOS_DATA.map(p => p.produtoId).filter(Boolean))];
-  const prodIds = prodIdsBase.length ? prodIdsBase : ["captacao_bruta"];
 
   const diretoriasBase = RANKING_DIRECTORIAS.length ? RANKING_DIRECTORIAS : [{ id: "DR 01", nome: "Diretoria" }];
   const gerenciasBase = RANKING_GERENCIAS.length ? RANKING_GERENCIAS : [{ id: "GR 01", nome: "Regional", diretoria: diretoriasBase[0]?.id || "" }];
@@ -1030,124 +1966,159 @@ async function getData(){
   const gerentesBase = RANKING_GERENTES.length ? RANKING_GERENTES : [{ id: "Gerente 1", nome: "Gerente" }];
   const gerentesGestaoBase = GERENTES_GESTAO.length ? GERENTES_GESTAO : [{ id: "GG 01", nome: "Gestão 01" }];
 
-  const familiaList = FAMILIA_DATA.length ? FAMILIA_DATA : [
-    { id: "captacao", nome: "Captação" },
-    { id: "financeiro", nome: "Financeiro" },
-    { id: "credito", nome: "Crédito" },
-    { id: "ligadas", nome: "Ligadas" },
-    { id: "produtividade", nome: "Produtividade" },
-    { id: "clientes", nome: "Clientes" }
-  ];
-  const familiaNomePorId = (id) => {
-    if (!id) return "";
-    return FAMILIA_BY_ID.get(id)?.nome
-      || familiaList.find(f => f.id === id)?.nome
-      || id;
-  };
+  let agenciesList = Array.from(MESU_BY_AGENCIA.values());
+  if (!agenciesList.length) {
+    const gerMap = new Map(gerenciasBase.map(g => [g.id, g]));
+    const dirMap = new Map(diretoriasBase.map(d => [d.id, d]));
+    agenciesList = agenciasBase.map((ag, idx) => {
+      const gerMeta = gerMap.get(ag.gerencia) || gerenciasBase[idx % gerenciasBase.length] || {};
+      const dirMeta = dirMap.get(gerMeta.diretoria) || diretoriasBase[idx % diretoriasBase.length] || {};
+      const gerenteMeta = gerentesBase[idx % gerentesBase.length] || {};
+      const ggMeta = gerentesGestaoBase.find(gg => gg.agencia === ag.id) || gerentesGestaoBase[idx % gerentesGestaoBase.length] || {};
+      const segmentoNome = segs[idx % segs.length] || segs[0];
+      return {
+        segmentoId: segmentoNome,
+        segmentoNome,
+        diretoriaId: dirMeta.id || `DR ${String(idx + 1).padStart(2, "0")}`,
+        diretoriaNome: dirMeta.nome || `Diretoria ${idx + 1}`,
+        regionalId: gerMeta.id || `GR ${String(idx + 1).padStart(2, "0")}`,
+        regionalNome: gerMeta.nome || `Regional ${idx + 1}`,
+        agenciaId: ag.id || `Ag ${String(idx + 1).padStart(2, "0")}`,
+        agenciaNome: ag.nome || ag.id || `Agência ${idx + 1}`,
+        gerenteGestaoId: ggMeta.id || `GG ${String(idx + 1).padStart(2, "0")}`,
+        gerenteGestaoNome: ggMeta.nome || ggMeta.id || `Gerente geral ${idx + 1}`,
+        gerenteId: gerenteMeta.id || `Gerente ${idx + 1}`,
+        gerenteNome: gerenteMeta.nome || gerenteMeta.id || `Gerente ${idx + 1}`
+      };
+    });
+  }
+  if (!agenciesList.length) {
+    agenciesList = [{
+      segmentoId: segs[0] || "Segmento",
+      segmentoNome: segs[0] || "Segmento",
+      diretoriaId: diretoriasBase[0]?.id || "DR 01",
+      diretoriaNome: diretoriasBase[0]?.nome || "Diretoria",
+      regionalId: gerenciasBase[0]?.id || "GR 01",
+      regionalNome: gerenciasBase[0]?.nome || "Regional",
+      agenciaId: agenciasBase[0]?.id || "Ag 1001",
+      agenciaNome: agenciasBase[0]?.nome || "Agência",
+      gerenteGestaoId: gerentesGestaoBase[0]?.id || "GG 01",
+      gerenteGestaoNome: gerentesGestaoBase[0]?.nome || "Gerente geral",
+      gerenteId: gerentesBase[0]?.id || "Gerente 1",
+      gerenteNome: gerentesBase[0]?.nome || "Gerente 1"
+    }];
+  }
 
   const canaisVenda = ["Agência física","Digital","Correspondente","APP Empresas"];
   const tiposVenda = ["Venda consultiva","Venda direta","Cross-sell","Pós-venda"];
   const modalidadesVenda = ["À vista","Parcelado"];
-  const agenciasPorGerencia = gerenciasBase.reduce((map, ger) => {
-    map.set(ger.id, agenciasBase.filter(ag => ag.gerencia === ger.id));
-    return map;
-  }, new Map());
 
-  const ranking = Array.from({length:140}, (_,i)=>{
-    const produtoId = prodIds[i % prodIds.length];
-    const metaProd  = PRODUCT_INDEX.get(produtoId);
-    const produtoNome = metaProd?.name
-      || PRODUTOS_DATA.find(p => p.produtoId === produtoId)?.produtoNome
-      || produtoId;
+  const factRows = [];
+  agenciesList.forEach((agency, agencyIndex) => {
+    productDefs.forEach((prod, prodIndex) => {
+      const iterations = 1 + ((agencyIndex + prodIndex) % 2);
+      for (let iter = 0; iter < iterations; iter += 1) {
+        const { meta, realizado, variavelMeta } = makeRandomForMetric(prod.metric);
+        const metaMens = prod.metric === "perc" ? Math.min(150, meta) : meta;
+        const realMens = prod.metric === "perc" ? Math.min(150, realizado) : realizado;
+        const dataISO = randomPeriodISO();
+        const competenciaMes = dataISO ? `${dataISO.slice(0, 7)}-01` : `${periodYear}-${String(((agencyIndex + prodIndex) % 12) + 1).padStart(2, "0")}-01`;
+        const realAcum = Math.round(realMens * (1.15 + Math.random() * 0.4));
+        const metaAcum = Math.round(metaMens * (1.2 + Math.random() * 0.45));
+        const ating = metaMens ? (realMens / metaMens) : 0;
+        const variavelReal = Math.max(0, Math.round((variavelMeta || 0) * Math.max(0.6, Math.min(1.25, ating))));
+        const peso = prod.peso || 1;
+        const pontos = peso * Math.max(0, Math.min(1.25, ating));
+        const qtd = prod.metric === "qtd"
+          ? Math.max(1, Math.round(realMens))
+          : Math.round(80 + Math.random() * 2200);
 
-    const familiaMeta = PRODUTO_TO_FAMILIA.get(produtoId);
-    const familiaId = metaProd?.sectionId || familiaMeta?.id || "";
-    const familiaNome = familiaMeta?.nome || familiaNomePorId(familiaId);
-
-    const gerMeta = gerenciasBase[i % gerenciasBase.length];
-    const dirMeta = diretoriasBase.find(d => d.id === gerMeta.diretoria) || diretoriasBase[0];
-    const agPool = agenciasPorGerencia.get(gerMeta.id) || agenciasBase;
-    const agenciaMeta = agPool.length ? agPool[i % agPool.length] : agenciasBase[i % agenciasBase.length];
-    const mesuInfo = MESU_BY_AGENCIA.get(agenciaMeta?.id) || null;
-
-    const segmentoNome = mesuInfo?.segmentoNome || segs[i % segs.length] || segs[0];
-    const gerenteMeta = mesuInfo?.gerenteId
-      ? { id: mesuInfo.gerenteId, nome: mesuInfo.gerenteNome || mesuInfo.gerenteId }
-      : gerentesBase[i % gerentesBase.length];
-
-    const ggPool = gerentesGestaoBase.filter(gg => gg.agencia === agenciaMeta?.id);
-    const gerenteGestaoMeta = ggPool.length ? ggPool[i % ggPool.length] : gerentesGestaoBase[i % gerentesGestaoBase.length];
-    const gerenteGestao = gerenteGestaoMeta?.id || mesuInfo?.gerenteGestaoId || "";
-    const gerenteGestaoNome = gerenteGestaoMeta?.nome || mesuInfo?.gerenteGestaoNome || gerenteGestao || "Gestão";
-
-    const diretoriaId = mesuInfo?.diretoriaId || dirMeta?.id || "";
-    const diretoriaNome = mesuInfo?.diretoriaNome || dirMeta?.nome || diretoriaId;
-    const gerenciaId = mesuInfo?.regionalId || gerMeta?.id || "";
-    const gerenciaNome = mesuInfo?.regionalNome || gerMeta?.nome || gerenciaId;
-    const agenciaId = mesuInfo?.agenciaId || agenciaMeta?.id || "";
-    const agenciaNome = mesuInfo?.agenciaNome || agenciaMeta?.nome || agenciaId;
-    const gerenteId = gerenteMeta?.id || "";
-    const gerenteNome = gerenteMeta?.nome || gerenteId || "Gerente";
-
-    const meta_mens = Math.round(2_000_000 + Math.random()*18_000_000);
-    const real_mens = Math.round(meta_mens*(0.75+Math.random()*0.6));
-    const fator = 1.2 + Math.random()*1.2;
-    const meta_acum = Math.round(meta_mens * fator);
-    const real_acum = Math.round(real_mens * fator);
-
-    const canalVenda = canaisVenda[Math.floor(Math.random()*canaisVenda.length)];
-    const tipoVenda = tiposVenda[Math.floor(Math.random()*tiposVenda.length)];
-    const modalidadePagamento = modalidadesVenda[Math.floor(Math.random()*modalidadesVenda.length)];
-    const monthIndex = i % monthsAvailable;
-    const competenciaMes = `${periodYear}-${String(monthIndex + 1).padStart(2, "0")}-01`;
-
-    return {
-      diretoria: diretoriaId,
-      diretoriaNome,
-      gerenciaRegional: gerenciaId,
-      gerenciaNome,
-      regional: gerenciaNome,
-      gerenteGestao,
-      gerenteGestaoNome,
-      familia: familiaNome,
-      familiaId,
-      produtoId,
-      produto: produtoNome,
-      prodOrSub: produtoNome,
-      subproduto: "",
-      gerente: gerenteId,
-      gerenteNome,
-      agencia: agenciaId,
-      agenciaNome,
-      segmento: segmentoNome,
-      canalVenda,
-      tipoVenda,
-      modalidadePagamento,
-      realizado: real_mens,
-      meta:      meta_mens,
-      qtd:       Math.round(50 + Math.random()*1950),
-      data:      randomPeriodISO(),
-      competencia: competenciaMes,
-      real_mens, meta_mens, real_acum, meta_acum
-    };
+        factRows.push({
+          segmento: agency.segmentoNome || agency.segmentoId || segs[agencyIndex % segs.length] || "Segmento",
+          diretoria: agency.diretoriaId || diretoriasBase[agencyIndex % diretoriasBase.length]?.id || `DR ${String(agencyIndex + 1).padStart(2, "0")}`,
+          diretoriaNome: agency.diretoriaNome || diretoriasBase[agencyIndex % diretoriasBase.length]?.nome || `Diretoria ${agencyIndex + 1}`,
+          gerenciaRegional: agency.regionalId || gerenciasBase[agencyIndex % gerenciasBase.length]?.id || `GR ${String(agencyIndex + 1).padStart(2, "0")}`,
+          gerenciaNome: agency.regionalNome || gerenciasBase[agencyIndex % gerenciasBase.length]?.nome || `Regional ${agencyIndex + 1}`,
+          regional: agency.regionalNome || gerenciasBase[agencyIndex % gerenciasBase.length]?.nome || `Regional ${agencyIndex + 1}`,
+          agencia: agency.agenciaId || agenciasBase[agencyIndex % agenciasBase.length]?.id || `Ag ${String(agencyIndex + 1).padStart(2, "0")}`,
+          agenciaNome: agency.agenciaNome || agenciasBase[agencyIndex % agenciasBase.length]?.nome || `Agência ${agencyIndex + 1}`,
+          agenciaCodigo: agency.agenciaId || agenciasBase[agencyIndex % agenciasBase.length]?.id || `Ag ${String(agencyIndex + 1).padStart(2, "0")}`,
+          gerenteGestao: agency.gerenteGestaoId || gerentesGestaoBase[agencyIndex % gerentesGestaoBase.length]?.id || `GG ${String(agencyIndex + 1).padStart(2, "0")}`,
+          gerenteGestaoNome: agency.gerenteGestaoNome || gerentesGestaoBase[agencyIndex % gerentesGestaoBase.length]?.nome || `Gerente geral ${agencyIndex + 1}`,
+          gerente: agency.gerenteId || gerentesBase[agencyIndex % gerentesBase.length]?.id || `Gerente ${agencyIndex + 1}`,
+          gerenteNome: agency.gerenteNome || gerentesBase[agencyIndex % gerentesBase.length]?.nome || `Gerente ${agencyIndex + 1}`,
+          segmentoNome: agency.segmentoNome || agency.segmentoId || segs[agencyIndex % segs.length] || "Segmento",
+          familiaId: prod.sectionId,
+          familia: prod.sectionLabel,
+          familiaNome: prod.sectionLabel,
+          produtoId: prod.id,
+          produto: prod.nome,
+          produtoNome: prod.nome,
+          prodOrSub: prod.nome,
+          subproduto: prod.nome,
+          carteira: `${agency.agenciaNome || agency.agenciaId || "Carteira"} ${String.fromCharCode(65 + iter)}`,
+          canalVenda: canaisVenda[(agencyIndex + prodIndex + iter) % canaisVenda.length],
+          tipoVenda: tiposVenda[(agencyIndex + iter) % tiposVenda.length],
+          modalidadePagamento: modalidadesVenda[(prodIndex + iter) % modalidadesVenda.length],
+          realizado: realMens,
+          meta: metaMens,
+          real_mens: realMens,
+          meta_mens: metaMens,
+          real_acum: realAcum,
+          meta_acum: metaAcum,
+          qtd,
+          data: dataISO,
+          competencia: competenciaMes,
+          peso,
+          pontos,
+          variavelMeta,
+          variavelReal,
+          ating
+        });
+      }
+    });
   });
-  ranking.forEach(r => r.ating = r.meta ? r.realizado/r.meta : 0);
+
+  factRows.forEach(row => {
+    row.ating = row.meta ? (row.realizado / row.meta) : 0;
+  });
+
+  fDados = factRows;
+  fVariavel = factRows.map(row => ({
+    segmento: row.segmento,
+    diretoria: row.diretoria,
+    diretoriaNome: row.diretoriaNome,
+    gerenciaRegional: row.gerenciaRegional,
+    gerenciaNome: row.gerenciaNome,
+    agencia: row.agencia,
+    agenciaNome: row.agenciaNome,
+    gerenteGestao: row.gerenteGestao,
+    gerenteGestaoNome: row.gerenteGestaoNome,
+    gerente: row.gerente,
+    gerenteNome: row.gerenteNome,
+    familiaId: row.familiaId,
+    familia: row.familia,
+    produtoId: row.produtoId,
+    produto: row.produto,
+    realizado: row.variavelReal,
+    meta: row.variavelMeta,
+    pontos: row.pontos,
+    data: row.data,
+    competencia: row.competencia
+  }));
+
+  const campanhaFacts = buildCampanhaFacts();
+  fCampanhas = campanhaFacts;
+
+  const baseDashboard = buildDashboardDatasetFromRows(fDados, period);
+  const ranking = fDados.map(row => ({ ...row }));
 
   return {
-    sections,
-    summary:{
-      indicadoresTotal,
-      indicadoresAtingidos,
-      indicadoresPct: indicadoresTotal ? indicadoresAtingidos/indicadoresTotal : 0,
-      pontosPossiveis,
-      pontosAtingidos,
-      pontosPct: pontosPossiveis ? pontosAtingidos/pontosPossiveis : 0,
-      varPossivel: totalsVar.possivel,
-      varAtingido: totalsVar.atingido,
-      varPct: totalsVar.possivel ? (totalsVar.atingido / totalsVar.possivel) : 0
-    },
+    sections: baseDashboard.sections,
+    summary: baseDashboard.summary,
     ranking,
-    period
+    period,
+    facts: { dados: fDados, variavel: fVariavel, campanhas: fCampanhas }
   };
 }
 
@@ -1294,6 +2265,8 @@ function ensureSidebar(){
 const state = {
   _dataset:null,
   _rankingRaw:[],
+  facts:{ dados:[], campanhas:[], variavel:[] },
+  dashboard:{ sections:[], summary:{} },
   activeView:"cards",
   tableView:"diretoria",
   tableRendered:false,
@@ -1524,7 +2497,6 @@ async function clearFilters() {
 
   await withSpinner(async () => {
     applyFiltersAndRender();
-    if (state._dataset) renderFamilias(state._dataset.sections, state._dataset.summary);
     renderAppliedFilters();
     renderCampanhasView();
     if (state.activeView === "ranking") renderRanking();
@@ -1714,7 +2686,6 @@ function ensureStatusFilterInAdvanced() {
     host.appendChild(wrap);
     $("#f-status-kpi").addEventListener("change", async () => {
       await withSpinner(async () => {
-        if (state._dataset) renderFamilias(state._dataset.sections, state._dataset.summary);
         applyFiltersAndRender();
         renderAppliedFilters();
         renderCampanhasView();
@@ -1804,7 +2775,6 @@ function renderAppliedFilters() {
         resetFn?.();
         applyFiltersAndRender();
         renderAppliedFilters();
-        if (state._dataset) renderFamilias(state._dataset.sections, state._dataset.summary);
         renderCampanhasView();
         if (state.activeView === "ranking") renderRanking();
       }, "Atualizando filtros…");
@@ -1905,7 +2875,13 @@ function filterRowsExcept(rows, except = {}, opts = {}) {
     const okDt  = (!startISO || r.data >= startISO) && (!endISO || r.data <= endISO);
 
     const ating = r.meta ? (r.realizado / r.meta) : 0;
-    const okStatus = (f.status === "todos") ? true : (f.status === "atingidos" ? (ating >= 1) : (ating < 1));
+    const statusKey = normalizeStatusKey(f.status) || "todos";
+    let okStatus = true;
+    if (statusKey === "atingidos") {
+      okStatus = ating >= 1;
+    } else if (statusKey === "nao") {
+      okStatus = ating < 1;
+    }
 
     const okSearch = rowMatchesSearch(r, searchTerm);
 
@@ -2469,21 +3445,31 @@ function initCombos() {
     });
   }
 
-  const statusOptions = [{ value: "todos", label: "Todos" }].concat(
-    dedupeOptions(
-      STATUS_INDICADORES_DATA,
-      st => st?.id,
-      st => st?.nome || st?.id
-    )
-  );
-  fill("#f-status-kpi", statusOptions);
+  const statusSet = new Set();
+  const statusList = [];
+  STATUS_INDICADORES_DATA.forEach(st => {
+    const base = st?.id ?? st?.codigo ?? st?.nome;
+    const key = normalizeStatusKey(base);
+    if (!key || statusSet.has(key)) return;
+    statusSet.add(key);
+    statusList.push({ value: key, label: getStatusLabelFromKey(key, st?.nome || base) });
+  });
+  statusList.sort(compareLabels);
+  const finalStatusOptions = [];
+  const appendUnique = (opt) => {
+    if (!opt || !opt.value) return;
+    if (finalStatusOptions.some(existing => existing.value === opt.value)) return;
+    finalStatusOptions.push(opt);
+  };
+  appendUnique({ value: "todos", label: STATUS_LABELS.todos });
+  statusList.forEach(appendUnique);
+  fill("#f-status-kpi", finalStatusOptions);
 }
 function bindEvents() {
   $("#btn-consultar")?.addEventListener("click", async () => {
     await withSpinner(async () => {
       autoSnapViewToFilters();
       applyFiltersAndRender();
-      if (state._dataset) renderFamilias(state._dataset.sections, state._dataset.summary);
       renderAppliedFilters();
       renderCampanhasView();
       if (state.activeView === "ranking") renderRanking();
@@ -2522,7 +3508,6 @@ function bindEvents() {
       await withSpinner(async () => {
         autoSnapViewToFilters();
         applyFiltersAndRender();
-        if (state._dataset) renderFamilias(state._dataset.sections, state._dataset.summary);
         renderAppliedFilters();
         renderCampanhasView();
         if (state.activeView === "ranking") renderRanking();
@@ -3018,7 +4003,131 @@ function bindBadgeTooltip(card){
 }
 
 /* ===== Cards por seção ===== */
-function getStatusFilter(){ return $("#f-status-kpi")?.value || "todos"; }
+function getStatusFilter(){
+  const raw = $("#f-status-kpi")?.value;
+  return normalizeStatusKey(raw) || "todos";
+}
+function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
+  const productMeta = new Map();
+  CARD_SECTIONS_DEF.forEach(sec => {
+    sec.items.forEach(item => {
+      productMeta.set(item.id, { ...item, sectionId: sec.id, sectionLabel: sec.label });
+    });
+  });
+
+  const aggregated = new Map();
+  rows.forEach(row => {
+    const productId = row.produtoId || row.produto || row.prodOrSub;
+    if (!productId) return;
+    const meta = productMeta.get(productId) || {};
+    const familiaId = meta.sectionId || row.familiaId || "outros";
+    const familiaLabel = meta.sectionLabel || row.familia || "Outros";
+    let agg = aggregated.get(productId);
+    if (!agg) {
+      agg = {
+        id: productId,
+        nome: meta.nome || row.produtoNome || row.produto || productId,
+        icon: meta.icon || "ti ti-dots",
+        metric: meta.metric || row.metric || "valor",
+        peso: meta.peso || row.peso || 1,
+        familiaId,
+        familiaLabel,
+        metaTotal: 0,
+        realizadoTotal: 0,
+        variavelMeta: 0,
+        variavelReal: 0,
+        pesoTotal: 0,
+        pesoAtingido: 0,
+        pontos: 0,
+        ultimaAtualizacao: ""
+      };
+      aggregated.set(productId, agg);
+    }
+
+    const metaValor = Number(row.meta) || 0;
+    const realizadoValor = Number(row.realizado) || 0;
+    agg.metaTotal += metaValor;
+    agg.realizadoTotal += realizadoValor;
+    agg.variavelMeta += Number(row.variavelMeta) || 0;
+    agg.variavelReal += Number(row.variavelReal) || 0;
+    const pesoLinha = Number(row.peso) || agg.peso;
+    agg.pesoTotal += pesoLinha;
+    if (metaValor > 0 && realizadoValor >= metaValor) {
+      agg.pesoAtingido += pesoLinha;
+    }
+    agg.pontos += Number(row.pontos) || 0;
+    if (row.data && row.data > agg.ultimaAtualizacao) {
+      agg.ultimaAtualizacao = row.data;
+    }
+  });
+
+  const sections = [];
+  CARD_SECTIONS_DEF.forEach(sec => {
+    const items = sec.items.map(item => {
+      const agg = aggregated.get(item.id);
+      if (!agg) return null;
+      const ating = agg.metaTotal ? (agg.realizadoTotal / agg.metaTotal) : 0;
+      const variavelAting = agg.variavelMeta ? (agg.variavelReal / agg.variavelMeta) : ating;
+      const ultimaISO = agg.ultimaAtualizacao || period.end || period.start || todayISO();
+      return {
+        id: agg.id,
+        nome: agg.nome,
+        icon: agg.icon,
+        metric: agg.metric,
+        peso: item.peso,
+        meta: agg.metaTotal,
+        realizado: agg.realizadoTotal,
+        variavelMeta: agg.variavelMeta,
+        variavelReal: agg.variavelReal,
+        ating,
+        atingVariavel: variavelAting,
+        atingido: ating >= 1,
+        pontos: agg.pontos,
+        ultimaAtualizacao: formatBRDate(ultimaISO)
+      };
+    }).filter(Boolean);
+    if (items.length) {
+      sections.push({ id: sec.id, label: sec.label, items });
+    }
+  });
+
+  const allItems = sections.flatMap(sec => sec.items);
+  const indicadoresTotal = allItems.length;
+  const indicadoresAtingidos = allItems.filter(item => item.atingido).length;
+  const pontosPossiveis = allItems.reduce((acc, item) => acc + (item.peso || 0), 0);
+  const pontosAtingidos = allItems.filter(item => item.atingido).reduce((acc, item) => acc + (item.peso || 0), 0);
+  const varPossivel = allItems.reduce((acc, item) => acc + (item.variavelMeta || 0), 0);
+  const varAtingido = allItems.reduce((acc, item) => acc + (item.variavelReal || 0), 0);
+
+  const summary = {
+    indicadoresTotal,
+    indicadoresAtingidos,
+    indicadoresPct: indicadoresTotal ? indicadoresAtingidos / indicadoresTotal : 0,
+    pontosPossiveis,
+    pontosAtingidos,
+    pontosPct: pontosPossiveis ? pontosAtingidos / pontosPossiveis : 0,
+    varPossivel,
+    varAtingido,
+    varPct: varPossivel ? varAtingido / varPossivel : 0
+  };
+
+  return { sections, summary };
+}
+
+function updateDashboardCards() {
+  const factRows = state.facts?.dados || fDados;
+  if (!Array.isArray(factRows) || !factRows.length) {
+    const empty = buildDashboardDatasetFromRows([], state.period);
+    state.dashboard = empty;
+    renderFamilias(empty.sections, empty.summary);
+    return;
+  }
+  const filtered = filterRowsExcept(factRows, {}, { searchTerm: "" });
+  const dataset = buildDashboardDatasetFromRows(filtered, state.period);
+  state.dashboard = dataset;
+  renderFamilias(dataset.sections, dataset.summary);
+}
+
 function renderFamilias(sections, summary){
   const host = $("#grid-familias");
   host.innerHTML = "";
@@ -5064,6 +6173,7 @@ function renderTreeTable() {
   nodes.forEach(n=>renderNode(n,null,[]));
 }
 function applyFiltersAndRender(){
+  updateDashboardCards();
   if(state.tableRendered) renderTreeTable();
   if (state.activeView === "campanhas") renderCampanhasView();
 }
@@ -5161,7 +6271,10 @@ async function refresh(){
   try{
     const dataset = await getData();
     state._dataset = dataset;
-    state._rankingRaw = dataset.ranking;
+    state.facts = dataset.facts || state.facts;
+    state._rankingRaw = (state.facts?.dados && state.facts.dados.length)
+      ? state.facts.dados
+      : (dataset.ranking || []);
     updateContractAutocomplete();
 
     const right = document.getElementById("lbl-atualizacao");
@@ -5181,7 +6294,7 @@ async function refresh(){
       document.getElementById("btn-alterar-data")?.addEventListener("click", (e)=> openDatePopover(e.currentTarget));
     }
 
-    renderFamilias(dataset.sections, dataset.summary);
+    updateDashboardCards();
     reorderFiltersUI();
     renderAppliedFilters();
     if(state.tableRendered) renderTreeTable();
