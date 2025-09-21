@@ -563,8 +563,14 @@ function normalizeFactRealizadosRows(rows){
     const canalVenda = readCell(raw, ["Canal Venda", "Canal"]);
     const tipoVenda = readCell(raw, ["Tipo Venda", "Tipo"]);
     const modalidadePagamento = readCell(raw, ["Modalidade Pagamento", "Modalidade"]);
-    const data = parseISODate(readCell(raw, ["Data"]));
-    const competencia = parseISODate(readCell(raw, ["Competencia", "Competência"])) || (data ? `${data.slice(0, 7)}-01` : "");
+    let data = parseISODate(readCell(raw, ["Data", "Data Movimento", "Data Movimentacao", "Data Movimentação"]));
+    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    if (!data && competencia) {
+      data = competencia;
+    }
+    if (!competencia && data) {
+      competencia = `${data.slice(0, 7)}-01`;
+    }
     const realizadoMens = toNumber(readCell(raw, ["Realizado Mensal", "Realizado"]));
     const realizadoAcum = toNumber(readCell(raw, ["Realizado Acumulado", "Realizado Acum"]));
     const quantidade = toNumber(readCell(raw, ["Quantidade", "Qtd"]));
@@ -615,8 +621,18 @@ function normalizeFactMetasRows(rows){
     const metaAcum = toNumber(readCell(raw, ["Meta Acumulada", "Meta Acum"]));
     const variavelMeta = toNumber(readCell(raw, ["Variavel Meta", "Variável Meta"]));
     const peso = toNumber(readCell(raw, ["Peso"]));
+    let data = parseISODate(readCell(raw, ["Data", "Data Competencia", "Data da Meta"]));
+    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    if (!data && competencia) {
+      data = competencia;
+    }
+    if (!competencia && data) {
+      competencia = `${data.slice(0, 7)}-01`;
+    }
     return {
       registroId,
+      data,
+      competencia,
       meta: metaMens,
       meta_mens: metaMens,
       meta_acum: metaAcum || metaMens,
@@ -632,7 +648,15 @@ function normalizeFactVariavelRows(rows){
     if (!registroId) return null;
     const variavelMeta = toNumber(readCell(raw, ["Variavel Meta", "Variável Meta"]));
     const variavelReal = toNumber(readCell(raw, ["Variavel Real", "Variável Real"]));
-    return { registroId, variavelMeta, variavelReal };
+    let data = parseISODate(readCell(raw, ["Data"]));
+    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    if (!data && competencia) {
+      data = competencia;
+    }
+    if (!competencia && data) {
+      competencia = `${data.slice(0, 7)}-01`;
+    }
+    return { registroId, data, competencia, variavelMeta, variavelReal };
   }).filter(Boolean);
 }
 
@@ -663,7 +687,14 @@ function normalizeFactCampanhasRows(rows){
     const cash = toNumber(readCell(raw, ["Cash"]));
     const conquista = toNumber(readCell(raw, ["Conquista"]));
     const atividade = parseBoolean(readCell(raw, ["Atividade", "Ativo", "Status"]), true);
-    const data = parseISODate(readCell(raw, ["Data"]));
+    let data = parseISODate(readCell(raw, ["Data"]));
+    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    if (!data && competencia) {
+      data = competencia;
+    }
+    if (!competencia && data) {
+      competencia = `${data.slice(0, 7)}-01`;
+    }
 
     return {
       id,
@@ -691,6 +722,7 @@ function normalizeFactCampanhasRows(rows){
       conquista,
       atividade,
       data,
+      competencia,
     };
   }).filter(Boolean);
 }
@@ -781,7 +813,11 @@ async function loadBaseData(){
 
     const availableDates = (DIM_CALENDARIO.length
       ? DIM_CALENDARIO.map(row => row.data)
-      : FACT_REALIZADOS.map(row => row.data)
+      : [
+          ...FACT_REALIZADOS.map(row => row.data),
+          ...FACT_METAS.map(row => row.data),
+          ...FACT_VARIAVEL.map(row => row.data),
+        ]
     ).filter(Boolean).sort();
     if (availableDates.length) {
       state.period = {
@@ -892,7 +928,13 @@ function replaceCampaignUnitData(rows = []) {
   CAMPAIGN_UNIT_DATA.length = 0;
   const source = Array.isArray(rows) && rows.length ? rows : DEFAULT_CAMPAIGN_UNIT_DATA;
   source.forEach(item => {
-    CAMPAIGN_UNIT_DATA.push({ ...item });
+    const dataISO = parseISODate(item.data);
+    let competencia = parseISODate(item.competencia);
+    const resolvedData = dataISO || "";
+    if (!competencia && resolvedData) {
+      competencia = `${resolvedData.slice(0, 7)}-01`;
+    }
+    CAMPAIGN_UNIT_DATA.push({ ...item, data: resolvedData, competencia: competencia || "" });
   });
 }
 
@@ -1357,8 +1399,15 @@ async function getData(){
       const variavelMeta = toNumber(variavel.variavelMeta ?? meta.variavelMeta ?? row.variavelMeta ?? 0);
       const variavelReal = toNumber(variavel.variavelReal ?? row.variavelReal ?? 0);
       const qtd = toNumber(row.qtd ?? row.quantidade ?? 0);
-      const competencia = row.competencia || (row.data ? `${row.data.slice(0, 7)}-01` : "");
-      const calendario = calendarioByDate.get(row.data) || calendarioByCompetencia.get(competencia);
+      let dataISO = row.data || meta.data || variavel.data || "";
+      let competencia = row.competencia || meta.competencia || variavel.competencia || "";
+      if (!competencia && dataISO) {
+        competencia = `${dataISO.slice(0, 7)}-01`;
+      }
+      if (!dataISO && competencia) {
+        dataISO = competencia;
+      }
+      const calendario = calendarioByDate.get(dataISO) || calendarioByCompetencia.get(competencia);
       const ating = metaMens ? (realizadoMens / metaMens) : 0;
       const pontos = peso * Math.max(0, Math.min(1.25, ating));
 
@@ -1390,7 +1439,7 @@ async function getData(){
         canalVenda: row.canalVenda,
         tipoVenda: row.tipoVenda,
         modalidadePagamento: row.modalidadePagamento,
-        data: row.data,
+        data: dataISO,
         competencia,
         realizado: realizadoMens,
         real_mens: realizadoMens,
@@ -1462,6 +1511,8 @@ async function getData(){
       const units = CAMPAIGN_UNIT_DATA.filter(unit => !unit.sprintId || unit.sprintId === sprint.id);
       const effectiveUnits = units.length ? units : sprint.units || CAMPAIGN_UNIT_DATA;
       effectiveUnits.forEach(unit => {
+        const unitData = unit.data || "";
+        const unitCompetencia = unit.competencia || (unitData ? `${unitData.slice(0, 7)}-01` : "");
         const score = computeCampaignScore(sprint.team, {
           linhas: unit.linhas,
           cash: unit.cash,
@@ -1469,6 +1520,8 @@ async function getData(){
         });
         campanhaFacts.push({
           ...unit,
+          data: unitData,
+          competencia: unitCompetencia,
           sprintId: unit.sprintId || sprint.id,
           sprintLabel: sprint.label,
           realizado: score.totalPoints,
@@ -1674,6 +1727,8 @@ async function getData(){
   CAMPAIGN_SPRINTS.forEach(sprint => {
     const cfg = sprint.team;
     (sprint.units || []).forEach(unit => {
+      const unitData = unit.data || "";
+      const unitCompetencia = unit.competencia || (unitData ? `${unitData.slice(0, 7)}-01` : "");
       const score = cfg ? computeCampaignScore(cfg, {
         linhas: unit.linhas,
         cash: unit.cash,
@@ -1681,6 +1736,8 @@ async function getData(){
       }) : { totalPoints: 0, eligibilityMinimum: 100, finalStatus: "", finalClass: "", rows: [] };
       campanhaFacts.push({
         ...unit,
+        data: unitData,
+        competencia: unitCompetencia,
         sprintId: sprint.id,
         sprintLabel: sprint.label,
         realizado: score.totalPoints,
