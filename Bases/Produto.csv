@@ -1,0 +1,88 @@
+﻿id_secao,secao,id_familia,familia,id_produto,produto
+1,Financeiro,2,Recuperacao de Vencidos Ate 59 dias,2,Recuperacao de Vencidos Ate 59 dias
+1,Financeiro,3,Recuperacao de Vencidos Acima 59 dias,3,Recuperacao de Vencidos Acima 59 dias
+1,Financeiro,4,Recuperacao de Credito,5,Recuperacao de Credito LP Total
+1,Financeiro,4,Recuperacao de Credito,6,Recuperacao de Credito LP A Vista
+2,Negocios Captacao,7,"Captacao Bruta (CDB, Isentos, Fundos, Corretora e Previdencia)",8,Captacao Bruta - Total
+2,Negocios Captacao,9,Captacao Liquida (Todos os Produtos),10,Captacao Liquida - Grupo A
+2,Negocios Captacao,9,Captacao Liquida (Todos os Produtos),11,Captacao Liquida - Grupo B
+2,Negocios Captacao,12,Isentos,13,Isentos - Aplicacao
+2,Negocios Captacao,12,Isentos,14,Isentos - Resgate
+2,Negocios Captacao,15,Fundos,16,Fundos - Aplicacao
+2,Negocios Captacao,15,Fundos,17,Fundos - Resgate
+2,Negocios Captacao,18,Previdencia Privada,19,Previdencia Privada - Aplicacao
+2,Negocios Captacao,18,Previdencia Privada,20,Previdencia Privada - Resgate
+2,Negocios Captacao,21,Portabilidade de Previdencia Privada,22,Portabilidade de Previdencia Privada - Aplicacao
+2,Negocios Captacao,21,Portabilidade de Previdencia Privada,23,Portabilidade de Previdencia Privada - Resgate
+2,Negocios Captacao,24,Corretora,25,Corretora - Aplicacao
+2,Negocios Captacao,24,Corretora,26,Corretora - Resgate
+2,Negocios Captacao,27,Coe,28,Coe - Aplicacao
+2,Negocios Captacao,27,Coe,29,Coe - Resgate
+2,Negocios Captacao,30,Deposito a Prazo,31,Deposito a Prazo - Aplicacao
+2,Negocios Captacao,30,Deposito a Prazo,32,Deposito a Prazo - Resgate
+2,Negocios Captacao,33,InvestFacil,34,InvestFacil - Aplicacao
+2,Negocios Captacao,33,InvestFacil,35,InvestFacil - Resgate
+2,Negocios Captacao,36,Poupanca,37,Poupanca - Aplicacao
+2,Negocios Captacao,36,Poupanca,38,Poupanca - Resgate
+2,Negocios Captacao,39,Deposito a Vista,40,Deposito a Vista - Aplicacao
+2,Negocios Captacao,39,Deposito a Vista,41,Deposito a Vista - Resgate
+2,Negocios Captacao,42,Centralizacao de Caixa (Cash),42,Centralizacao de Caixa (Cash)
+2,Negocios Captacao,43,Contas a Receber (vol),43,Contas a Receber (vol)
+2,Negocios Captacao,44,Contas a pagar (vol),44,Contas a pagar (vol)
+2,Negocios Captacao,45,Centralizacao de Caixa PF (Qtd),45,Centralizacao de Caixa PF (Qtd)
+3,Negocios Credito,46,Producao de Credito PJ,47,Producao de Credito - Spread PJ
+3,Negocios Credito,46,Producao de Credito PJ,48,Capital de Giro - Spread
+3,Negocios Credito,46,Producao de Credito PJ,49,Desconto - Total
+3,Negocios Credito,46,Producao de Credito PJ,50,Desconto PJ - Duplicata / Cheque / Demais
+3,Negocios Credito,46,Producao de Credito PJ,51,Financiamento de Veiculos / Outros Bens PJ
+3,Negocios Credito,46,Producao de Credito PJ,52,Financiamento de Veiculos Indicacao BF (PJ)
+3,Negocios Credito,46,Producao de Credito PJ,53,CDC PJ - Volume
+3,Negocios Credito,54,Producao de Credito - Spread PF,55,Credito Pessoal Liquido - Outros
+3,Negocios Credito,54,Producao de Credito - Spread PF,56,Credito Pessoal Liquido - LIME
+3,Negocios Credito,54,Producao de Credito - Spread PF,57,Credito Pessoal Liquido - CMR
+3,Negocios Credito,54,Producao de Credito - Spread PF,58,Financiamento de Veiculos / Outros Bens PF
+3,Negocios Credito,54,Producao de Credito - Spread PF,59,Financiamento de Veiculos Indicacao BF (PF)
+3,Negocios Credito,54,Producao de Credito - Spread PF,60,Credito Pessoal Liquido - Com Garantia Real (Informativo)
+3,Negocios Credito,54,Producao de Credito - Spread PF,61,Credito Rural - PF
+3,Negocios Credito,54,Producao de Credito - Spread PF,62,Credito Imobiliario - Agencia
+3,Negocios Credito,54,Producao de Credito - Spread PF,63,Credito Imobiliario - Parcerias
+3,Negocios Credito,54,Producao de Credito - Spread PF,64,Credito Consignado Liquido - INSS
+3,Negocios Credito,54,Producao de Credito - Spread PF,65,Credito Consignado Liquido - Privado
+3,Negocios Credito,54,Producao de Credito - Spread PF,66,Credito Consignado Liquido - Publico
+3,Negocios Credito,54,Producao de Credito - Spread PF,67,CDC PF - Volume
+3,Negocios Credito,68,Producao de Credito Total,68,Producao de Credito Total
+3,Negocios Credito,69,Limite Rotativo PF + PJ (Volume),69,Limite Rotativo PF + PJ (Volume)
+3,Negocios Credito,70,Cheque Especial PF - volume,70,Cheque Especial PF - volume
+3,Negocios Credito,71,Cheque Empresarial - volume,71,Cheque Empresarial - volume
+3,Negocios Credito,72,Limite Rotativo PF + PJ (qtd),72,Limite Rotativo PF + PJ (qtd)
+3,Negocios Credito,73,Cheque Empresarial - qtd,73,Cheque Empresarial - qtd
+4,Negocios Ligadas,74,Cartoes,75,Cartao de Credito Emissao Classic
+4,Negocios Ligadas,74,Cartoes,76,Cartao de Credito Emissao Exclusive
+4,Negocios Ligadas,74,Cartoes,77,Cartao de Credito Emissao PJ Negocios
+4,Negocios Ligadas,74,Cartoes,78,Faturamento Cartao de Credito PJ Negocios
+4,Negocios Ligadas,74,Cartoes,79,Cartao Consignado - Saque Parcelado
+4,Negocios Ligadas,74,Cartoes,80,Faturamento Novo Alelo
+4,Negocios Ligadas,81,Consorcios,82,Consorcios - Total
+4,Negocios Ligadas,81,Consorcios,83,Consorcios Pessoais e Imoveis
+4,Negocios Ligadas,84,Seguros,85,Seguro de Vida (PU + PM)
+4,Negocios Ligadas,84,Seguros,86,Seguro de Vida PM
+4,Negocios Ligadas,84,Seguros,87,Vida Carteira
+4,Negocios Ligadas,84,Seguros,88,Capitalizacao (PU + PM)
+4,Negocios Ligadas,84,Seguros,89,Capitalizacao PM
+4,Negocios Ligadas,84,Seguros,90,Previdencia Privada - Venda Bruta (PU + PM)
+4,Negocios Ligadas,84,Seguros,91,Previdencia Privada - Venda Bruta PM
+4,Negocios Ligadas,84,Seguros,92,Dental PF
+4,Negocios Ligadas,84,Seguros,93,Saude / Dental PJ
+4,Negocios Ligadas,84,Seguros,94,Seguro Prestamista Volume (Premio)
+4,Negocios Ligadas,84,Seguros,95,Seguro Auto
+4,Negocios Ligadas,84,Seguros,96,Seguro RE (sem residencial)
+4,Negocios Ligadas,84,Seguros,97,Seguro Residencial
+5,Produtividade da Equipe,98,Sucesso de Equipe Credito,98,Sucesso de Equipe Credito
+6,Clientes,99,Conquista Qualificada Gerenciado PF,100,Conversao de INSS
+6,Clientes,99,Conquista Qualificada Gerenciado PF,101,Crescimento Liquido Gerenciado PF
+6,Clientes,99,Conquista Qualificada Gerenciado PF,102,Conquista de Clientes PF
+6,Clientes,103,Conquista Qualificada Gerenciado PJ,104,Crescimento Liquido PJ
+6,Clientes,103,Conquista Qualificada Gerenciado PJ,105,Conquista de Clientes PJ
+6,Clientes,106,Conquista de Clientes Folha de Pagamento,106,Conquista de Clientes Folha de Pagamento
+6,Clientes,107,Abertura de Contas PF - Folha de Pagamento Privada,107,Abertura de Contas PF - Folha de Pagamento Privada
+6,Clientes,108,Bradesco Expresso,108,Bradesco Expresso

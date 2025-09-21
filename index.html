@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>POBJ Produções</title>
+  <link rel="icon" type="image/png" href="img/pobj.png" sizes="32x32">
+  <link rel="icon" type="image/png" href="img/pobj.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="img/pobj.png" sizes="180x180">
+  <link rel="shortcut icon" href="img/pobj.png">
+
+
+
+  <link href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <!-- TOPBAR -->
+  <header class="topbar">
+  <div class="topbar__left">
+    <button class="topbar-hamburger" id="btn-open-drawer" aria-label="Abrir menu">
+      <i class="ti ti-menu-2"></i>
+    </button>
+
+    <div class="logo">
+      <span class="logo__mark" aria-hidden="true"></span>
+      <span class="logo__text">Bradesco</span>
+    </div>
+  </div>
+
+  <div class="topbar__right">
+    <div class="userbox">
+      <img class="userbox__avatar" src="https://i.pravatar.cc/80?img=12" alt="Foto do usuário"/>
+      <div class="userbox__name">X Burguer</div>
+      <button class="btn btn--ghost btn--logout" type="button">
+        <i class="ti ti-logout-2"></i> <span class="btn-label">Sair</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+
+  <main class="container">
+    <!-- CARD DE FILTROS -->
+    <section class="card card--filters">
+      <button id="btn-fechar-filtros" class="filters__close" type="button" aria-label="Fechar filtros">
+        <i class="ti ti-x" aria-hidden="true"></i>
+      </button>
+      <header class="card__header">
+        <div class="filters-hero">
+          <div class="title-subtitle">
+            <h2>POBJ Produções</h2>
+            <p class="muted">Acompanhe dados atualizados de performance.</p>
+          </div>
+          <div id="mobile-carousel" class="mobile-carousel" aria-label="Destaques do painel">
+            <div class="mobile-carousel__track">
+              <article class="mobile-carousel__slide is-active" data-slide="0">
+                <div class="mobile-carousel__content">
+                  <h4 class="mobile-carousel__title">Sprint PJ em foco</h4>
+                  <p class="mobile-carousel__desc">Veja metas e elegibilidade da campanha atual em segundos.</p>
+                </div>
+              </article>
+              <article class="mobile-carousel__slide" data-slide="1">
+                <div class="mobile-carousel__content">
+                  <h4 class="mobile-carousel__title">Simuladores ágeis</h4>
+                  <p class="mobile-carousel__desc">Projete cenários da equipe ou individuais com ajustes rápidos.</p>
+                </div>
+              </article>
+              <article class="mobile-carousel__slide" data-slide="2">
+                <div class="mobile-carousel__content">
+                  <h4 class="mobile-carousel__title">Ranking personalizado</h4>
+                  <p class="mobile-carousel__desc">Compare sua posição preservando os dados dos demais.</p>
+                </div>
+              </article>
+            </div>
+            <div class="mobile-carousel__dots" role="tablist" aria-label="Navegação do carrossel">
+              <button type="button" class="mobile-carousel__dot" data-slide-to="0" aria-label="Ver destaque da sprint" aria-current="true"></button>
+              <button type="button" class="mobile-carousel__dot" data-slide-to="1" aria-label="Ver destaque dos simuladores"></button>
+              <button type="button" class="mobile-carousel__dot" data-slide-to="2" aria-label="Ver destaque do ranking"></button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="filters">
+        <div class="filters__group">
+          <label>Diretoria</label>
+          <select id="f-diretoria" class="input"></select>
+        </div>
+        <div class="filters__group">
+          <label>Regional</label>
+          <select id="f-gerencia" class="input"></select>
+        </div>
+        <div class="filters__group">
+          <label>Gerente</label>
+          <select id="f-gerente" class="input"></select>
+        </div>
+        <div class="filters__actions">
+          <button id="btn-consultar" class="btn btn--primary">
+            <i class="ti ti-search"></i> Consultar
+          </button>
+          <button id="btn-limpar" class="btn"><i class="ti ti-x"></i> Limpar filtros</button>
+        </div>
+      </div>
+
+      <div class="filters__more filters__more--center">
+        <button id="btn-abrir-filtros" class="btn btn--link btn--info" aria-expanded="false">
+          <i class="ti ti-chevron-down"></i> Abrir filtros
+        </button>
+      </div>
+
+      <!-- Filtros avançados (slider) -->
+      <div id="advanced-filters" class="adv" aria-hidden="true">
+        <div class="adv__grid">
+          <div class="filters__group">
+            <label>Agência</label>
+            <select id="f-agencia" class="input"></select>
+          </div>
+          <div class="filters__group">
+            <label>Gerente de gestão</label>
+            <select id="f-ggestao" class="input"></select>
+          </div>
+          <div class="filters__group">
+            <label>Família de produtos</label>
+            <select id="f-familia" class="input"></select>
+          </div>
+          <!-- Grupo de produtos REMOVIDO -->
+          <div class="filters__group">
+            <label>Produto</label>
+            <select id="f-produto" class="input"></select>
+          </div>
+          <div class="filters__group">
+            <label>Status dos indicadores</label>
+            <select id="f-status-kpi" class="input">
+              <option value="todos" selected>Todos</option>
+              <option value="atingidos">Atingidos</option>
+              <option value="nao">Não atingidos</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TABS -->
+    <section class="tabs">
+      <button class="tab is-active" data-view="cards" aria-label="Resumo">
+        <span class="tab-icon"><i class="ti ti-dashboard" aria-hidden="true"></i></span>
+        <span class="tab-label">Resumo</span>
+      </button>
+      <button class="tab" data-view="table" aria-label="Detalhamento">
+        <span class="tab-icon"><i class="ti ti-list-tree" aria-hidden="true"></i></span>
+        <span class="tab-label">Detalhes</span>
+      </button>
+      <button class="tab" data-view="ranking" aria-label="Ranking">
+        <span class="tab-icon"><i class="ti ti-trophy" aria-hidden="true"></i></span>
+        <span class="tab-label">Ranking</span>
+      </button>
+      <button class="tab" data-view="exec" aria-label="Visão executiva">
+        <span class="tab-icon"><i class="ti ti-chart-line" aria-hidden="true"></i></span>
+        <span class="tab-label">V. Exec.</span>
+      </button>
+      <button class="tab" data-view="campanhas" aria-label="Campanhas">
+        <span class="tab-icon"><i class="ti ti-speakerphone" aria-hidden="true"></i></span>
+        <span class="tab-label">Campanha</span>
+      </button>
+      <div class="tabs__aside">
+        <small class="muted"><span id="lbl-atualizacao"></span></small>
+      </div>
+    </section>
+
+    <!-- VIEW: RESUMO (só cards) -->
+    <section id="view-cards">
+      <div id="grid-familias" class="cards-grid"></div>
+    </section>
+
+    <!-- VIEW: DETALHAMENTO (tabela) -->
+    <section id="view-table" class="hidden">
+      <section id="table-section" class="card card--table">
+        <header class="card__header">
+          <h3>Detalhamento</h3>
+          <div class="card__actions">
+            <div class="card__search-autocomplete">
+              <input id="busca" class="input input--sm" type="search" placeholder="Contrato (Ex.: CT-2025-001234)" autocomplete="off" aria-autocomplete="list" aria-expanded="false" aria-owns="contract-suggest"/>
+              <div id="contract-suggest" class="contract-suggest" role="listbox" aria-label="Sugestões de contratos" hidden></div>
+            </div>
+          </div>
+        </header>
+        <div id="gridRanking"></div>
+      </section>
+    </section>
+
+    <!-- VIEW: VISÃO EXECUTIVA -->
+    <section id="view-exec" class="hidden view-panel">
+      <section class="card card--exec">
+        <header class="card__header exec-head">
+          <div class="title-subtitle">
+            <h3>Visão executiva</h3>
+            <div class="muted" id="exec-context"></div>
+          </div>
+        </header>
+
+        <div id="exec-kpis" class="exec-kpis"></div>
+
+        <section class="exec-panel exec-span-2 exec-chart">
+          <div class="exec-h">
+            <span id="exec-chart-title">Evolução do mês</span>
+            <div class="segmented seg-mini" id="exec-chart-toggle" role="tablist" aria-label="Modo do gráfico">
+              <button type="button" class="seg-btn is-active" data-chart="diario">Dia a dia</button>
+              <button type="button" class="seg-btn" data-chart="mensal">Visão mês</button>
+            </div>
+          </div>
+          <div id="exec-chart" class="chart" role="img" aria-label="Barras diárias de realizado com linha de meta"></div>
+          <div id="exec-chart-legend" class="chart-legend">
+            <span class="legend-item"><span class="legend-swatch legend-swatch--bar-real"></span>Realizado diário (barra)</span>
+            <span class="legend-item"><span class="legend-swatch legend-swatch--meta-line"></span>Meta diária (linha)</span>
+          </div>
+        </section>
+
+        <div class="exec-grid">
+          <section class="exec-panel" id="exec-rank-panel">
+            <div class="exec-h">
+              <span id="exec-rank-title">Desempenho por unidade</span>
+              <div class="segmented seg-mini" role="tablist" aria-label="Ordenação">
+                <button type="button" class="seg-btn is-active" data-rk="top">Top 5</button>
+                <button type="button" class="seg-btn" data-rk="bottom">Bottom 5</button>
+              </div>
+            </div>
+            <div id="exec-rank" class="rank-mini"></div>
+          </section>
+
+          <section class="exec-panel" id="exec-status-panel">
+            <div class="exec-h">
+              <span id="exec-status-title">Status das unidades</span>
+              <div class="segmented seg-mini" role="tablist" aria-label="Status">
+                <button type="button" class="seg-btn" data-st="hit">Atingidas</button>
+                <button type="button" class="seg-btn is-active" data-st="quase">Quase lá</button>
+                <button type="button" class="seg-btn" data-st="longe">Longe</button>
+              </div>
+            </div>
+            <div id="exec-status-list" class="list-mini"></div>
+          </section>
+
+          <section class="exec-panel exec-span-2 exec-panel--scroll">
+            <h4 class="exec-h"><span id="exec-heatmap-title">Heatmap</span></h4>
+            <div id="exec-heatmap" class="hm"></div>
+          </section>
+        </div>
+      </section>
+    </section>
+
+    <!-- VIEW: CAMPANHAS -->
+    <section id="view-campanhas" class="hidden view-panel">
+      <section class="card card--campanhas">
+        <header class="card__header camp-header">
+          <div class="title-subtitle">
+            <h3>Campanhas</h3>
+            <p class="muted" id="camp-cycle"></p>
+          </div>
+          <div class="camp-header__controls">
+            <label for="campanha-sprint" class="muted">Selecione a campanha</label>
+            <select id="campanha-sprint" class="input input--sm"></select>
+          </div>
+        </header>
+
+        <div class="camp-hero">
+          <div class="camp-hero__info">
+            <p id="camp-note"></p>
+            <div class="camp-period">
+              <i class="ti ti-calendar-stats" aria-hidden="true"></i>
+              <span id="camp-period"></span>
+            </div>
+          </div>
+          <div class="camp-hero__stats" id="camp-headline"></div>
+        </div>
+
+        <div class="camp-kpi-grid" id="camp-kpis"></div>
+      </section>
+
+      <section class="card card--camp-sims">
+        <header class="card__header">
+          <div class="title-subtitle">
+            <h4>Simuladores da sprint</h4>
+            <p class="muted">Projete rapidamente o resultado da equipe ou de um gerente ajustando o atingimento de cada indicador.</p>
+          </div>
+        </header>
+        <div class="sim-grid">
+          <article id="sim-equipe" class="sim-card"></article>
+          <article id="sim-individual" class="sim-card"></article>
+        </div>
+        <p class="sim-footnote muted">Cada indicador respeita o intervalo de 0% a 150% para cálculo de pontos. Valores acima disso são desconsiderados.</p>
+      </section>
+
+      <section class="card card--camp-ranking">
+        <header class="card__header">
+          <div class="title-subtitle">
+            <h4>Ranking da campanha</h4>
+            <p class="muted" id="camp-ranking-desc">Acompanhe a performance das regionais e a elegibilidade frente aos critérios mínimos.</p>
+          </div>
+        </header>
+        <div id="camp-ranking"></div>
+      </section>
+    </section>
+  </main>
+
+  <div id="filters-backdrop" class="filters-backdrop" hidden></div>
+
+  <footer class="footer">
+    <span>Bradesco POBJ • v1.0 </span>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
