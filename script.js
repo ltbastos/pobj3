@@ -490,11 +490,15 @@ function buildHierarchyFromMesu(rows){
 
 function normalizeProdutosRows(rows){
   return rows.map(raw => {
+    const secaoId = readCell(raw, ["id_secao", "Id secao", "ID secao", "Seção ID", "secao_id", "secaoId"]);
+    const secaoNome = readCell(raw, ["secao", "Seção", "Nome secao", "Nome seção"]) || secaoId;
     const familiaNome = readCell(raw, ["Familia de produtos", "Família de produtos", "Familia", "família", "familia"]);
     const familiaId = readCell(raw, ["Id familia", "ID familia", "Familia Id", "id familia"]) || familiaNome;
     const produtoNome = readCell(raw, ["Produto", "produto", "Produto Nome"]);
     const produtoId = readCell(raw, ["Id produto", "ID produto", "Produto Id", "id produto"]) || produtoNome;
     return {
+      secaoId,
+      secaoNome,
       familiaNome,
       familiaId,
       produtoNome,
@@ -509,30 +513,67 @@ function buildProdutosData(rows){
   PRODUTO_TO_FAMILIA = new Map();
 
   rows.forEach(row => {
-    if (!famMap.has(row.familiaId)){
-      famMap.set(row.familiaId, { id: row.familiaId, nome: row.familiaNome || row.familiaId });
+    const familiaId = row.familiaId;
+    const produtoId = row.produtoId;
+    if (!familiaId || !produtoId) return;
+
+    const familiaNome = row.familiaNome || familiaId;
+    const entry = famMap.get(familiaId) || {
+      id: familiaId,
+      nome: familiaNome,
+      secaoId: row.secaoId || "",
+      secaoNome: row.secaoNome || ""
+    };
+    if (!entry.nome || entry.nome === entry.id) entry.nome = familiaNome;
+    if (!entry.secaoId && row.secaoId) entry.secaoId = row.secaoId;
+    if (!entry.secaoNome && row.secaoNome) entry.secaoNome = row.secaoNome;
+    famMap.set(familiaId, entry);
+
+    const list = byFamilia.get(familiaId) || [];
+    if (!list.some(prod => prod.id === produtoId)) {
+      list.push({ id: produtoId, nome: row.produtoNome || produtoId, familiaId, secaoId: entry.secaoId });
     }
-    const list = byFamilia.get(row.familiaId) || [];
-    list.push({ id: row.produtoId, nome: row.produtoNome || row.produtoId, familiaId: row.familiaId });
-    byFamilia.set(row.familiaId, list);
-    PRODUTO_TO_FAMILIA.set(row.produtoId, { id: row.familiaId, nome: row.familiaNome || row.familiaId });
+    byFamilia.set(familiaId, list);
+
+    if (!PRODUTO_TO_FAMILIA.has(produtoId)) {
+      PRODUTO_TO_FAMILIA.set(produtoId, {
+        id: familiaId,
+        nome: familiaNome,
+        secaoId: entry.secaoId,
+        secaoNome: entry.secaoNome || entry.secaoId || ""
+      });
+    }
   });
 
   CARD_SECTIONS_DEF.forEach(sec => {
-    const famId = sec.id;
-    const famNome = sec.label || sec.id;
-    if (!famMap.has(famId)) {
-      famMap.set(famId, { id: famId, nome: famNome });
-    }
-    const list = byFamilia.get(famId) || [];
     sec.items.forEach(item => {
+      const familiaId = item.id;
+      const familiaNome = item.nome || item.id;
+      const entry = famMap.get(familiaId) || {
+        id: familiaId,
+        nome: familiaNome,
+        secaoId: sec.id,
+        secaoNome: sec.label
+      };
+      if (!entry.nome || entry.nome === entry.id) entry.nome = familiaNome;
+      if (!entry.secaoId) entry.secaoId = sec.id;
+      if (!entry.secaoNome) entry.secaoNome = sec.label;
+      famMap.set(familiaId, entry);
+
+      const list = byFamilia.get(familiaId) || [];
       if (!list.some(prod => prod.id === item.id)) {
-        list.push({ id: item.id, nome: item.nome || item.id, familiaId: famId });
+        list.push({ id: item.id, nome: item.nome || item.id, familiaId, secaoId: sec.id });
       }
-      PRODUTO_TO_FAMILIA.set(item.id, { id: famId, nome: famNome });
+      list.sort((a,b) => String(a.nome).localeCompare(String(b.nome), "pt-BR", { sensitivity: "base" }));
+      byFamilia.set(familiaId, list);
+
+      PRODUTO_TO_FAMILIA.set(item.id, {
+        id: familiaId,
+        nome: familiaNome,
+        secaoId: sec.id,
+        secaoNome: sec.label
+      });
     });
-    list.sort((a,b) => String(a.nome).localeCompare(String(b.nome), "pt-BR", { sensitivity: "base" }));
-    byFamilia.set(famId, list);
   });
 
   famMap.forEach((value, key) => {
@@ -547,11 +588,21 @@ function buildProdutosData(rows){
   PRODUTOS_DATA = rows;
 
   CAMPAIGN_UNIT_DATA.forEach(unit => {
-    if (unit.familiaId) {
+    const prodMeta = unit.produtoId ? PRODUTO_TO_FAMILIA.get(unit.produtoId) : null;
+    if (prodMeta) {
+      if (!unit.familiaId) unit.familiaId = prodMeta.id;
+      if (!unit.familia) unit.familia = prodMeta.nome || prodMeta.id;
+      if (!unit.familiaNome) unit.familiaNome = prodMeta.nome || prodMeta.id;
+      if (!unit.secaoId) unit.secaoId = prodMeta.secaoId;
+      if (!unit.secao) unit.secao = prodMeta.secaoId;
+      if (!unit.secaoNome) unit.secaoNome = prodMeta.secaoNome || getSectionLabel(prodMeta.secaoId);
+    } else if (unit.familiaId) {
       const fam = FAMILIA_BY_ID.get(unit.familiaId);
       if (fam) {
         unit.familia = fam.nome || unit.familiaId;
         unit.familiaNome = fam.nome || unit.familiaId;
+        if (!unit.secaoId) unit.secaoId = fam.secaoId;
+        if (!unit.secaoNome) unit.secaoNome = fam.secaoNome || getSectionLabel(fam.secaoId);
       }
     }
   });
@@ -1211,7 +1262,15 @@ replaceCampaignUnitData(DEFAULT_CAMPAIGN_UNIT_DATA);
 
 CAMPAIGN_UNIT_DATA.forEach(unit => {
   const meta = PRODUCT_INDEX.get(unit.produtoId);
-  if (meta?.sectionId) {
+  const familiaMeta = PRODUTO_TO_FAMILIA.get(unit.produtoId);
+  if (familiaMeta) {
+    if (!unit.familiaId) unit.familiaId = familiaMeta.id;
+    if (!unit.familia) unit.familia = familiaMeta.nome || familiaMeta.id;
+    if (!unit.familiaNome) unit.familiaNome = familiaMeta.nome || familiaMeta.id;
+    if (!unit.secaoId) unit.secaoId = familiaMeta.secaoId || meta?.sectionId;
+    if (!unit.secao) unit.secao = familiaMeta.secaoId || meta?.sectionId;
+    if (!unit.secaoNome) unit.secaoNome = familiaMeta.secaoNome || meta?.sectionLabel || getSectionLabel(familiaMeta.secaoId);
+  } else if (meta?.sectionId) {
     if (!unit.familiaId) unit.familiaId = meta.sectionId;
     if (!unit.familia) unit.familia = meta.sectionId;
     if (!unit.secaoId) unit.secaoId = meta.sectionId;
@@ -1426,7 +1485,8 @@ function filterCampaignUnits(sprint, filters = getFilterValues()) {
     const okGerente = (!filters.gerente || filters.gerente === "Todos" || unit.gerente === filters.gerente);
     const okFamilia = (!filters.familiaId || filters.familiaId === "Todas" || unit.familiaId === filters.familiaId || unit.familia === filters.familiaId);
     const okProduto = (!filters.produtoId || filters.produtoId === "Todas" || filters.produtoId === "Todos" || unit.produtoId === filters.produtoId);
-    const unitSecaoId = unit.secaoId || unit.familiaId || (unit.produtoId ? PRODUCT_INDEX.get(unit.produtoId)?.sectionId : "") || "";
+    const prodSecao = unit.produtoId ? (PRODUCT_INDEX.get(unit.produtoId)?.sectionId || PRODUTO_TO_FAMILIA.get(unit.produtoId)?.secaoId) : "";
+    const unitSecaoId = unit.secaoId || prodSecao || "";
     const okSecao = (!filters.secaoId || filters.secaoId === "Todas" || unitSecaoId === filters.secaoId || unit.familiaId === filters.secaoId || unit.familia === filters.secaoId);
     const okDate = (!startISO || unit.data >= startISO) && (!endISO || unit.data <= endISO);
     return okSegmento && okDiretoria && okGerencia && okAgencia && okGG && okGerente && okSecao && okFamilia && okProduto && okDate;
@@ -1723,14 +1783,21 @@ async function getData(){
       const meta = metasMap.get(row.registroId) || {};
       const variavel = variavelMap.get(row.registroId) || {};
       const produtoMeta = PRODUCT_INDEX.get(row.produtoId) || {};
-      const secaoIdRaw = produtoMeta.sectionId || row.secaoId || row.sectionId || "";
-      const secaoLabelRaw = produtoMeta.sectionLabel || row.secaoNome || row.secao || "";
+      const familiaMeta = PRODUTO_TO_FAMILIA.get(row.produtoId);
+      const secaoIdRaw = produtoMeta.sectionId || familiaMeta?.secaoId || row.secaoId || row.sectionId || "";
+      const secaoLabelRaw = produtoMeta.sectionLabel || familiaMeta?.secaoNome || row.secaoNome || row.secao || "";
       const familiaIdRaw = row.familiaId || row.familia || "";
       const familiaNomeRaw = row.familiaNome || row.familia || "";
-      const resolvedSecaoId = secaoIdRaw || familiaIdRaw || "";
+      const resolvedSecaoId = secaoIdRaw || familiaMeta?.secaoId || familiaIdRaw || "";
       const resolvedSecaoNome = secaoLabelRaw || getSectionLabel(resolvedSecaoId) || familiaNomeRaw || familiaIdRaw || resolvedSecaoId;
-      const resolvedFamiliaId = familiaIdRaw || resolvedSecaoId;
-      const resolvedFamiliaNome = familiaNomeRaw || (familiaIdRaw && familiaIdRaw !== resolvedSecaoId ? familiaIdRaw : resolvedSecaoNome) || resolvedSecaoNome;
+      let resolvedFamiliaId = familiaIdRaw;
+      let resolvedFamiliaNome = familiaNomeRaw;
+      if (!resolvedFamiliaId || SECTION_IDS.has(resolvedFamiliaId)) {
+        resolvedFamiliaId = familiaMeta?.id || row.produtoId || resolvedSecaoId;
+      }
+      if (!resolvedFamiliaNome || resolvedFamiliaNome === familiaIdRaw || resolvedFamiliaNome === resolvedSecaoNome || SECTION_IDS.has(resolvedFamiliaId)) {
+        resolvedFamiliaNome = familiaMeta?.nome || row.produtoNome || resolvedFamiliaNome || resolvedSecaoNome;
+      }
       const peso = toNumber(meta.peso ?? produtoMeta.peso ?? 1);
       const metaMens = toNumber(meta.meta_mens ?? meta.meta ?? 0);
       const metaAcum = toNumber(meta.meta_acum ?? meta.meta ?? metaMens);
@@ -2007,6 +2074,13 @@ async function getData(){
           ? Math.max(1, Math.round(realMens))
           : Math.round(80 + Math.random() * 2200);
 
+        const familiaMeta = PRODUTO_TO_FAMILIA.get(prod.id) || {
+          id: prod.id,
+          nome: prod.nome,
+          secaoId: prod.sectionId,
+          secaoNome: prod.sectionLabel
+        };
+
         factRows.push({
           segmento: agency.segmentoNome || agency.segmentoId || segs[agencyIndex % segs.length] || "Segmento",
           diretoria: agency.diretoriaId || diretoriasBase[agencyIndex % diretoriasBase.length]?.id || `DR ${String(agencyIndex + 1).padStart(2, "0")}`,
@@ -2022,12 +2096,12 @@ async function getData(){
           gerente: agency.gerenteId || gerentesBase[agencyIndex % gerentesBase.length]?.id || `Gerente ${agencyIndex + 1}`,
           gerenteNome: agency.gerenteNome || gerentesBase[agencyIndex % gerentesBase.length]?.nome || `Gerente ${agencyIndex + 1}`,
           segmentoNome: agency.segmentoNome || agency.segmentoId || segs[agencyIndex % segs.length] || "Segmento",
-          secaoId: prod.sectionId,
-          secao: prod.sectionLabel,
-          secaoNome: prod.sectionLabel,
-          familiaId: prod.sectionId,
-          familia: prod.sectionLabel,
-          familiaNome: prod.sectionLabel,
+          secaoId: familiaMeta.secaoId || prod.sectionId,
+          secao: familiaMeta.secaoNome || prod.sectionLabel,
+          secaoNome: familiaMeta.secaoNome || prod.sectionLabel,
+          familiaId: familiaMeta.id,
+          familia: familiaMeta.nome || familiaMeta.id,
+          familiaNome: familiaMeta.nome || familiaMeta.id,
           produtoId: prod.id,
           produto: prod.nome,
           produtoNome: prod.nome,
@@ -2880,7 +2954,11 @@ function filterRowsExcept(rows, except = {}, opts = {}) {
     const okAg  = (except.agencia)   || (f.agencia   === "Todas" || f.agencia   === "" || r.agencia === f.agencia);
     const okGG  = (f.ggestao   === "Todos" || f.ggestao   === "" || r.gerenteGestao === f.ggestao);
     const okGer = (except.gerente)   || (f.gerente   === "Todos" || f.gerente   === "" || r.gerente === f.gerente);
-    const rowSecaoId = r.secaoId || r.familiaId || (r.produtoId ? PRODUCT_INDEX.get(r.produtoId)?.sectionId : "") || "";
+    const familiaMetaRow = r.produtoId ? PRODUTO_TO_FAMILIA.get(r.produtoId) : null;
+    const rowSecaoId = r.secaoId
+      || familiaMetaRow?.secaoId
+      || (r.produtoId ? PRODUCT_INDEX.get(r.produtoId)?.sectionId : "")
+      || (SECTION_IDS.has(r.familiaId) ? r.familiaId : "");
     const okSec = (f.secaoId === "Todas" || f.secaoId === "" || rowSecaoId === f.secaoId || r.familiaId === f.secaoId || r.familia === f.secaoId);
     const okFam = (f.familiaId === "Todas" || f.familiaId === "" || r.familiaId === f.familiaId || (!r.familiaId && r.familia === f.familiaId));
     const okProd= (f.produtoId === "Todas" || f.produtoId === "Todos" || f.produtoId === "" || r.produtoId === f.produtoId);
@@ -3451,7 +3529,8 @@ function initCombos() {
       if (!prod || !prod.id || added.has(prod.id)) return;
       if (filtroSecao) {
         const meta = PRODUCT_INDEX.get(prod.id);
-        const prodSecao = meta?.sectionId || PRODUTO_TO_FAMILIA.get(prod.id)?.id || "";
+        const familiaMeta = PRODUTO_TO_FAMILIA.get(prod.id);
+        const prodSecao = meta?.sectionId || familiaMeta?.secaoId || "";
         if (prodSecao !== filtroSecao) return;
       }
       options.push({ value: prod.id, label: prod.nome || prod.id });
