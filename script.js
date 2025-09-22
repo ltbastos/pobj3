@@ -932,12 +932,96 @@ function rebuildStatusIndex(rows) {
 
   STATUS_INDICADORES_DATA = cleaned;
   STATUS_BY_KEY = map;
+  updateStatusFilterOptions();
 }
 
 function getStatusEntry(key) {
   const normalized = normalizeStatusKey(key);
   if (!normalized) return null;
   return STATUS_BY_KEY.get(normalized) || null;
+}
+
+function buildStatusFilterEntries() {
+  const base = Array.isArray(STATUS_INDICADORES_DATA) ? STATUS_INDICADORES_DATA : [];
+  const entries = base.map(st => {
+    const key = st?.key || normalizeStatusKey(st?.id ?? st?.codigo ?? st?.nome);
+    if (!key) return null;
+    const label = st?.nome || getStatusLabelFromKey(key, st?.codigo ?? st?.id ?? key);
+    const codigo = st?.codigo ?? st?.id ?? key;
+    let ordem = st?.ordem;
+    if (typeof ordem === "string" && ordem !== "") {
+      const parsed = Number(ordem);
+      ordem = Number.isFinite(parsed) ? parsed : undefined;
+    }
+    if (!Number.isFinite(ordem)) {
+      ordem = Number.isFinite(st?.ordem) ? st.ordem : Number.MAX_SAFE_INTEGER;
+    }
+    return {
+      key,
+      value: key,
+      label,
+      codigo,
+      id: st?.id ?? codigo,
+      ordem,
+    };
+  }).filter(Boolean);
+
+  if (!entries.some(entry => entry.key === "todos")) {
+    entries.unshift({
+      key: "todos",
+      value: "todos",
+      label: STATUS_LABELS.todos,
+      codigo: "todos",
+      id: "todos",
+      ordem: -Infinity,
+    });
+  }
+
+  entries.sort((a, b) => {
+    if (a.key === "todos") return -1;
+    if (b.key === "todos") return 1;
+    if (a.ordem !== b.ordem) return a.ordem - b.ordem;
+    return String(a.label || "").localeCompare(String(b.label || ""), "pt-BR", { sensitivity: "base" });
+  });
+
+  return entries;
+}
+
+function updateStatusFilterOptions(preserveSelection = true) {
+  const select = document.getElementById("f-status-kpi");
+  if (!select) return;
+
+  const previousOption = select.selectedOptions?.[0] || null;
+  const previousKey = preserveSelection
+    ? (previousOption?.dataset.statusKey || normalizeStatusKey(select.value) || "")
+    : "";
+
+  const entries = buildStatusFilterEntries();
+  select.innerHTML = "";
+
+  entries.forEach(entry => {
+    const opt = document.createElement("option");
+    opt.value = entry.value;
+    opt.textContent = entry.label;
+    opt.dataset.statusKey = entry.key;
+    if (entry.codigo !== undefined) opt.dataset.statusCodigo = entry.codigo;
+    if (entry.id !== undefined) opt.dataset.statusId = entry.id;
+    select.appendChild(opt);
+  });
+
+  if (preserveSelection && previousKey) {
+    const match = entries.find(entry => entry.key === previousKey);
+    if (match) {
+      select.value = match.value;
+    }
+  }
+
+  if (!entries.some(entry => entry.value === select.value)) {
+    const fallback = entries.find(entry => entry.key === "todos") || entries[0];
+    if (fallback) {
+      select.value = fallback.value;
+    }
+  }
 }
 
 // Carrega os CSVs da pasta "Bases" usando o loader tolerante
@@ -2517,11 +2601,7 @@ function ensureStatusFilterInAdvanced() {
     wrap.className = "filters__group";
     wrap.innerHTML = `
       <label for="f-status-kpi">Status dos indicadores</label>
-      <select id="f-status-kpi" class="input">
-        <option value="todos" selected>Todos</option>
-        <option value="atingidos">Atingidos</option>
-        <option value="nao">Não atingidos</option>
-      </select>`;
+      <select id="f-status-kpi" class="input"></select>`;
     host.appendChild(wrap);
     $("#f-status-kpi").addEventListener("change", async () => {
       await withSpinner(async () => {
@@ -2532,6 +2612,8 @@ function ensureStatusFilterInAdvanced() {
       }, "Atualizando filtros…");
     });
   }
+
+  updateStatusFilterOptions();
 
   const gStart = $("#f-inicio")?.closest(".filters__group");
   if (gStart) gStart.remove();
@@ -3294,60 +3376,7 @@ function initCombos() {
     });
   }
 
-  let statusEntries = STATUS_INDICADORES_DATA.map(st => {
-    const key = st?.key || normalizeStatusKey(st?.id ?? st?.codigo ?? st?.nome);
-    if (!key) return null;
-    const label = st?.nome || getStatusLabelFromKey(key, st?.codigo ?? st?.id ?? key);
-    const codigo = st?.codigo ?? st?.id ?? key;
-    const ordem = typeof st?.ordem === "number" && Number.isFinite(st.ordem)
-      ? st.ordem
-      : Number.MAX_SAFE_INTEGER;
-    return {
-      key,
-      value: key,
-      label,
-      codigo,
-      id: st?.id ?? codigo,
-      ordem,
-    };
-  }).filter(Boolean);
-
-  if (!statusEntries.some(entry => entry.key === "todos")) {
-    statusEntries.unshift({
-      key: "todos",
-      value: "todos",
-      label: STATUS_LABELS.todos,
-      codigo: "todos",
-      id: "todos",
-      ordem: -Infinity,
-    });
-  }
-
-  statusEntries.sort((a, b) => {
-    if (a.key === "todos") return -1;
-    if (b.key === "todos") return 1;
-    if (a.ordem !== b.ordem) return a.ordem - b.ordem;
-    return String(a.label || "").localeCompare(String(b.label || ""), "pt-BR", { sensitivity: "base" });
-  });
-
-  fill("#f-status-kpi", statusEntries.map(({ value, label }) => ({ value, label })));
-
-  const statusSelect = $("#f-status-kpi");
-  if (statusSelect) {
-    statusEntries.forEach((entry, idx) => {
-      const opt = statusSelect.options[idx];
-      if (!opt) return;
-      opt.dataset.statusKey = entry.key;
-      if (entry.codigo !== undefined) opt.dataset.statusCodigo = entry.codigo;
-      if (entry.id !== undefined) opt.dataset.statusId = entry.id;
-    });
-
-    const currentOption = statusSelect.selectedOptions?.[0];
-    const currentKey = currentOption?.dataset.statusKey || statusSelect.value;
-    if (!currentKey || !statusEntries.some(entry => entry.key === currentKey)) {
-      statusSelect.value = "todos";
-    }
-  }
+  updateStatusFilterOptions();
 }
 function bindEvents() {
   $("#btn-consultar")?.addEventListener("click", async () => {
