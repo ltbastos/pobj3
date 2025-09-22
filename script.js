@@ -68,12 +68,16 @@ const STATUS_LABELS = {
   atingidos: "Atingidos",
   nao: "Não atingidos",
 };
-const DEFAULT_STATUS_INDICADORES = Object.entries(STATUS_LABELS).map(([id, nome]) => ({
-  id,
-  nome,
-  codigo: id,
+const DEFAULT_STATUS_ORDER = ["todos", "atingidos", "nao"];
+const DEFAULT_STATUS_INDICADORES = DEFAULT_STATUS_ORDER.map((key, idx) => ({
+  id: key,
+  codigo: key,
+  nome: STATUS_LABELS[key] || key,
+  key,
+  ordem: idx,
 }));
 let STATUS_INDICADORES_DATA = DEFAULT_STATUS_INDICADORES.map(item => ({ ...item }));
+let STATUS_BY_KEY = new Map(DEFAULT_STATUS_INDICADORES.map(entry => [entry.key, { ...entry }]));
 
 let MESU_BY_AGENCIA = new Map();
 
@@ -171,7 +175,16 @@ function normalizeStatusKey(value) {
 }
 
 function getStatusLabelFromKey(key, fallback = "") {
-  return STATUS_LABELS[key] || sanitizeText(fallback) || key;
+  const normalized = normalizeStatusKey(key);
+  if (normalized && STATUS_BY_KEY.has(normalized)) {
+    const entry = STATUS_BY_KEY.get(normalized);
+    if (entry?.nome) return entry.nome;
+  }
+  if (normalized && STATUS_LABELS[normalized]) return STATUS_LABELS[normalized];
+  if (STATUS_LABELS[key]) return STATUS_LABELS[key];
+  const fallbackText = sanitizeText(fallback);
+  if (fallbackText) return fallbackText;
+  return normalized || key;
 }
 
 function detectCsvDelimiter(headerLine, sampleLines = []){
@@ -827,31 +840,36 @@ function normalizeStatusRows(rows){
     console.warn("Status_Indicadores.csv não encontrado ou vazio; aplicando valores padrão.");
   }
 
-  const register = (candidate) => {
-    if (!candidate || typeof candidate !== "object") return false;
-    const rawId = candidate.id;
-    const rawCodigo = candidate.codigo;
-    const rawNome = candidate.nome;
-    const resolvedId = normalizeStatusKey(rawId)
-      || normalizeStatusKey(rawCodigo)
-      || normalizeStatusKey(rawNome)
-      || normalizeStatusKey(pickFirstFilled(rawId, rawCodigo, rawNome));
+  const register = (candidate = {}) => {
+    const rawKey = pickFirstFilled(
+      candidate.key,
+      candidate.slug,
+      candidate.id,
+      candidate.codigo,
+      candidate.nome
+    );
+    const resolvedKey = normalizeStatusKey(rawKey);
+    if (!resolvedKey) return false;
+    if (seen.has(resolvedKey)) return true;
 
-    if (!resolvedId) {
-      return false;
-    }
-    if (seen.has(resolvedId)) {
-      return true;
-    }
-
-    const codigo = sanitizeText(rawCodigo) || sanitizeText(rawId) || resolvedId;
-    const nome = sanitizeText(rawNome)
-      || getStatusLabelFromKey(resolvedId, codigo)
+    const codigo = sanitizeText(candidate.codigo)
+      || sanitizeText(candidate.id)
+      || resolvedKey;
+    const nome = sanitizeText(candidate.nome)
+      || STATUS_LABELS[resolvedKey]
+      || sanitizeText(candidate.label)
       || codigo
-      || resolvedId;
+      || resolvedKey;
+    const originalId = sanitizeText(candidate.id) || codigo || resolvedKey;
+    const ordemRaw = sanitizeText(candidate.ordem);
+    const ordemNum = Number(ordemRaw);
+    const ordem = ordemRaw !== "" && Number.isFinite(ordemNum) ? ordemNum : undefined;
 
-    normalized.push({ id: resolvedId, codigo, nome });
-    seen.add(resolvedId);
+    const entry = { id: originalId, codigo, nome, key: resolvedKey };
+    if (ordem !== undefined) entry.ordem = ordem;
+
+    normalized.push(entry);
+    seen.add(resolvedKey);
     return true;
   };
 
@@ -859,27 +877,67 @@ function normalizeStatusRows(rows){
     if (!raw || typeof raw !== "object") return;
     const nome = readCell(raw, ["Status Nome", "Status", "Nome", "Descrição", "Descricao"]);
     const codigo = readCell(raw, ["Status Id", "StatusID", "id", "ID", "Codigo", "Código"]);
-    const key = pickFirstFilled(
-      readCell(raw, ["Status Chave", "Status Key", "Chave", "Slug"]),
-      codigo,
-      nome
-    );
-    const ok = register({ id: key, codigo, nome });
+    const chave = readCell(raw, ["Status Chave", "Status Key", "Chave", "Slug"]);
+    const ordem = readCell(raw, ["Ordem", "Order", "Posicao", "Posição", "Sequencia", "Sequência"]);
+    const key = pickFirstFilled(chave, codigo, nome);
+    const ok = register({ id: codigo || key, codigo, nome, key, ordem });
     if (!ok) {
-      const fallback = pickFirstFilled(nome, codigo);
+      const fallback = pickFirstFilled(nome, codigo, chave);
       if (fallback) missing.add(fallback);
     }
   });
 
-  DEFAULT_STATUS_INDICADORES.forEach(item => {
-    register({ id: item.id, codigo: item.codigo, nome: item.nome });
-  });
+  DEFAULT_STATUS_INDICADORES.forEach(item => register(item));
 
   if (missing.size) {
     console.warn(`Status sem identificador válido: ${Array.from(missing).join(", ")}`);
   }
 
   return normalized;
+}
+
+function rebuildStatusIndex(rows) {
+  const cleaned = [];
+  const map = new Map();
+  const source = Array.isArray(rows) ? rows : [];
+
+  source.forEach(item => {
+    if (!item || typeof item !== "object") return;
+    const key = item.key || normalizeStatusKey(item.id ?? item.codigo ?? item.nome);
+    if (!key || map.has(key)) return;
+    const ordemRaw = sanitizeText(item.ordem);
+    const ordemNum = Number(ordemRaw);
+    const ordem = ordemRaw !== "" && Number.isFinite(ordemNum) ? ordemNum : undefined;
+    const entry = { ...item, key };
+    if (ordem !== undefined) entry.ordem = ordem;
+    cleaned.push(entry);
+    map.set(key, entry);
+  });
+
+  DEFAULT_STATUS_INDICADORES.forEach(defaultItem => {
+    if (map.has(defaultItem.key)) return;
+    const entry = { ...defaultItem };
+    cleaned.push(entry);
+    map.set(entry.key, entry);
+  });
+
+  cleaned.sort((a, b) => {
+    if (a.key === "todos") return -1;
+    if (b.key === "todos") return 1;
+    const ordA = Number.isFinite(a.ordem) ? a.ordem : Number.MAX_SAFE_INTEGER;
+    const ordB = Number.isFinite(b.ordem) ? b.ordem : Number.MAX_SAFE_INTEGER;
+    if (ordA !== ordB) return ordA - ordB;
+    return String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR", { sensitivity: "base" });
+  });
+
+  STATUS_INDICADORES_DATA = cleaned;
+  STATUS_BY_KEY = map;
+}
+
+function getStatusEntry(key) {
+  const normalized = normalizeStatusKey(key);
+  if (!normalized) return null;
+  return STATUS_BY_KEY.get(normalized) || null;
 }
 
 // Carrega os CSVs da pasta "Bases" usando o loader tolerante
@@ -911,9 +969,11 @@ async function loadBaseData(){
     const mesuRows = normalizeMesuRows(mesuRaw);
     const produtoRows = normalizeProdutosRows(produtoRaw);
     const statusRows = normalizeStatusRows(statusRaw);
-    STATUS_INDICADORES_DATA = statusRows.length
-      ? statusRows
-      : DEFAULT_STATUS_INDICADORES.map(item => ({ ...item }));
+    if (statusRows.length) {
+      rebuildStatusIndex(statusRows);
+    } else {
+      rebuildStatusIndex(DEFAULT_STATUS_INDICADORES);
+    }
 
     buildProdutosData(produtoRows);
     buildHierarchyFromMesu(mesuRows);
@@ -2595,7 +2655,10 @@ function renderAppliedFilters() {
     push("Produto", prodLabel, () => $("#f-produto").selectedIndex = 0);
   }
   if (vals.status && vals.status !== "todos") {
-    const statusLabel = $("#f-status-kpi")?.selectedOptions?.[0]?.text || vals.status;
+    const statusEntry = getStatusEntry(vals.status);
+    const statusLabel = statusEntry?.nome
+      || $("#f-status-kpi")?.selectedOptions?.[0]?.text
+      || getStatusLabelFromKey(vals.status);
     push("Status", statusLabel, () => $("#f-status-kpi").selectedIndex = 0);
   }
 
@@ -2615,6 +2678,11 @@ function ensureSegmentoField() {
 }
 function getFilterValues() {
   const val = (sel) => $(sel)?.value || "";
+  const statusSelect = $("#f-status-kpi");
+  const statusOption = statusSelect?.selectedOptions?.[0] || null;
+  const statusKey = statusOption?.dataset.statusKey || normalizeStatusKey(statusSelect?.value) || (statusSelect?.value || "");
+  const statusCodigo = statusOption?.dataset.statusCodigo || statusOption?.value || "";
+  const statusId = statusOption?.dataset.statusId || statusCodigo || "";
   return {
     segmento: val("#f-segmento"),
     diretoria: val("#f-diretoria"),
@@ -2624,7 +2692,9 @@ function getFilterValues() {
     gerente:   val("#f-gerente"),
     familiaId: val("#f-familia"),
     produtoId: val("#f-produto"),
-    status:    val("#f-status-kpi"),
+    status:    statusKey || "todos",
+    statusCodigo,
+    statusId,
   };
 }
 
@@ -3224,25 +3294,60 @@ function initCombos() {
     });
   }
 
-  const statusSet = new Set();
-  const statusList = [];
-  STATUS_INDICADORES_DATA.forEach(st => {
-    const base = st?.id ?? st?.codigo ?? st?.nome;
-    const key = normalizeStatusKey(base);
-    if (!key || statusSet.has(key)) return;
-    statusSet.add(key);
-    statusList.push({ value: key, label: getStatusLabelFromKey(key, st?.nome || base) });
+  let statusEntries = STATUS_INDICADORES_DATA.map(st => {
+    const key = st?.key || normalizeStatusKey(st?.id ?? st?.codigo ?? st?.nome);
+    if (!key) return null;
+    const label = st?.nome || getStatusLabelFromKey(key, st?.codigo ?? st?.id ?? key);
+    const codigo = st?.codigo ?? st?.id ?? key;
+    const ordem = typeof st?.ordem === "number" && Number.isFinite(st.ordem)
+      ? st.ordem
+      : Number.MAX_SAFE_INTEGER;
+    return {
+      key,
+      value: key,
+      label,
+      codigo,
+      id: st?.id ?? codigo,
+      ordem,
+    };
+  }).filter(Boolean);
+
+  if (!statusEntries.some(entry => entry.key === "todos")) {
+    statusEntries.unshift({
+      key: "todos",
+      value: "todos",
+      label: STATUS_LABELS.todos,
+      codigo: "todos",
+      id: "todos",
+      ordem: -Infinity,
+    });
+  }
+
+  statusEntries.sort((a, b) => {
+    if (a.key === "todos") return -1;
+    if (b.key === "todos") return 1;
+    if (a.ordem !== b.ordem) return a.ordem - b.ordem;
+    return String(a.label || "").localeCompare(String(b.label || ""), "pt-BR", { sensitivity: "base" });
   });
-  statusList.sort(compareLabels);
-  const finalStatusOptions = [];
-  const appendUnique = (opt) => {
-    if (!opt || !opt.value) return;
-    if (finalStatusOptions.some(existing => existing.value === opt.value)) return;
-    finalStatusOptions.push(opt);
-  };
-  appendUnique({ value: "todos", label: STATUS_LABELS.todos });
-  statusList.forEach(appendUnique);
-  fill("#f-status-kpi", finalStatusOptions);
+
+  fill("#f-status-kpi", statusEntries.map(({ value, label }) => ({ value, label })));
+
+  const statusSelect = $("#f-status-kpi");
+  if (statusSelect) {
+    statusEntries.forEach((entry, idx) => {
+      const opt = statusSelect.options[idx];
+      if (!opt) return;
+      opt.dataset.statusKey = entry.key;
+      if (entry.codigo !== undefined) opt.dataset.statusCodigo = entry.codigo;
+      if (entry.id !== undefined) opt.dataset.statusId = entry.id;
+    });
+
+    const currentOption = statusSelect.selectedOptions?.[0];
+    const currentKey = currentOption?.dataset.statusKey || statusSelect.value;
+    if (!currentKey || !statusEntries.some(entry => entry.key === currentKey)) {
+      statusSelect.value = "todos";
+    }
+  }
 }
 function bindEvents() {
   $("#btn-consultar")?.addEventListener("click", async () => {
