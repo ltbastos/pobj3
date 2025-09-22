@@ -101,6 +101,7 @@ let FACT_METAS = [];
 let FACT_VARIAVEL = [];
 let FACT_CAMPANHAS = [];
 let DIM_CALENDARIO = [];
+let AVAILABLE_DATE_MAX = "";
 
 let CURRENT_USER_CONTEXT = {
   diretoria: "",
@@ -1081,12 +1082,8 @@ async function loadBaseData(){
         ]
     );
     const availableDates = availableDatesSource.filter(Boolean).sort();
-    if (availableDates.length) {
-      state.period = {
-        start: availableDates[0],
-        end: availableDates[availableDates.length - 1],
-      };
-    }
+    AVAILABLE_DATE_MAX = availableDates[availableDates.length - 1] || "";
+    state.period = getDefaultPeriodRange();
 
     state._raw = {
       mesu: mesuRows,
@@ -1529,6 +1526,28 @@ function buildCampaignRankingContext(sprint) {
 /* ===== Datas (UTC) ===== */
 function firstDayOfMonthISO(d=new Date()){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`; }
 function todayISO(d=new Date()){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+function getDefaultPeriodRange(){
+  const now = new Date();
+  return {
+    start: firstDayOfMonthISO(now),
+    end: todayISO(now),
+  };
+}
+function getExecutiveMonthlyPeriod(){
+  const today = todayISO();
+  const datasetMax = AVAILABLE_DATE_MAX || "";
+  const datasetYear = datasetMax ? datasetMax.slice(0,4) : "";
+  const currentYear = today.slice(0,4);
+  const useCurrentYear = !datasetYear || datasetYear === currentYear;
+  let end = useCurrentYear ? today : (datasetMax || today);
+  if (!end) end = today;
+  let year = useCurrentYear ? currentYear : (datasetYear || currentYear);
+  let start = `${year}-01-01`;
+  if (end && start && start > end) {
+    start = `${end.slice(0,7)}-01`;
+  }
+  return { start, end };
+}
 function formatBRDate(iso){ if(!iso) return ""; const [y,m,day]=iso.split("-"); return `${day}/${m}/${y}`; }
 function dateUTCFromISO(iso){ const [y,m,d]=iso.split("-").map(Number); return new Date(Date.UTC(y,m-1,d)); }
 function isoFromUTCDate(d){ return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`; }
@@ -2194,7 +2213,7 @@ const state = {
   tableView:"diretoria",
   tableRendered:false,
   isAnimating:false,
-  period: { start:"2025-09-01", end:"2025-09-20" },
+  period: getDefaultPeriodRange(),
   datePopover:null,
   compact:false,
   contractIndex:[],
@@ -2412,6 +2431,12 @@ async function clearFilters() {
   state.tableSearchTerm = "";
   if ($("#busca")) $("#busca").value = "";
   refreshContractSuggestions("");
+  const defaultPeriod = getDefaultPeriodRange();
+  state.period = defaultPeriod;
+  const lblInicio = $("#lbl-periodo-inicio");
+  const lblFim = $("#lbl-periodo-fim");
+  if (lblInicio) lblInicio.textContent = formatBRDate(state.period.start);
+  if (lblFim) lblFim.textContent = formatBRDate(state.period.end);
   if (state.tableView === "contrato") {
     state.tableView = "diretoria";
     state.lastNonContractView = "diretoria";
@@ -2791,8 +2816,15 @@ function rowMatchesSearch(r, term) {
 /* ===== Filtro base ===== */
 function filterRowsExcept(rows, except = {}, opts = {}) {
   const f = getFilterValues();
-  const startISO = state.period.start, endISO = state.period.end;
-  const searchTerm = (opts.searchTerm || "").trim();
+  const {
+    searchTerm: searchRaw = "",
+    dateStart,
+    dateEnd,
+    ignoreDate = false,
+  } = opts;
+  const searchTerm = searchRaw.trim();
+  const startISO = ignoreDate ? "" : (dateStart ?? state.period.start);
+  const endISO = ignoreDate ? "" : (dateEnd ?? state.period.end);
 
   return rows.filter(r => {
     const okSeg = (f.segmento === "Todos" || f.segmento === "" || r.segmento === f.segmento);
@@ -2803,7 +2835,15 @@ function filterRowsExcept(rows, except = {}, opts = {}) {
     const okGer = (except.gerente)   || (f.gerente   === "Todos" || f.gerente   === "" || r.gerente === f.gerente);
     const okFam = (f.familiaId === "Todas" || f.familiaId === "" || r.familiaId === f.familiaId || (!r.familiaId && r.familia === f.familiaId));
     const okProd= (f.produtoId === "Todas" || f.produtoId === "Todos" || f.produtoId === "" || r.produtoId === f.produtoId);
-    const okDt  = (!startISO || r.data >= startISO) && (!endISO || r.data <= endISO);
+    let rowDate = r.data || r.competencia || "";
+    if (rowDate && typeof rowDate !== "string") {
+      if (rowDate instanceof Date) {
+        rowDate = isoFromUTCDate(rowDate);
+      } else {
+        rowDate = String(rowDate);
+      }
+    }
+    const okDt  = (!startISO || !rowDate || rowDate >= startISO) && (!endISO || !rowDate || rowDate <= endISO);
 
     const ating = r.meta ? (r.realizado / r.meta) : 0;
     const statusKey = normalizeStatusKey(f.status) || "todos";
@@ -4697,6 +4737,12 @@ function renderExecutiveView(){
 
   // base com TODOS os filtros aplicados
   const rowsBase = filterRows(state._rankingRaw);
+  const execMonthlyPeriod = getExecutiveMonthlyPeriod();
+  const rowsMonthly = filterRowsExcept(state._rankingRaw, {}, {
+    searchTerm: state.tableSearchTerm,
+    dateStart: execMonthlyPeriod.start,
+    dateEnd: execMonthlyPeriod.end,
+  });
 
   const chartMode = state.exec?.chartMode || "diario";
   if (chartToggle){
@@ -4786,7 +4832,7 @@ function renderExecutiveView(){
     const renderChart = () => {
       const mode = state.exec?.chartMode || "diario";
       if (mode === "mensal"){
-        const monthlySeries = makeMonthlySeries(rowsBase, state.period);
+        const monthlySeries = makeMonthlySeries(rowsMonthly, execMonthlyPeriod);
         buildExecMonthlyChart(chartC, monthlySeries);
         chartC.setAttribute("aria-label", "Barras mensais de realizado com linha de meta");
         if (chartTitleEl) chartTitleEl.textContent = "Evolução mensal";
@@ -4800,7 +4846,7 @@ function renderExecutiveView(){
         const dailySeries = makeDailySeries(total.meta_mens, total.real_mens, state.period.start, state.period.end);
         buildExecChart(chartC, dailySeries);
         chartC.setAttribute("aria-label", "Barras diárias de realizado com linha de meta");
-        if (chartTitleEl) chartTitleEl.textContent = "Evolução do mês";
+        if (chartTitleEl) chartTitleEl.textContent = "Evolução diária";
         if (chartLegend){
           chartLegend.innerHTML = `
             <span class="legend-item"><span class="legend-swatch legend-swatch--bar-real"></span>Realizado diário (barra)</span>
