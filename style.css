@@ -1095,6 +1095,7 @@ select.input{
 .hm-val.hm-bad{ background:#fee2e2; color:#7f1d1d; }
 .hm-val.hm-warn{ background:#fef3c7; color:#7c2d12; }
 .hm-val.hm-ok{ background:#dcfce7; color:#14532d; }
+.hm-val.hm-empty{ background:#f8fafc; color:#94a3b8; cursor:default; pointer-events:none; }
 
 /* listas */
 .list-mini{ display:flex; flex-direction:column; gap:8px; }

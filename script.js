@@ -4677,52 +4677,145 @@ function renderExecutiveView(){
 
   // Heatmap — (start) × Família
   if (hm){
-    const fams = [...new Set(rowsBase.map(r=> r.familia).filter(Boolean))];
-    const units = [...new Set(rowsBase.map(r=> r[startKey]).filter(Boolean))];
+    const familiaMeta = new Map();
+    const unidadeMeta = new Map();
+
+    const resolveUnitLabel = (row) => ({
+      gerencia: row.gerenciaNome || row.regional || row.gerenciaRegional,
+      agencia:  row.agenciaNome || row.agencia || row.agenciaCodigo,
+      gGestao:  row.gerenteGestaoNome || row.gerenteGestao,
+      gerente:  row.gerenteNome || row.gerente,
+      prodsub:  row.produtoNome || row.produto || row.prodOrSub,
+    }[start] || row[startKey] || "");
+
+    const resolveUnitId = (row) => ({
+      gerencia: row.gerenciaRegional,
+      agencia:  row.agenciaCodigo || row.agencia,
+      gGestao:  row.gerenteGestao,
+      gerente:  row.gerente,
+      prodsub:  row.produtoId || row.produto || row.prodOrSub,
+    }[start] || row[startKey] || "");
+
+    rowsBase.forEach(r=>{
+      const famKey = r.familiaId || r.familia || PRODUCT_INDEX.get(r.produtoId)?.sectionId;
+      if (famKey){
+        const famLabel = r.familiaNome || r.familia || famKey;
+        const current = familiaMeta.get(famKey);
+        if (!current || (current.label === famKey && famLabel && famLabel !== famKey)){
+          const title = famLabel && famLabel !== famKey ? `${famLabel} (${famKey})` : famLabel || famKey;
+          familiaMeta.set(famKey, { label: famLabel || famKey, title });
+        }
+      }
+
+      const unitValue = r[startKey];
+      if (unitValue){
+        const labelCandidate = resolveUnitLabel(r) || unitValue;
+        const rawId = resolveUnitId(r) || unitValue;
+        const currentUnit = unidadeMeta.get(unitValue);
+        if (!currentUnit || (currentUnit.label === unitValue && labelCandidate && labelCandidate !== unitValue)){
+          const label = labelCandidate || unitValue;
+          const title = rawId && rawId !== label ? `${label} (${rawId})` : label;
+          unidadeMeta.set(unitValue, { label, title });
+        }
+      }
+    });
+
+    const familiaEntries = CARD_SECTIONS_DEF.map(sec => {
+      const meta = familiaMeta.get(sec.id);
+      const label = meta?.label || sec.label || sec.id;
+      const title = meta?.title || (label && label !== sec.id ? `${label} (${sec.id})` : label);
+      if (!familiaMeta.has(sec.id)){
+        familiaMeta.set(sec.id, { label, title });
+      }
+      return { key: sec.id, label, title };
+    });
+    familiaMeta.forEach((meta, key) => {
+      if (!familiaEntries.some(entry => entry.key === key)){
+        const label = meta.label || key;
+        const title = meta.title || (label && label !== key ? `${label} (${key})` : label);
+        familiaEntries.push({ key, label, title });
+      }
+    });
+
+    const unidadeEntries = [...unidadeMeta.entries()].map(([value, meta]) => ({
+      value,
+      label: meta.label || value,
+      title: meta.title || (meta.label && meta.label !== value ? `${meta.label} (${value})` : meta.label || value),
+    })).sort((a,b)=> a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+
     const byUF = new Map();
     rowsBase.forEach(r=>{
-      const key = `${r[startKey]}|${r.familia}`;
-      const o = byUF.get(key) || { real:0, meta:0 };
-      o.real += (r.real_mens ?? r.realizado ?? 0);
-      o.meta += (r.meta_mens ?? r.meta ?? 0);
-      byUF.set(key, o);
+      const unitValue = r[startKey];
+      const famKey = r.familiaId || r.familia || PRODUCT_INDEX.get(r.produtoId)?.sectionId;
+      if (!unitValue || !famKey) return;
+      const bucketKey = `${unitValue}|${famKey}`;
+      const bucket = byUF.get(bucketKey) || { real:0, meta:0 };
+      bucket.real += toNumber(r.real_mens ?? r.realizado ?? 0);
+      bucket.meta += toNumber(r.meta_mens ?? r.meta ?? 0);
+      byUF.set(bucketKey, bucket);
     });
 
-    let html = `<div class="hm-row hm-head"><div class="hm-cell hm-corner">${L.short} \\ Família</div>${
-      fams.map(f=> `<div class="hm-cell hm-col">${f}</div>`).join("")
-    }</div>`;
-    units.forEach(u=>{
-      html += `<div class="hm-row"><div class="hm-cell hm-rowh">${u}</div>`;
-      fams.forEach(f=>{
-        const k = `${u}|${f}`;
-        const o = byUF.get(k) || {real:0, meta:0};
-        const p = o.meta ? (o.real/o.meta)*100 : 0;
-        const cls = p<50?"hm-bad":(p<100?"hm-warn":"hm-ok");
-        html += `<div class="hm-cell hm-val ${cls}" data-u="${u}" data-f="${f}" title="${p.toFixed(1)}%">${p.toFixed(0)}%</div>`;
-      });
-      html += `</div>`;
-    });
-    hm.innerHTML = html;
+    if (!unidadeEntries.length || !familiaEntries.length){
+      hm.innerHTML = `<div class="muted">Sem dados para exibir.</div>`;
+    } else {
+      let html = `<div class="hm-row hm-head"><div class="hm-cell hm-corner">${escapeHTML(L.short)} \\ Família</div>${
+        familiaEntries.map(f=> `<div class="hm-cell hm-col"${f.title ? ` title="${escapeHTML(f.title)}"` : ""}>${escapeHTML(f.label)}</div>`).join("")
+      }</div>`;
 
-    hm.querySelectorAll(".hm-val").forEach(c=>{
-      c.addEventListener("click", ()=>{
-        const u = c.getAttribute("data-u");
-        const mapSel = {
-          gerencia: "#f-gerencia",
-          agencia:  "#f-agencia",
-          gGestao:  "#f-ggestao",
-          gerente:  "#f-gerente",
-          prodsub:  "#f-produto"
-        };
-        const sel = document.querySelector(mapSel[start]);
-        if (sel && u){
-          const opt = [...sel.options].find(o=>o.value===u);
-          if (opt){ sel.value = u; sel.dispatchEvent(new Event("change")); }
-        }
-        state.tableView = "prodsub";
-        document.querySelector('.tab[data-view="table"]')?.click();
+      unidadeEntries.forEach(unit => {
+        const unitTitle = unit.title && unit.title !== unit.label ? unit.title : "";
+        html += `<div class="hm-row"><div class="hm-cell hm-rowh"${unitTitle ? ` title="${escapeHTML(unitTitle)}"` : ""}>${escapeHTML(unit.label)}</div>`;
+        familiaEntries.forEach(fam => {
+          const key = `${unit.value}|${fam.key}`;
+          const bucket = byUF.get(key) || { real:0, meta:0 };
+          const realVal = toNumber(bucket.real);
+          const metaVal = toNumber(bucket.meta);
+          let cls = "hm-cell hm-val";
+          let text = "—";
+          let title = "";
+
+          if (metaVal > 0){
+            const pct = (realVal / metaVal) * 100;
+            const pctDisplay = Math.round(pct);
+            cls += pct < 50 ? " hm-bad" : (pct < 100 ? " hm-warn" : " hm-ok");
+            text = `${pctDisplay}%`;
+            title = `Atingimento: ${pct.toFixed(1)}%`;
+          } else if (realVal > 0){
+            cls += " hm-empty";
+            title = "Meta não informada";
+          } else {
+            cls += " hm-empty";
+            title = "Sem dados";
+          }
+
+          html += `<div class="${cls}" data-u="${escapeHTML(unit.value)}" data-f="${escapeHTML(fam.key)}"${title ? ` title="${escapeHTML(title)}"` : ""}>${text}</div>`;
+        });
+        html += `</div>`;
       });
-    });
+
+      hm.innerHTML = html;
+
+      hm.querySelectorAll(".hm-val").forEach(c=>{
+        if (c.classList.contains("hm-empty")) return;
+        c.addEventListener("click", ()=>{
+          const u = c.getAttribute("data-u");
+          const mapSel = {
+            gerencia: "#f-gerencia",
+            agencia:  "#f-agencia",
+            gGestao:  "#f-ggestao",
+            gerente:  "#f-gerente",
+            prodsub:  "#f-produto"
+          };
+          const sel = document.querySelector(mapSel[start]);
+          if (sel && u){
+            const opt = [...sel.options].find(o=>o.value===u);
+            if (opt){ sel.value = u; sel.dispatchEvent(new Event("change")); }
+          }
+          state.tableView = "prodsub";
+          document.querySelector('.tab[data-view="table"]')?.click();
+        });
+      });
+    }
   }
 
   // Status das unidades (3 listas) no nível inicial
