@@ -1119,6 +1119,7 @@ const TABLE_VIEWS = [
   { id:"agencia",   label:"Agência",            key:"agencia" },
   { id:"gGestao",   label:"Gerente de gestão",  key:"gerenteGestao" },
   { id:"gerente",   label:"Gerente",            key:"gerente" },
+  { id:"secao",    label:"Seção",             key:"secao" },
   { id:"familia",   label:"Família",            key:"familia" },
   { id:"prodsub",   label:"Produto",            key:"prodOrSub" },
   { id:"contrato",  label:"Contratos",          key:"contrato" },
@@ -1156,6 +1157,14 @@ const CARD_SECTIONS_DEF = [
     { id:"bradesco_expresso",   nome:"Bradesco Expresso",                        icon:"ti ti-bolt",        peso:2, metric:"perc" },
   ]},
 ];
+
+const SECTION_IDS = new Set(CARD_SECTIONS_DEF.map(sec => sec.id));
+const SECTION_BY_ID = new Map(CARD_SECTIONS_DEF.map(sec => [sec.id, sec]));
+
+function getSectionLabel(id) {
+  if (!id) return "";
+  return SECTION_BY_ID.get(id)?.label || id;
+}
 
 /* Índice produto → seção/meta */
 const PRODUCT_INDEX = (() => {
@@ -1205,6 +1214,10 @@ CAMPAIGN_UNIT_DATA.forEach(unit => {
   if (meta?.sectionId) {
     if (!unit.familiaId) unit.familiaId = meta.sectionId;
     if (!unit.familia) unit.familia = meta.sectionId;
+    if (!unit.secaoId) unit.secaoId = meta.sectionId;
+    if (!unit.secao) unit.secao = meta.sectionId;
+    if (!unit.secaoNome) unit.secaoNome = meta.sectionLabel || meta.sectionId;
+    if (!unit.familiaNome) unit.familiaNome = meta.sectionLabel || meta.sectionId;
   }
   if (!unit.produtoNome) unit.produtoNome = meta?.name || unit.produto || unit.produtoId || "Produto";
   if (!unit.gerenteGestaoNome) {
@@ -1373,6 +1386,9 @@ function determineCampaignDisplayLevel(filters = getFilterValues()) {
   if (filters.familiaId && filters.familiaId !== "Todas") {
     return { level: "produto", meta: CAMPAIGN_LEVEL_META.produto };
   }
+  if (filters.secaoId && filters.secaoId !== "Todas") {
+    return { level: "produto", meta: CAMPAIGN_LEVEL_META.produto };
+  }
   if (filters.gerente && filters.gerente !== "Todos") {
     return { level: "produto", meta: CAMPAIGN_LEVEL_META.produto };
   }
@@ -1410,8 +1426,10 @@ function filterCampaignUnits(sprint, filters = getFilterValues()) {
     const okGerente = (!filters.gerente || filters.gerente === "Todos" || unit.gerente === filters.gerente);
     const okFamilia = (!filters.familiaId || filters.familiaId === "Todas" || unit.familiaId === filters.familiaId || unit.familia === filters.familiaId);
     const okProduto = (!filters.produtoId || filters.produtoId === "Todas" || filters.produtoId === "Todos" || unit.produtoId === filters.produtoId);
+    const unitSecaoId = unit.secaoId || unit.familiaId || (unit.produtoId ? PRODUCT_INDEX.get(unit.produtoId)?.sectionId : "") || "";
+    const okSecao = (!filters.secaoId || filters.secaoId === "Todas" || unitSecaoId === filters.secaoId || unit.familiaId === filters.secaoId || unit.familia === filters.secaoId);
     const okDate = (!startISO || unit.data >= startISO) && (!endISO || unit.data <= endISO);
-    return okSegmento && okDiretoria && okGerencia && okAgencia && okGG && okGerente && okFamilia && okProduto && okDate;
+    return okSegmento && okDiretoria && okGerencia && okAgencia && okGG && okGerente && okSecao && okFamilia && okProduto && okDate;
   });
 }
 
@@ -1705,6 +1723,14 @@ async function getData(){
       const meta = metasMap.get(row.registroId) || {};
       const variavel = variavelMap.get(row.registroId) || {};
       const produtoMeta = PRODUCT_INDEX.get(row.produtoId) || {};
+      const secaoIdRaw = produtoMeta.sectionId || row.secaoId || row.sectionId || "";
+      const secaoLabelRaw = produtoMeta.sectionLabel || row.secaoNome || row.secao || "";
+      const familiaIdRaw = row.familiaId || row.familia || "";
+      const familiaNomeRaw = row.familiaNome || row.familia || "";
+      const resolvedSecaoId = secaoIdRaw || familiaIdRaw || "";
+      const resolvedSecaoNome = secaoLabelRaw || getSectionLabel(resolvedSecaoId) || familiaNomeRaw || familiaIdRaw || resolvedSecaoId;
+      const resolvedFamiliaId = familiaIdRaw || resolvedSecaoId;
+      const resolvedFamiliaNome = familiaNomeRaw || (familiaIdRaw && familiaIdRaw !== resolvedSecaoId ? familiaIdRaw : resolvedSecaoNome) || resolvedSecaoNome;
       const peso = toNumber(meta.peso ?? produtoMeta.peso ?? 1);
       const metaMens = toNumber(meta.meta_mens ?? meta.meta ?? 0);
       const metaAcum = toNumber(meta.meta_acum ?? meta.meta ?? metaMens);
@@ -1741,9 +1767,12 @@ async function getData(){
         gerenteGestaoNome: row.gerenteGestaoNome,
         gerente: row.gerente,
         gerenteNome: row.gerenteNome,
-        familiaId: row.familiaId || produtoMeta.sectionId || "",
-        familia: row.familiaNome || row.familiaId || produtoMeta.sectionId || "",
-        familiaNome: row.familiaNome || row.familiaId || produtoMeta.sectionId || "",
+        secaoId: resolvedSecaoId,
+        secao: resolvedSecaoNome,
+        secaoNome: resolvedSecaoNome,
+        familiaId: resolvedFamiliaId,
+        familia: resolvedFamiliaNome,
+        familiaNome: resolvedFamiliaNome,
         produtoId: row.produtoId,
         produto: row.produtoNome || row.produtoId,
         produtoNome: row.produtoNome || row.produtoId,
@@ -1817,6 +1846,9 @@ async function getData(){
         gerenteGestaoNome: base.gerenteGestaoNome,
         gerente: base.gerente,
         gerenteNome: base.gerenteNome,
+        secaoId: base.secaoId,
+        secao: base.secao,
+        secaoNome: base.secaoNome,
         familiaId: base.familiaId,
         familia: base.familia,
         familiaNome: base.familiaNome,
@@ -1990,6 +2022,9 @@ async function getData(){
           gerente: agency.gerenteId || gerentesBase[agencyIndex % gerentesBase.length]?.id || `Gerente ${agencyIndex + 1}`,
           gerenteNome: agency.gerenteNome || gerentesBase[agencyIndex % gerentesBase.length]?.nome || `Gerente ${agencyIndex + 1}`,
           segmentoNome: agency.segmentoNome || agency.segmentoId || segs[agencyIndex % segs.length] || "Segmento",
+          secaoId: prod.sectionId,
+          secao: prod.sectionLabel,
+          secaoNome: prod.sectionLabel,
           familiaId: prod.sectionId,
           familia: prod.sectionLabel,
           familiaNome: prod.sectionLabel,
@@ -2038,6 +2073,9 @@ async function getData(){
     gerenteGestaoNome: row.gerenteGestaoNome,
     gerente: row.gerente,
     gerenteNome: row.gerenteNome,
+    secaoId: row.secaoId,
+    secao: row.secao,
+    secaoNome: row.secaoNome,
     familiaId: row.familiaId,
     familia: row.familia,
     produtoId: row.produtoId,
@@ -2413,7 +2451,7 @@ function wireClearFiltersButton() {
 async function clearFilters() {
   [
     "#f-segmento","#f-diretoria","#f-gerencia","#f-gerente",
-    "#f-agencia","#f-ggestao","#f-familia","#f-produto",
+    "#f-agencia","#f-ggestao","#f-secao","#f-familia","#f-produto",
     "#f-status-kpi"
   ].forEach(sel => {
     const el = $(sel);
@@ -2424,6 +2462,8 @@ async function clearFilters() {
 
   // valores padrão explícitos
   const st = $("#f-status-kpi"); if (st) st.value = "todos";
+  const secaoSelect = $("#f-secao");
+  if (secaoSelect) secaoSelect.dispatchEvent(new Event("change"));
   const familiaSelect = $("#f-familia");
   if (familiaSelect) familiaSelect.dispatchEvent(new Event("change"));
 
@@ -2748,6 +2788,12 @@ function renderAppliedFilters() {
     const label = $("#f-gerente")?.selectedOptions?.[0]?.text || vals.gerente;
     push("Gerente", label, () => $("#f-gerente").selectedIndex = 0);
   }
+  if (vals.secaoId && vals.secaoId !== "Todas") {
+    const secaoLabel = $("#f-secao")?.selectedOptions?.[0]?.text
+      || getSectionLabel(vals.secaoId)
+      || vals.secaoId;
+    push("Seção", secaoLabel, () => $("#f-secao").selectedIndex = 0);
+  }
   if (vals.familiaId && vals.familiaId !== "Todas") {
     const familiaLabel = $("#f-familia")?.selectedOptions?.[0]?.text
       || FAMILIA_BY_ID.get(vals.familiaId)?.nome
@@ -2797,6 +2843,7 @@ function getFilterValues() {
     agencia:   val("#f-agencia"),
     ggestao:   val("#f-ggestao"),
     gerente:   val("#f-gerente"),
+    secaoId:   val("#f-secao"),
     familiaId: val("#f-familia"),
     produtoId: val("#f-produto"),
     status:    statusKey || "todos",
@@ -2833,6 +2880,8 @@ function filterRowsExcept(rows, except = {}, opts = {}) {
     const okAg  = (except.agencia)   || (f.agencia   === "Todas" || f.agencia   === "" || r.agencia === f.agencia);
     const okGG  = (f.ggestao   === "Todos" || f.ggestao   === "" || r.gerenteGestao === f.ggestao);
     const okGer = (except.gerente)   || (f.gerente   === "Todos" || f.gerente   === "" || r.gerente === f.gerente);
+    const rowSecaoId = r.secaoId || r.familiaId || (r.produtoId ? PRODUCT_INDEX.get(r.produtoId)?.sectionId : "") || "";
+    const okSec = (f.secaoId === "Todas" || f.secaoId === "" || rowSecaoId === f.secaoId || r.familiaId === f.secaoId || r.familia === f.secaoId);
     const okFam = (f.familiaId === "Todas" || f.familiaId === "" || r.familiaId === f.familiaId || (!r.familiaId && r.familia === f.familiaId));
     const okProd= (f.produtoId === "Todas" || f.produtoId === "Todos" || f.produtoId === "" || r.produtoId === f.produtoId);
     let rowDate = r.data || r.competencia || "";
@@ -2856,7 +2905,7 @@ function filterRowsExcept(rows, except = {}, opts = {}) {
 
     const okSearch = rowMatchesSearch(r, searchTerm);
 
-    return okSeg && okDR && okGR && okAg && okGG && okGer && okFam && okProd && okDt && okStatus && okSearch;
+    return okSeg && okDR && okGR && okAg && okGG && okGer && okSec && okFam && okProd && okDt && okStatus && okSearch;
   });
 }
 function filterRows(rows) { return filterRowsExcept(rows, {}, { searchTerm: state.tableSearchTerm }); }
@@ -2867,6 +2916,7 @@ function autoSnapViewToFilters() {
   let snap = null;
   if (f.produtoId && f.produtoId !== "Todos" && f.produtoId !== "Todas") snap = "prodsub";
   else if (f.familiaId && f.familiaId !== "Todas") snap = "familia";
+  else if (f.secaoId && f.secaoId !== "Todas") snap = "secao";
   else if (f.gerente && f.gerente !== "Todos") snap = "gerente";
   else if (f.gerencia && f.gerencia !== "Todas") snap = "gerencia";
   else if (f.diretoria && f.diretoria !== "Todas") snap = "diretoria";
@@ -2927,6 +2977,7 @@ const TREE_LEVEL_LABEL_RESOLVERS = {
   agencia:   (row) => row.agenciaNome || row.agencia || "—",
   gGestao:   (row) => row.gerenteGestaoNome || row.gerenteGestao || "—",
   gerente:   (row) => row.gerenteNome || row.gerente || "—",
+  secao:     (row) => row.secaoNome || row.secao || getSectionLabel(row.secaoId) || "—",
   familia:   (row) => row.familia || "—",
   prodsub:   (row) => row.prodOrSub || row.produto || row.subproduto || "—"
 };
@@ -2939,8 +2990,8 @@ function resolveTreeLabel(levelKey, subset, fallback) {
   return label != null && label !== "" ? label : fallback;
 }
 function buildTree(list, startKey) {
-  const keyMap = { diretoria:"diretoria", gerencia:"gerenciaRegional", agencia:"agencia", gGestao:"gerenteGestao", gerente:"gerente", familia:"familia", prodsub:"prodOrSub", produto:"prodOrSub", contrato:"contrato" };
-  const NEXT   = { diretoria:"gerencia",  gerencia:"agencia",         agencia:"gGestao", gGestao:"gerente",       gerente:"prodsub", familia:"contrato",   prodsub:"contrato", contrato:null };
+  const keyMap = { diretoria:"diretoria", gerencia:"gerenciaRegional", agencia:"agencia", gGestao:"gerenteGestao", gerente:"gerente", secao:"secaoId", familia:"familia", prodsub:"prodOrSub", produto:"prodOrSub", contrato:"contrato" };
+  const NEXT   = { diretoria:"gerencia",  gerencia:"agencia",         agencia:"gGestao", gGestao:"gerente",       gerente:"secao", secao:"familia", familia:"contrato",   prodsub:"contrato", contrato:null };
 
   function group(arr, key){
     const m = new Map();
@@ -3377,42 +3428,67 @@ function initCombos() {
   );
   fill("#f-gerente", gerenteOptions);
 
-  const familiaOptions = [{ value: "Todas", label: "Todas" }].concat(
+  const secaoOptions = [{ value: "Todas", label: "Todas" }].concat(
+    CARD_SECTIONS_DEF.map(sec => ({ value: sec.id, label: sec.label }))
+  );
+  fill("#f-secao", secaoOptions);
+
+  const familiaOptionsRaw = [{ value: "Todas", label: "Todas" }].concat(
     dedupeOptions(
       FAMILIA_DATA,
       f => f?.id,
       f => f?.nome || f?.id
     )
   );
+  const familiaOptions = familiaOptionsRaw.filter(opt => opt.value === "Todas" || !SECTION_IDS.has(opt.value));
   fill("#f-familia", familiaOptions);
 
-  const buildProdutoOptions = (familiaId) => {
+  const buildProdutoOptions = (familiaId, secaoId) => {
     const options = [{ value: "Todos", label: "Todos" }];
+    const filtroSecao = secaoId && secaoId !== "Todas" ? secaoId : "";
+    const added = new Set();
+    const consider = (prod) => {
+      if (!prod || !prod.id || added.has(prod.id)) return;
+      if (filtroSecao) {
+        const meta = PRODUCT_INDEX.get(prod.id);
+        const prodSecao = meta?.sectionId || PRODUTO_TO_FAMILIA.get(prod.id)?.id || "";
+        if (prodSecao !== filtroSecao) return;
+      }
+      options.push({ value: prod.id, label: prod.nome || prod.id });
+      added.add(prod.id);
+    };
     if (!familiaId || familiaId === "Todas") {
-      const added = new Set();
-      PRODUTOS_BY_FAMILIA.forEach(list => {
-        list.forEach(prod => {
-          if (!added.has(prod.id)) {
-            options.push({ value: prod.id, label: prod.nome || prod.id });
-            added.add(prod.id);
-          }
-        });
-      });
+      PRODUTOS_BY_FAMILIA.forEach(list => list.forEach(consider));
     } else {
       const list = PRODUTOS_BY_FAMILIA.get(familiaId) || [];
-      list.forEach(prod => options.push({ value: prod.id, label: prod.nome || prod.id }));
+      list.forEach(consider);
     }
     return options;
   };
 
   const familiaSelect = $("#f-familia");
+  const secaoSelect = $("#f-secao");
   const initialFamilia = familiaSelect ? familiaSelect.value : "Todas";
-  fill("#f-produto", buildProdutoOptions(initialFamilia));
+  const initialSecao = secaoSelect ? secaoSelect.value : "Todas";
+  fill("#f-produto", buildProdutoOptions(initialFamilia, initialSecao));
+
+  const updateProdutoSelect = () => {
+    const famVal = familiaSelect ? familiaSelect.value : "Todas";
+    const secVal = secaoSelect ? secaoSelect.value : "Todas";
+    fill("#f-produto", buildProdutoOptions(famVal, secVal));
+  };
 
   if (familiaSelect && !familiaSelect.dataset.bound) {
     familiaSelect.dataset.bound = "1";
     familiaSelect.addEventListener("change", () => {
-      fill("#f-produto", buildProdutoOptions(familiaSelect.value));
+      updateProdutoSelect();
+    });
+  }
+
+  if (secaoSelect && !secaoSelect.dataset.bound) {
+    secaoSelect.dataset.bound = "1";
+    secaoSelect.addEventListener("change", () => {
+      updateProdutoSelect();
     });
   }
 
@@ -3456,7 +3532,7 @@ function bindEvents() {
     });
   });
 
-  ["#f-segmento","#f-diretoria","#f-gerencia","#f-agencia","#f-ggestao","#f-gerente","#f-familia","#f-produto","#f-status-kpi"].forEach(sel => {
+  ["#f-segmento","#f-diretoria","#f-gerencia","#f-agencia","#f-ggestao","#f-gerente","#f-secao","#f-familia","#f-produto","#f-status-kpi"].forEach(sel => {
     $(sel)?.addEventListener("change", async () => {
       await withSpinner(async () => {
         autoSnapViewToFilters();
@@ -3542,6 +3618,7 @@ function reorderFiltersUI() {
   const gAg  = groupOf("#f-agencia");
   const gGG  = groupOf("#f-ggestao");
   const gGer = groupOf("#f-gerente");
+  const gSec = groupOf("#f-secao");
   const gFam = groupOf("#f-familia");
   const gProd= groupOf("#f-produto");
   const gStatus = groupOf("#f-status-kpi");
@@ -3549,7 +3626,7 @@ function reorderFiltersUI() {
   const actions = area.querySelector(".filters__actions") || area.lastElementChild;
 
   [gSeg,gDR,gGR].filter(Boolean).forEach(el => area.insertBefore(el, actions));
-  [gAg,gGG,gGer,gFam,gProd,gStatus].filter(Boolean).forEach(el => adv?.appendChild(el));
+  [gAg,gGG,gGer,gSec,gFam,gProd,gStatus].filter(Boolean).forEach(el => adv?.appendChild(el));
 
   const gStart = $("#f-inicio")?.closest(".filters__group"); if (gStart) gStart.remove();
 }
@@ -3973,8 +4050,10 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
     const productId = row.produtoId || row.produto || row.prodOrSub;
     if (!productId) return;
     const meta = productMeta.get(productId) || {};
-    const familiaId = meta.sectionId || row.familiaId || "outros";
-    const familiaLabel = meta.sectionLabel || row.familia || "Outros";
+    const secaoId = meta.sectionId || row.secaoId || row.familiaId || "outros";
+    const secaoLabel = meta.sectionLabel || row.secaoNome || row.familiaNome || row.familia || getSectionLabel(secaoId) || "Outros";
+    const familiaId = row.familiaId || row.familia || secaoId;
+    const familiaLabel = row.familiaNome || row.familia || (familiaId === secaoId ? secaoLabel : familiaId) || secaoLabel;
     let agg = aggregated.get(productId);
     if (!agg) {
       agg = {
@@ -3983,6 +4062,8 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
         icon: meta.icon || "ti ti-dots",
         metric: meta.metric || row.metric || "valor",
         peso: meta.peso || row.peso || 1,
+        secaoId,
+        secaoLabel,
         familiaId,
         familiaLabel,
         metaTotal: 0,
@@ -3995,6 +4076,19 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
         ultimaAtualizacao: ""
       };
       aggregated.set(productId, agg);
+    } else {
+      if (!agg.familiaId && familiaId) {
+        agg.familiaId = familiaId;
+      }
+      if ((!agg.familiaLabel || agg.familiaLabel === agg.familiaId) && familiaLabel) {
+        agg.familiaLabel = familiaLabel;
+      }
+      if (!agg.secaoId && secaoId) {
+        agg.secaoId = secaoId;
+      }
+      if ((!agg.secaoLabel || agg.secaoLabel === agg.secaoId) && secaoLabel) {
+        agg.secaoLabel = secaoLabel;
+      }
     }
 
     const metaValor = Number(row.meta) || 0;
@@ -4019,6 +4113,7 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
     const items = sec.items.map(item => {
       const agg = aggregated.get(item.id);
       if (!agg) return null;
+      if (agg.secaoId && agg.secaoId !== sec.id) return null;
       const ating = agg.metaTotal ? (agg.realizadoTotal / agg.metaTotal) : 0;
       const variavelAting = agg.variavelMeta ? (agg.variavelReal / agg.variavelMeta) : ating;
       const ultimaISO = agg.ultimaAtualizacao || period.end || period.start || todayISO();
@@ -4028,6 +4123,10 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
         icon: agg.icon,
         metric: agg.metric,
         peso: item.peso,
+        secaoId: sec.id,
+        secaoLabel: sec.label,
+        familiaId: agg.familiaId,
+        familiaLabel: agg.familiaLabel,
         meta: agg.metaTotal,
         realizado: agg.realizadoTotal,
         variavelMeta: agg.variavelMeta,
@@ -4092,6 +4191,7 @@ function renderFamilias(sections, summary){
   const nextVarRatios = new Map();
 
   const status = getStatusFilter();
+  const secaoFilterId = $("#f-secao")?.value || "Todas";
   const familiaFilterId = $("#f-familia")?.value || "Todas";
   const produtoFilterId = $("#f-produto")?.value || "Todos";
 
@@ -4107,14 +4207,23 @@ function renderFamilias(sections, summary){
   host.appendChild(kpiHolder);
 
   sections.forEach(sec=>{
-    if (familiaFilterId !== "Todas" && sec.id !== familiaFilterId) {
+    const familiaFilterIsSection = familiaFilterId !== "Todas" && SECTION_IDS.has(familiaFilterId);
+    const applyFamiliaFilter = familiaFilterId !== "Todas" && !familiaFilterIsSection;
+    if (secaoFilterId !== "Todas" && sec.id !== secaoFilterId) {
+      return;
+    }
+    if (familiaFilterIsSection && sec.id !== familiaFilterId) {
       return;
     }
 
     const itemsFiltered = sec.items.filter(it=>{
       const okStatus = status === "atingidos" ? it.atingido : (status === "nao" ? !it.atingido : true);
       const okProduto = (produtoFilterId === "Todos" || produtoFilterId === "Todas" || it.id === produtoFilterId);
-      return okStatus && okProduto;
+      const okFamilia = !applyFamiliaFilter
+        || it.familiaId === familiaFilterId
+        || it.familiaLabel === familiaFilterId
+        || it.id === familiaFilterId;
+      return okStatus && okProduto && okFamilia;
     });
     if (!itemsFiltered.length) return;
 
