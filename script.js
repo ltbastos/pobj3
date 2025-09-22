@@ -626,6 +626,31 @@ function normalizeFactMetasRows(rows){
   return rows.map(raw => {
     const registroId = readCell(raw, ["Registro ID", "ID", "registro"]);
     if (!registroId) return null;
+    const segmento = readCell(raw, ["Segmento"]);
+    const segmentoId = readCell(raw, ["Segmento ID", "Id Segmento"]);
+    const diretoria = readCell(raw, ["Diretoria ID", "Diretoria", "Id Diretoria"]);
+    const diretoriaNome = readCell(raw, ["Diretoria Nome", "Diretoria Regional"]) || diretoria;
+    const gerencia = readCell(raw, ["Gerencia ID", "Gerencia Regional", "Id Gerencia Regional"]);
+    const gerenciaNome = readCell(raw, ["Gerencia Nome", "Gerencia Regional", "Regional Nome"]) || gerencia;
+    const regionalNome = readCell(raw, ["Regional Nome", "Regional"]) || gerenciaNome;
+    const agenciaId = readCell(raw, ["Agencia ID", "Agência ID", "Id Agencia"]);
+    const agenciaCodigo = readCell(raw, ["Agencia Codigo", "Agência Codigo", "Codigo Agencia"]);
+    const agenciaNome = readCell(raw, ["Agencia Nome", "Agência Nome", "Agencia"])
+      || agenciaCodigo
+      || agenciaId;
+    const gerenteGestao = readCell(raw, ["Gerente Gestao ID", "Gerente Gestao", "Id Gerente de Gestao"]);
+    const gerenteGestaoNome = readCell(raw, ["Gerente Gestao Nome", "Gerente de Gestao", "Gerente Gestao"]) || gerenteGestao;
+    const gerente = readCell(raw, ["Gerente ID", "Gerente"]);
+    const gerenteNome = readCell(raw, ["Gerente Nome", "Gerente"]) || gerente;
+    const familiaId = readCell(raw, ["Familia ID", "Familia", "Família ID"]);
+    const familiaNome = readCell(raw, ["Familia Nome", "Família Nome", "Familia"]) || familiaId;
+    const produtoId = readCell(raw, ["Produto ID", "Produto", "Id Produto"]);
+    const produtoNome = readCell(raw, ["Produto Nome", "Produto"]) || produtoId;
+    const subproduto = readCell(raw, ["Subproduto", "Sub produto", "Sub-Produto"]);
+    const carteira = readCell(raw, ["Carteira"]);
+    const canalVenda = readCell(raw, ["Canal Venda", "Canal"]);
+    const tipoVenda = readCell(raw, ["Tipo Venda", "Tipo"]);
+    const modalidadePagamento = readCell(raw, ["Modalidade Pagamento", "Modalidade"]);
     const metaMens = toNumber(readCell(raw, ["Meta Mensal", "Meta"]));
     const metaAcum = toNumber(readCell(raw, ["Meta Acumulada", "Meta Acum"]));
     const variavelMeta = toNumber(readCell(raw, ["Variavel Meta", "Variável Meta"]));
@@ -640,6 +665,30 @@ function normalizeFactMetasRows(rows){
     }
     return {
       registroId,
+      segmento,
+      segmentoId,
+      diretoria,
+      diretoriaNome,
+      gerenciaRegional: gerencia,
+      gerenciaNome,
+      regional: regionalNome,
+      agencia: agenciaId || agenciaCodigo || agenciaNome,
+      agenciaNome,
+      agenciaCodigo: agenciaCodigo || agenciaId,
+      gerenteGestao,
+      gerenteGestaoNome,
+      gerente,
+      gerenteNome,
+      familiaId,
+      familiaNome,
+      produtoId,
+      produtoNome,
+      prodOrSub: subproduto || produtoNome || produtoId,
+      subproduto,
+      carteira,
+      canalVenda,
+      tipoVenda,
+      modalidadePagamento,
       data,
       competencia,
       meta: metaMens,
@@ -655,6 +704,10 @@ function normalizeFactVariavelRows(rows){
   return rows.map(raw => {
     const registroId = readCell(raw, ["Registro ID", "ID", "registro"]);
     if (!registroId) return null;
+    const produtoId = readCell(raw, ["Produto ID", "Produto", "Id Produto"]);
+    const produtoNome = readCell(raw, ["Produto Nome", "Produto"]) || produtoId;
+    const familiaId = readCell(raw, ["Familia ID", "Familia", "Família ID"]);
+    const familiaNome = readCell(raw, ["Familia Nome", "Família Nome", "Familia"]) || familiaId;
     const variavelMeta = toNumber(readCell(raw, ["Variavel Meta", "Variável Meta"]));
     const variavelReal = toNumber(readCell(raw, ["Variavel Real", "Variável Real"]));
     let data = parseISODate(readCell(raw, ["Data"]));
@@ -665,7 +718,17 @@ function normalizeFactVariavelRows(rows){
     if (!competencia && data) {
       competencia = `${data.slice(0, 7)}-01`;
     }
-    return { registroId, data, competencia, variavelMeta, variavelReal };
+    return {
+      registroId,
+      produtoId,
+      produtoNome,
+      familiaId,
+      familiaNome,
+      data,
+      competencia,
+      variavelMeta,
+      variavelReal,
+    };
   }).filter(Boolean);
 }
 
@@ -4758,13 +4821,15 @@ function renderExecutiveView(){
     if (!unidadeEntries.length || !familiaEntries.length){
       hm.innerHTML = `<div class="muted">Sem dados para exibir.</div>`;
     } else {
-      let html = `<div class="hm-row hm-head"><div class="hm-cell hm-corner">${escapeHTML(L.short)} \\ Família</div>${
+      const columnCount = Math.max(1, familiaEntries.length);
+      const rowStyle = ` style="--hm-cols:${columnCount}"`;
+      let html = `<div class="hm-row hm-head"${rowStyle}><div class="hm-cell hm-corner">${escapeHTML(L.short)} \\ Família</div>${
         familiaEntries.map(f=> `<div class="hm-cell hm-col"${f.title ? ` title="${escapeHTML(f.title)}"` : ""}>${escapeHTML(f.label)}</div>`).join("")
       }</div>`;
 
       unidadeEntries.forEach(unit => {
         const unitTitle = unit.title && unit.title !== unit.label ? unit.title : "";
-        html += `<div class="hm-row"><div class="hm-cell hm-rowh"${unitTitle ? ` title="${escapeHTML(unitTitle)}"` : ""}>${escapeHTML(unit.label)}</div>`;
+        html += `<div class="hm-row"${rowStyle}><div class="hm-cell hm-rowh"${unitTitle ? ` title="${escapeHTML(unitTitle)}"` : ""}>${escapeHTML(unit.label)}</div>`;
         familiaEntries.forEach(fam => {
           const key = `${unit.value}|${fam.key}`;
           const bucket = byUF.get(key) || { real:0, meta:0 };

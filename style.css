@@ -1082,15 +1082,16 @@ select.input{
 /* ritmo removido */
 
 /* heatmap */
-.hm{ display:flex; flex-direction:column; gap:4px; overflow:auto; }
-.hm-row{ display:grid; grid-auto-flow:column; grid-auto-columns:minmax(110px,1fr); gap:4px; }
+.hm{ display:flex; flex-direction:column; gap:6px; overflow:auto; padding-bottom:4px; }
+.hm-row{ display:grid; grid-template-columns:minmax(200px,1.2fr) repeat(var(--hm-cols,1), minmax(132px,1fr)); gap:6px; align-items:stretch; }
 .hm-cell{
-  background:#f8fafc; border:1px dashed #e5e7eb; border-radius:8px; padding:8px; text-align:center;
-  font-weight:800; color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  display:flex; align-items:center; justify-content:center;
+  background:#f8fafc; border:1px dashed #e5e7eb; border-radius:10px; padding:10px 12px; min-height:52px;
+  text-align:center; font-weight:800; color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .hm-head .hm-cell{ background:#fbfcff; font-weight:800; color:#0f172a; }
-.hm-corner{ text-align:left; }
-.hm-rowh{ text-align:left; }
+.hm-corner{ justify-content:flex-start; text-align:left; }
+.hm-rowh{ justify-content:flex-start; text-align:left; }
 .hm-val{ cursor:pointer; }
 .hm-val.hm-bad{ background:#fee2e2; color:#7f1d1d; }
 .hm-val.hm-warn{ background:#fef3c7; color:#7c2d12; }
