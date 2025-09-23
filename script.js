@@ -1688,6 +1688,13 @@ function formatBRLReadable(value){
   return formatNumberWithSuffix(value, { currency: true });
 }
 
+function formatPoints(value, { withUnit = false } = {}) {
+  const n = toNumber(value);
+  const nearInteger = Math.abs(n - Math.round(n)) < 0.05;
+  const formatted = nearInteger ? fmtINT.format(Math.round(n)) : fmtONE.format(n);
+  return withUnit ? `${formatted} pts` : formatted;
+}
+
 function formatMetricFull(metric, value){
   const n = Math.round(toNumber(value));
   if(metric === "perc") return `${toNumber(value).toFixed(1)}%`;
@@ -2183,7 +2190,7 @@ const state = {
   lastNonContractView:"diretoria",
 
   // ranking
-  rk:{ mode:"mensal", level:"agencia" },
+  rk:{ level:"agencia" },
 
   // busca por contrato (usa o input #busca)
   tableSearchTerm:"",
@@ -4340,13 +4347,17 @@ function renderFamilias(sections, summary){
       const realizadoFull = formatMetricFull(f.metric, f.realizado);
       const metaFull      = formatMetricFull(f.metric, f.meta);
 
-      const metaRatio = f.meta ? (f.realizado / f.meta) : 0;
-      const metaPct = Math.max(0, metaRatio * 100);
-      const metaPctLabel = `${metaPct.toFixed(1)}%`;
-      const metaFill = Math.max(0, Math.min(100, metaPct));
-      const metaFillRounded = Number(metaFill.toFixed(2));
-      const metaTrackClass = metaPct < 50 ? "var--low" : (metaPct < 100 ? "var--warn" : "var--ok");
-      const metaAccessible = `${metaPctLabel} (${realizadoFull} de ${metaFull})`;
+      const pontosMeta = Number(f.peso) || 0;
+      const pontosReal = Number(f.pontos) || 0;
+      const pontosRatio = pontosMeta ? (pontosReal / pontosMeta) : 0;
+      const pontosPct = Math.max(0, pontosRatio * 100);
+      const pontosPctLabel = `${pontosPct.toFixed(1)}%`;
+      const pontosFill = Math.max(0, Math.min(100, pontosPct));
+      const pontosFillRounded = Number(pontosFill.toFixed(2));
+      const pontosTrackClass = pontosPct < 50 ? "var--low" : (pontosPct < 100 ? "var--warn" : "var--ok");
+      const pontosMetaTxt = pontosMeta ? formatPoints(pontosMeta, { withUnit: true }) : "0 pts";
+      const pontosRealTxt = formatPoints(pontosReal, { withUnit: true });
+      const pontosAccessible = `${pontosPctLabel} (${pontosRealTxt} de ${pontosMetaTxt})`;
 
       grid.insertAdjacentHTML("beforeend", `
         <article class="prod-card" tabindex="0" data-prod-id="${f.id}">
@@ -4369,14 +4380,14 @@ function renderFamilias(sections, summary){
 
           <div class="prod-card__var">
             <div class="prod-card__var-head">
-              <small>Atingimento da meta</small>
-              <strong title="${metaPctLabel}">${metaPctLabel}</strong>
+              <small>Atingimento de pontos</small>
+              <strong title="${pontosPctLabel}">${pontosPctLabel}</strong>
             </div>
             <div class="prod-card__var-body">
-              <span class="prod-card__var-goal" title="${metaFull}">${metaTxt}</span>
-              <div class="prod-card__var-track ${metaTrackClass}" data-ratio="${metaFillRounded}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(metaFillRounded)}" aria-valuetext="${metaAccessible}">
-                <span class="prod-card__var-fill" style="--target:${metaFillRounded}%"></span>
-                <span class="prod-card__var-label" title="${realizadoFull}">${realizadoTxt}</span>
+              <span class="prod-card__var-goal" title="${pontosMetaTxt}">${pontosMetaTxt}</span>
+              <div class="prod-card__var-track ${pontosTrackClass}" data-ratio="${pontosFillRounded}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pontosFillRounded)}" aria-valuetext="${pontosAccessible}">
+                <span class="prod-card__var-fill" style="--target:${pontosFillRounded}%"></span>
+                <span class="prod-card__var-label" title="${pontosRealTxt}">${pontosRealTxt}</span>
               </div>
             </div>
           </div>
@@ -4386,13 +4397,13 @@ function renderFamilias(sections, summary){
         </article>
       `);
 
-      nextVarRatios.set(f.id, metaFillRounded);
+      nextVarRatios.set(f.id, pontosFillRounded);
       const cardEl = grid.lastElementChild;
       if (cardEl) {
         const trackEl = cardEl.querySelector(".prod-card__var-track");
         if (trackEl) {
           const prevRatio = prevVarRatios.get(f.id);
-          const animateVar = shouldAnimateDelta(prevRatio, metaFillRounded, 0.25);
+          const animateVar = shouldAnimateDelta(prevRatio, pontosFillRounded, 0.25);
           triggerBarAnimation(trackEl, animateVar);
         }
       }
@@ -6020,27 +6031,12 @@ function createRankingView(){
     <section class="card card--ranking">
       <header class="card__header">
         <h3>Ranking</h3>
-        <div class="rk-controls">
-          <div class="segmented" role="tablist" aria-label="Período">
-            <button type="button" class="seg-btn is-active" data-mode="mensal">Mensal</button>
-            <button type="button" class="seg-btn" data-mode="acumulado">Acumulado</button>
-          </div>
-        </div>
       </header>
 
       <div class="rk-summary" id="rk-summary"></div>
       <div id="rk-table"></div>
     </section>`;
   main.appendChild(section);
-
-  document.querySelectorAll("#view-ranking .seg-btn").forEach(b=>{
-    b.addEventListener("click", ()=>{
-      document.querySelectorAll("#view-ranking .seg-btn").forEach(x=>x.classList.remove("is-active"));
-      b.classList.add("is-active");
-      state.rk.mode = b.dataset.mode;
-      renderRanking();
-    });
-  });
 }
 function currentUnitForLevel(level){
   const f=getFilterValues();
@@ -6111,8 +6107,7 @@ function renderRanking(){
   const rows = filterRowsExcept(state._rankingRaw, except, { searchTerm: "" });
 
   const data = aggRanking(rows, level);
-  const modeKey = state.rk.mode === "acumulado" ? "p_acum" : "p_mens";
-  data.sort((a,b)=> (b[modeKey] - a[modeKey]));
+  data.sort((a,b)=> (b.p_acum - a.p_acum));
 
   const gruposLimite = rkGroupCount(level);
   const dataClamped = data.slice(0, gruposLimite);
@@ -6144,7 +6139,6 @@ function renderRanking(){
         <th class="unit-col">Unidade</th>
         <th>Pontos (mensal)</th>
         <th>Pontos (acumulado)</th>
-        <th>Atingimento</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -6159,8 +6153,6 @@ function renderRanking(){
     const visibleName = isMine ? rawName : "*****";
     const nomeSafe = escapeHTML(visibleName);
     const titleSafe = escapeHTML(isMine ? rawName : "Participante oculto");
-    const ating = state.rk.mode === "acumulado" ? r.ating_acum : r.ating_mens;
-
     const tr = document.createElement("tr");
     tr.className = `rk-row ${isMine? "rk-row--mine":""}`;
     tr.innerHTML = `
@@ -6168,7 +6160,6 @@ function renderRanking(){
       <td class="unit-col rk-name" title="${titleSafe}">${nomeSafe}</td>
       <td>${r.p_mens.toFixed(1)}</td>
       <td>${r.p_acum.toFixed(1)}</td>
-      <td><span class="att-badge ${ating*100<50?"att-low":(ating*100<100?"att-warn":"att-ok")}">${(ating*100).toFixed(1)}%</span></td>
     `;
     tb.appendChild(tr);
   });
@@ -6197,8 +6188,8 @@ function renderTreeTable() {
         <th>Quantidade</th>
         <th>Realizado (R$)</th>
         <th>Meta (R$)</th>
-        <th>Defasagem (R$)</th>
-        <th>Atingimento</th>
+        <th>Atingimento (R$)</th>
+        <th>Atingimento (%)</th>
         <th>Data</th>
         <th class="col-actions">Ações</th>
       </tr>
@@ -6212,8 +6203,17 @@ function renderTreeTable() {
   else document.getElementById("table-section")?.classList.remove("is-compact");
 
   let seq=0; const mkId=()=>`n${++seq}`;
-  const att = (p)=>{ const pct=(p*100); const cls=pct<50?"att-low":(pct<100?"att-warn":"att-ok"); return `<span class="att-badge ${cls}">${pct.toFixed(1)}%</span>`; }
-  const defas = (real,meta)=>{ const d=(real||0)-(meta||0); const cls=d>=0?"def-pos":"def-neg"; const full=fmtBRL.format(Math.round(d)); const display=formatBRLReadable(d); return `<span class="def-badge ${cls}" title="${full}">${display}</span>`; }
+  const attPct = (p)=>{ const pct=(p*100); const cls=pct<50?"att-low":(pct<100?"att-warn":"att-ok"); return `<span class="att-badge ${cls}">${pct.toFixed(1)}%</span>`; };
+  const attCurrency = (real, meta)=>{
+    const r = toNumber(real);
+    const m = toNumber(meta);
+    const hasMeta = m > 0;
+    const achieved = hasMeta ? Math.max(0, Math.min(r, m)) : Math.max(0, r);
+    const cls = hasMeta ? (r >= m ? "def-pos" : "def-neg") : "def-pos";
+    const full = fmtBRL.format(Math.round(achieved));
+    const display = formatBRLReadable(achieved);
+    return `<span class="def-badge ${cls}" title="${full}">${display}</span>`;
+  };
 
   const buildDetailTableHTML = (node = null) => {
     const groups = Array.isArray(node?.detailGroups) ? node.detailGroups : [];
@@ -6322,8 +6322,8 @@ function renderTreeTable() {
       <td><span title="${qtyFull}">${qtyDisplay}</span></td>
       <td><span title="${realizadoFull}">${realizadoDisplay}</span></td>
       <td><span title="${metaFull}">${metaDisplay}</span></td>
-      <td>${defas(node.realizado,node.meta)}</td>
-      <td>${att(node.ating||0)}</td>
+      <td>${attCurrency(node.realizado,node.meta)}</td>
+      <td>${attPct(node.ating||0)}</td>
       <td>${formatBRDate(node.data||"")}</td>
       <td class="actions-cell">
         <span class="actions-group">
