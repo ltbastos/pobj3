@@ -1,154 +1,154 @@
 Registro ID;Produto ID;Produto Nome;Familia ID;Familia Nome;Data;Competencia;Variavel Meta;Variavel Real
-REG-001-2025-01;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-01-05;2025-01-01;105600;110080
-REG-002-2025-01;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-01-06;2025-01-01;79200;69120
-REG-003-2025-01;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-01-07;2025-01-01;62700;68480
-REG-004-2025-01;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-01-08;2025-01-01;92400;93440
-REG-005-2025-01;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-01-09;2025-01-01;58080;51200
-REG-006-2025-01;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-01-10;2025-01-01;50160;43520
-REG-007-2025-01;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-01-11;2025-01-01;87120;92160
-REG-008-2025-01;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-01-12;2025-01-01;138600;151040
-REG-009-2025-01;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-01-13;2025-01-01;77880;70400
-REG-010-2025-01;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-01-14;2025-01-01;63360;75520
-REG-011-2025-01;cartoes;Cartões;ligadas;LIGADAS;2025-01-15;2025-01-01;44880;45440
-REG-012-2025-01;consorcios;Consórcios;ligadas;LIGADAS;2025-01-16;2025-01-01;42240;35840
-REG-013-2025-01;seguros;Seguros;ligadas;LIGADAS;2025-01-17;2025-01-01;51480;53120
-REG-014-2025-01;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-01-18;2025-01-01;59400;58880
-REG-015-2025-01;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-01-19;2025-01-01;40260;39680
-REG-016-2025-01;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-01-20;2025-01-01;36960;37120
-REG-017-2025-01;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-01-21;2025-01-01;34320;28160
-REG-001-2025-02;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-02-05;2025-02-01;112400;117820
-REG-002-2025-02;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-02-06;2025-02-01;84300;73980
-REG-003-2025-02;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-02-07;2025-02-01;66738;73295
-REG-004-2025-02;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-02-08;2025-02-01;98350;100010
-REG-005-2025-02;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-02-09;2025-02-01;61820;54800
-REG-006-2025-02;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-02-10;2025-02-01;53390;46580
-REG-007-2025-02;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-02-11;2025-02-01;92730;98640
-REG-008-2025-02;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-02-12;2025-02-01;147525;161660
-REG-009-2025-02;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-02-13;2025-02-01;82895;75350
-REG-010-2025-02;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-02-14;2025-02-01;67440;80830
-REG-011-2025-02;cartoes;Cartões;ligadas;LIGADAS;2025-02-15;2025-02-01;47770;48635
-REG-012-2025-02;consorcios;Consórcios;ligadas;LIGADAS;2025-02-16;2025-02-01;44960;38360
-REG-013-2025-02;seguros;Seguros;ligadas;LIGADAS;2025-02-17;2025-02-01;54795;56855
-REG-014-2025-02;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-02-18;2025-02-01;63225;63020
-REG-015-2025-02;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-02-19;2025-02-01;42852;42470
-REG-016-2025-02;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-02-20;2025-02-01;39340;39730
-REG-017-2025-02;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-02-21;2025-02-01;36530;30140
-REG-001-2025-03;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-03-05;2025-03-01;119200;125560
-REG-002-2025-03;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-03-06;2025-03-01;89400;78840
-REG-003-2025-03;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-03-07;2025-03-01;70775;78110
-REG-004-2025-03;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-03-08;2025-03-01;104300;106580
-REG-005-2025-03;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-03-09;2025-03-01;65560;58400
-REG-006-2025-03;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-03-10;2025-03-01;56620;49640
-REG-007-2025-03;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-03-11;2025-03-01;98340;105120
-REG-008-2025-03;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-03-12;2025-03-01;156450;172280
-REG-009-2025-03;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-03-13;2025-03-01;87910;80300
-REG-010-2025-03;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-03-14;2025-03-01;71520;86140
-REG-011-2025-03;cartoes;Cartões;ligadas;LIGADAS;2025-03-15;2025-03-01;50660;51830
-REG-012-2025-03;consorcios;Consórcios;ligadas;LIGADAS;2025-03-16;2025-03-01;47680;40880
-REG-013-2025-03;seguros;Seguros;ligadas;LIGADAS;2025-03-17;2025-03-01;58110;60590
-REG-014-2025-03;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-03-18;2025-03-01;67050;67160
-REG-015-2025-03;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-03-19;2025-03-01;45445;45260
-REG-016-2025-03;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-03-20;2025-03-01;41720;42340
-REG-017-2025-03;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-03-21;2025-03-01;38740;32120
-REG-001-2025-04;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-04-05;2025-04-01;126000;133300
-REG-002-2025-04;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-04-06;2025-04-01;94500;83700
-REG-003-2025-04;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-04-07;2025-04-01;74813;82925
-REG-004-2025-04;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-04-08;2025-04-01;110250;113150
-REG-005-2025-04;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-04-09;2025-04-01;69300;62000
-REG-006-2025-04;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-04-10;2025-04-01;59850;52700
-REG-007-2025-04;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-04-11;2025-04-01;103950;111600
-REG-008-2025-04;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-04-12;2025-04-01;165375;182900
-REG-009-2025-04;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-04-13;2025-04-01;92925;85250
-REG-010-2025-04;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-04-14;2025-04-01;75600;91450
-REG-011-2025-04;cartoes;Cartões;ligadas;LIGADAS;2025-04-15;2025-04-01;53550;55025
-REG-012-2025-04;consorcios;Consórcios;ligadas;LIGADAS;2025-04-16;2025-04-01;50400;43400
-REG-013-2025-04;seguros;Seguros;ligadas;LIGADAS;2025-04-17;2025-04-01;61425;64325
-REG-014-2025-04;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-04-18;2025-04-01;70875;71300
-REG-015-2025-04;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-04-19;2025-04-01;48038;48050
-REG-016-2025-04;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-04-20;2025-04-01;44100;44950
-REG-017-2025-04;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-04-21;2025-04-01;40950;34100
-REG-001-2025-05;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-05-05;2025-05-01;132800;141040
-REG-002-2025-05;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-05-06;2025-05-01;99600;88560
-REG-003-2025-05;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-05-07;2025-05-01;78850;87740
-REG-004-2025-05;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-05-08;2025-05-01;116200;119720
-REG-005-2025-05;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-05-09;2025-05-01;73040;65600
-REG-006-2025-05;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-05-10;2025-05-01;63080;55760
-REG-007-2025-05;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-05-11;2025-05-01;109560;118080
-REG-008-2025-05;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-05-12;2025-05-01;174300;193520
-REG-009-2025-05;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-05-13;2025-05-01;97940;90200
-REG-010-2025-05;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-05-14;2025-05-01;79680;96760
-REG-011-2025-05;cartoes;Cartões;ligadas;LIGADAS;2025-05-15;2025-05-01;56440;58220
-REG-012-2025-05;consorcios;Consórcios;ligadas;LIGADAS;2025-05-16;2025-05-01;53120;45920
-REG-013-2025-05;seguros;Seguros;ligadas;LIGADAS;2025-05-17;2025-05-01;64740;68060
-REG-014-2025-05;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-05-18;2025-05-01;74700;75440
-REG-015-2025-05;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-05-19;2025-05-01;50630;50840
-REG-016-2025-05;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-05-20;2025-05-01;46480;47560
-REG-017-2025-05;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-05-21;2025-05-01;43160;36080
-REG-001-2025-06;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-06-05;2025-06-01;139600;148780
-REG-002-2025-06;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-06-06;2025-06-01;104700;93420
-REG-003-2025-06;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-06-07;2025-06-01;82888;92555
-REG-004-2025-06;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-06-08;2025-06-01;122150;126290
-REG-005-2025-06;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-06-09;2025-06-01;76780;69200
-REG-006-2025-06;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-06-10;2025-06-01;66310;58820
-REG-007-2025-06;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-06-11;2025-06-01;115170;124560
-REG-008-2025-06;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-06-12;2025-06-01;183225;204140
-REG-009-2025-06;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-06-13;2025-06-01;102955;95150
-REG-010-2025-06;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-06-14;2025-06-01;83760;102070
-REG-011-2025-06;cartoes;Cartões;ligadas;LIGADAS;2025-06-15;2025-06-01;59330;61415
-REG-012-2025-06;consorcios;Consórcios;ligadas;LIGADAS;2025-06-16;2025-06-01;55840;48440
-REG-013-2025-06;seguros;Seguros;ligadas;LIGADAS;2025-06-17;2025-06-01;68055;71795
-REG-014-2025-06;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-06-18;2025-06-01;78525;79580
-REG-015-2025-06;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-06-19;2025-06-01;53222;53630
-REG-016-2025-06;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-06-20;2025-06-01;48860;50170
-REG-017-2025-06;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-06-21;2025-06-01;45370;38060
-REG-001-2025-07;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-07-05;2025-07-01;146400;156520
-REG-002-2025-07;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-07-06;2025-07-01;109800;98280
-REG-003-2025-07;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-07-07;2025-07-01;86925;97370
-REG-004-2025-07;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-07-08;2025-07-01;128100;132860
-REG-005-2025-07;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-07-09;2025-07-01;80520;72800
-REG-006-2025-07;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-07-10;2025-07-01;69540;61880
-REG-007-2025-07;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-07-11;2025-07-01;120780;131040
-REG-008-2025-07;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-07-12;2025-07-01;192150;214760
-REG-009-2025-07;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-07-13;2025-07-01;107970;100100
-REG-010-2025-07;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-07-14;2025-07-01;87840;107380
-REG-011-2025-07;cartoes;Cartões;ligadas;LIGADAS;2025-07-15;2025-07-01;62220;64610
-REG-012-2025-07;consorcios;Consórcios;ligadas;LIGADAS;2025-07-16;2025-07-01;58560;50960
-REG-013-2025-07;seguros;Seguros;ligadas;LIGADAS;2025-07-17;2025-07-01;71370;75530
-REG-014-2025-07;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-07-18;2025-07-01;82350;83720
-REG-015-2025-07;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-07-19;2025-07-01;55815;56420
-REG-016-2025-07;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-07-20;2025-07-01;51240;52780
-REG-017-2025-07;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-07-21;2025-07-01;47580;40040
-REG-001-2025-08;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-08-05;2025-08-01;153200;164260
-REG-002-2025-08;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-08-06;2025-08-01;114900;103140
-REG-003-2025-08;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-08-07;2025-08-01;90962;102185
-REG-004-2025-08;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-08-08;2025-08-01;134050;139430
-REG-005-2025-08;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-08-09;2025-08-01;84260;76400
-REG-006-2025-08;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-08-10;2025-08-01;72770;64940
-REG-007-2025-08;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-08-11;2025-08-01;126390;137520
-REG-008-2025-08;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-08-12;2025-08-01;201075;225380
-REG-009-2025-08;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-08-13;2025-08-01;112985;105050
-REG-010-2025-08;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-08-14;2025-08-01;91920;112690
-REG-011-2025-08;cartoes;Cartões;ligadas;LIGADAS;2025-08-15;2025-08-01;65110;67805
-REG-012-2025-08;consorcios;Consórcios;ligadas;LIGADAS;2025-08-16;2025-08-01;61280;53480
-REG-013-2025-08;seguros;Seguros;ligadas;LIGADAS;2025-08-17;2025-08-01;74685;79265
-REG-014-2025-08;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-08-18;2025-08-01;86175;87860
-REG-015-2025-08;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-08-19;2025-08-01;58408;59210
-REG-016-2025-08;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-08-20;2025-08-01;53620;55390
-REG-017-2025-08;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-08-21;2025-08-01;49790;42020
-REG-001-2025-09;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-09-05;2025-09-01;160000;172000
-REG-002-2025-09;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-09-06;2025-09-01;120000;108000
-REG-003-2025-09;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-09-07;2025-09-01;95000;107000
-REG-004-2025-09;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-09-08;2025-09-01;140000;146000
-REG-005-2025-09;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-09-09;2025-09-01;88000;80000
-REG-006-2025-09;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-09-10;2025-09-01;76000;68000
-REG-007-2025-09;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-09-11;2025-09-01;132000;144000
-REG-008-2025-09;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-09-12;2025-09-01;210000;236000
-REG-009-2025-09;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-09-13;2025-09-01;118000;110000
-REG-010-2025-09;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-09-14;2025-09-01;96000;118000
-REG-011-2025-09;cartoes;Cartões;ligadas;LIGADAS;2025-09-15;2025-09-01;68000;71000
-REG-012-2025-09;consorcios;Consórcios;ligadas;LIGADAS;2025-09-16;2025-09-01;64000;56000
-REG-013-2025-09;seguros;Seguros;ligadas;LIGADAS;2025-09-17;2025-09-01;78000;83000
-REG-014-2025-09;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-09-18;2025-09-01;90000;92000
-REG-015-2025-09;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-09-19;2025-09-01;61000;62000
-REG-016-2025-09;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-09-20;2025-09-01;56000;58000
-REG-017-2025-09;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-09-21;2025-09-01;52000;44000
+REG-001-2025-01;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-01-05;2025-01-01;105600;88704
+REG-002-2025-01;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-01-06;2025-01-01;79200;66528
+REG-003-2025-01;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-01-07;2025-01-01;62700;52668
+REG-004-2025-01;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-01-08;2025-01-01;92400;77616
+REG-005-2025-01;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-01-09;2025-01-01;58080;48787
+REG-006-2025-01;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-01-10;2025-01-01;50160;42134
+REG-007-2025-01;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-01-11;2025-01-01;87120;73181
+REG-008-2025-01;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-01-12;2025-01-01;138600;116424
+REG-009-2025-01;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-01-13;2025-01-01;77880;65419
+REG-010-2025-01;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-01-14;2025-01-01;63360;53222
+REG-011-2025-01;cartoes;Cartões;ligadas;LIGADAS;2025-01-15;2025-01-01;44880;37699
+REG-012-2025-01;consorcios;Consórcios;ligadas;LIGADAS;2025-01-16;2025-01-01;42240;35482
+REG-013-2025-01;seguros;Seguros;ligadas;LIGADAS;2025-01-17;2025-01-01;51480;43243
+REG-014-2025-01;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-01-18;2025-01-01;59400;49896
+REG-015-2025-01;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-01-19;2025-01-01;40260;33818
+REG-016-2025-01;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-01-20;2025-01-01;36960;31046
+REG-017-2025-01;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-01-21;2025-01-01;34320;28829
+REG-001-2025-02;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-02-05;2025-02-01;112400;94416
+REG-002-2025-02;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-02-06;2025-02-01;84300;70812
+REG-003-2025-02;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-02-07;2025-02-01;66738;56060
+REG-004-2025-02;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-02-08;2025-02-01;98350;82614
+REG-005-2025-02;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-02-09;2025-02-01;61820;51929
+REG-006-2025-02;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-02-10;2025-02-01;53390;44848
+REG-007-2025-02;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-02-11;2025-02-01;92730;77893
+REG-008-2025-02;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-02-12;2025-02-01;147525;123921
+REG-009-2025-02;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-02-13;2025-02-01;82895;69632
+REG-010-2025-02;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-02-14;2025-02-01;67440;56650
+REG-011-2025-02;cartoes;Cartões;ligadas;LIGADAS;2025-02-15;2025-02-01;47770;40127
+REG-012-2025-02;consorcios;Consórcios;ligadas;LIGADAS;2025-02-16;2025-02-01;44960;37766
+REG-013-2025-02;seguros;Seguros;ligadas;LIGADAS;2025-02-17;2025-02-01;54795;46028
+REG-014-2025-02;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-02-18;2025-02-01;63225;53109
+REG-015-2025-02;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-02-19;2025-02-01;42852;35996
+REG-016-2025-02;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-02-20;2025-02-01;39340;33046
+REG-017-2025-02;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-02-21;2025-02-01;36530;30685
+REG-001-2025-03;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-03-05;2025-03-01;119200;100128
+REG-002-2025-03;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-03-06;2025-03-01;89400;75096
+REG-003-2025-03;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-03-07;2025-03-01;70775;59451
+REG-004-2025-03;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-03-08;2025-03-01;104300;87612
+REG-005-2025-03;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-03-09;2025-03-01;65560;55070
+REG-006-2025-03;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-03-10;2025-03-01;56620;47561
+REG-007-2025-03;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-03-11;2025-03-01;98340;82606
+REG-008-2025-03;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-03-12;2025-03-01;156450;131418
+REG-009-2025-03;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-03-13;2025-03-01;87910;73844
+REG-010-2025-03;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-03-14;2025-03-01;71520;60077
+REG-011-2025-03;cartoes;Cartões;ligadas;LIGADAS;2025-03-15;2025-03-01;50660;42554
+REG-012-2025-03;consorcios;Consórcios;ligadas;LIGADAS;2025-03-16;2025-03-01;47680;40051
+REG-013-2025-03;seguros;Seguros;ligadas;LIGADAS;2025-03-17;2025-03-01;58110;48812
+REG-014-2025-03;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-03-18;2025-03-01;67050;56322
+REG-015-2025-03;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-03-19;2025-03-01;45445;38174
+REG-016-2025-03;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-03-20;2025-03-01;41720;35045
+REG-017-2025-03;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-03-21;2025-03-01;38740;32542
+REG-001-2025-04;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-04-05;2025-04-01;126000;105840
+REG-002-2025-04;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-04-06;2025-04-01;94500;79380
+REG-003-2025-04;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-04-07;2025-04-01;74813;62843
+REG-004-2025-04;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-04-08;2025-04-01;110250;92610
+REG-005-2025-04;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-04-09;2025-04-01;69300;58212
+REG-006-2025-04;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-04-10;2025-04-01;59850;50274
+REG-007-2025-04;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-04-11;2025-04-01;103950;87318
+REG-008-2025-04;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-04-12;2025-04-01;165375;138915
+REG-009-2025-04;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-04-13;2025-04-01;92925;78057
+REG-010-2025-04;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-04-14;2025-04-01;75600;63504
+REG-011-2025-04;cartoes;Cartões;ligadas;LIGADAS;2025-04-15;2025-04-01;53550;44982
+REG-012-2025-04;consorcios;Consórcios;ligadas;LIGADAS;2025-04-16;2025-04-01;50400;42336
+REG-013-2025-04;seguros;Seguros;ligadas;LIGADAS;2025-04-17;2025-04-01;61425;51597
+REG-014-2025-04;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-04-18;2025-04-01;70875;59535
+REG-015-2025-04;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-04-19;2025-04-01;48038;40352
+REG-016-2025-04;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-04-20;2025-04-01;44100;37044
+REG-017-2025-04;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-04-21;2025-04-01;40950;34398
+REG-001-2025-05;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-05-05;2025-05-01;132800;111552
+REG-002-2025-05;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-05-06;2025-05-01;99600;83664
+REG-003-2025-05;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-05-07;2025-05-01;78850;66234
+REG-004-2025-05;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-05-08;2025-05-01;116200;97608
+REG-005-2025-05;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-05-09;2025-05-01;73040;61354
+REG-006-2025-05;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-05-10;2025-05-01;63080;52987
+REG-007-2025-05;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-05-11;2025-05-01;109560;92030
+REG-008-2025-05;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-05-12;2025-05-01;174300;146412
+REG-009-2025-05;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-05-13;2025-05-01;97940;82270
+REG-010-2025-05;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-05-14;2025-05-01;79680;66931
+REG-011-2025-05;cartoes;Cartões;ligadas;LIGADAS;2025-05-15;2025-05-01;56440;47410
+REG-012-2025-05;consorcios;Consórcios;ligadas;LIGADAS;2025-05-16;2025-05-01;53120;44621
+REG-013-2025-05;seguros;Seguros;ligadas;LIGADAS;2025-05-17;2025-05-01;64740;54382
+REG-014-2025-05;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-05-18;2025-05-01;74700;62748
+REG-015-2025-05;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-05-19;2025-05-01;50630;42529
+REG-016-2025-05;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-05-20;2025-05-01;46480;39043
+REG-017-2025-05;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-05-21;2025-05-01;43160;36254
+REG-001-2025-06;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-06-05;2025-06-01;139600;117264
+REG-002-2025-06;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-06-06;2025-06-01;104700;87948
+REG-003-2025-06;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-06-07;2025-06-01;82888;69626
+REG-004-2025-06;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-06-08;2025-06-01;122150;102606
+REG-005-2025-06;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-06-09;2025-06-01;76780;64495
+REG-006-2025-06;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-06-10;2025-06-01;66310;55700
+REG-007-2025-06;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-06-11;2025-06-01;115170;96743
+REG-008-2025-06;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-06-12;2025-06-01;183225;153909
+REG-009-2025-06;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-06-13;2025-06-01;102955;86482
+REG-010-2025-06;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-06-14;2025-06-01;83760;70358
+REG-011-2025-06;cartoes;Cartões;ligadas;LIGADAS;2025-06-15;2025-06-01;59330;49837
+REG-012-2025-06;consorcios;Consórcios;ligadas;LIGADAS;2025-06-16;2025-06-01;55840;46906
+REG-013-2025-06;seguros;Seguros;ligadas;LIGADAS;2025-06-17;2025-06-01;68055;57166
+REG-014-2025-06;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-06-18;2025-06-01;78525;65961
+REG-015-2025-06;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-06-19;2025-06-01;53222;44706
+REG-016-2025-06;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-06-20;2025-06-01;48860;41042
+REG-017-2025-06;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-06-21;2025-06-01;45370;38111
+REG-001-2025-07;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-07-05;2025-07-01;146400;122976
+REG-002-2025-07;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-07-06;2025-07-01;109800;92232
+REG-003-2025-07;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-07-07;2025-07-01;86925;73017
+REG-004-2025-07;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-07-08;2025-07-01;128100;107604
+REG-005-2025-07;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-07-09;2025-07-01;80520;67637
+REG-006-2025-07;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-07-10;2025-07-01;69540;58414
+REG-007-2025-07;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-07-11;2025-07-01;120780;101455
+REG-008-2025-07;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-07-12;2025-07-01;192150;161406
+REG-009-2025-07;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-07-13;2025-07-01;107970;90695
+REG-010-2025-07;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-07-14;2025-07-01;87840;73786
+REG-011-2025-07;cartoes;Cartões;ligadas;LIGADAS;2025-07-15;2025-07-01;62220;52265
+REG-012-2025-07;consorcios;Consórcios;ligadas;LIGADAS;2025-07-16;2025-07-01;58560;49190
+REG-013-2025-07;seguros;Seguros;ligadas;LIGADAS;2025-07-17;2025-07-01;71370;59951
+REG-014-2025-07;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-07-18;2025-07-01;82350;69174
+REG-015-2025-07;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-07-19;2025-07-01;55815;46885
+REG-016-2025-07;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-07-20;2025-07-01;51240;43042
+REG-017-2025-07;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-07-21;2025-07-01;47580;39967
+REG-001-2025-08;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-08-05;2025-08-01;153200;128688
+REG-002-2025-08;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-08-06;2025-08-01;114900;96516
+REG-003-2025-08;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-08-07;2025-08-01;90962;76408
+REG-004-2025-08;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-08-08;2025-08-01;134050;112602
+REG-005-2025-08;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-08-09;2025-08-01;84260;70778
+REG-006-2025-08;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-08-10;2025-08-01;72770;61127
+REG-007-2025-08;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-08-11;2025-08-01;126390;106168
+REG-008-2025-08;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-08-12;2025-08-01;201075;168903
+REG-009-2025-08;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-08-13;2025-08-01;112985;94907
+REG-010-2025-08;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-08-14;2025-08-01;91920;77213
+REG-011-2025-08;cartoes;Cartões;ligadas;LIGADAS;2025-08-15;2025-08-01;65110;54692
+REG-012-2025-08;consorcios;Consórcios;ligadas;LIGADAS;2025-08-16;2025-08-01;61280;51475
+REG-013-2025-08;seguros;Seguros;ligadas;LIGADAS;2025-08-17;2025-08-01;74685;62735
+REG-014-2025-08;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-08-18;2025-08-01;86175;72387
+REG-015-2025-08;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-08-19;2025-08-01;58408;49063
+REG-016-2025-08;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-08-20;2025-08-01;53620;45041
+REG-017-2025-08;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-08-21;2025-08-01;49790;41824
+REG-001-2025-09;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-09-05;2025-09-01;160000;134400
+REG-002-2025-09;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-09-06;2025-09-01;120000;100800
+REG-003-2025-09;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-09-07;2025-09-01;95000;79800
+REG-004-2025-09;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-09-08;2025-09-01;140000;117600
+REG-005-2025-09;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-09-09;2025-09-01;88000;73920
+REG-006-2025-09;rec_vencidos_50mais;Recuperação de Vencidos acima de 50 dias;financeiro;FINANCEIRO;2025-09-10;2025-09-01;76000;63840
+REG-007-2025-09;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-09-11;2025-09-01;132000;110880
+REG-008-2025-09;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-09-12;2025-09-01;210000;176400
+REG-009-2025-09;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-09-13;2025-09-01;118000;99120
+REG-010-2025-09;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-09-14;2025-09-01;96000;80640
+REG-011-2025-09;cartoes;Cartões;ligadas;LIGADAS;2025-09-15;2025-09-01;68000;57120
+REG-012-2025-09;consorcios;Consórcios;ligadas;LIGADAS;2025-09-16;2025-09-01;64000;53760
+REG-013-2025-09;seguros;Seguros;ligadas;LIGADAS;2025-09-17;2025-09-01;78000;65520
+REG-014-2025-09;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-09-18;2025-09-01;90000;75600
+REG-015-2025-09;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-09-19;2025-09-01;61000;51240
+REG-016-2025-09;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-09-20;2025-09-01;56000;47040
+REG-017-2025-09;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-09-21;2025-09-01;52000;43680

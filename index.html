@@ -230,56 +230,48 @@
 
         <div id="exec-kpis" class="exec-kpis"></div>
 
-        <section class="exec-panel exec-span-2 exec-chart">
+        <section class="exec-panel exec-chart">
           <div class="exec-h">
-            <span id="exec-chart-title">Evolução diária</span>
-            <div class="segmented seg-mini" id="exec-chart-toggle" role="tablist" aria-label="Modo do gráfico">
-              <button type="button" class="seg-btn is-active" data-chart="diario">Dia a dia</button>
-              <button type="button" class="seg-btn" data-chart="mensal">Visão mês</button>
-            </div>
+            <span id="exec-chart-title">Evolução mensal por seção</span>
           </div>
-          <div id="exec-chart" class="chart" role="img" aria-label="Barras diárias de realizado com linha de meta"></div>
+          <div id="exec-chart" class="chart" role="img" aria-label="Linhas mensais de atingimento por seção"></div>
           <div id="exec-chart-legend" class="chart-legend"></div>
         </section>
 
         <div class="exec-grid">
-          <section class="exec-panel exec-span-2 exec-panel--rank" id="exec-rank-panel">
-            <div class="exec-h">
-              <span id="exec-rank-title">Desempenho por unidade</span>
-            </div>
-            <div class="rank-dual">
-              <div class="rank-dual__col">
-                <h5 class="rank-dual__title">Top 5</h5>
+          <div class="exec-row exec-row--rank">
+            <div class="exec-row__title" id="exec-rank-title">Desempenho por unidade</div>
+            <div class="exec-row__grid">
+              <section class="exec-panel exec-panel--rank" id="exec-rank-top-panel">
+                <div class="exec-h"><span class="exec-panel__title">Top 5</span></div>
                 <div id="exec-rank-top" class="rank-mini"></div>
-              </div>
-              <div class="rank-dual__col">
-                <h5 class="rank-dual__title">Bottom 5</h5>
+              </section>
+              <section class="exec-panel exec-panel--rank" id="exec-rank-bottom-panel">
+                <div class="exec-h"><span class="exec-panel__title">Bottom 5</span></div>
                 <div id="exec-rank-bottom" class="rank-mini"></div>
-              </div>
+              </section>
             </div>
-          </section>
+          </div>
 
-          <section class="exec-panel exec-span-2 exec-panel--status" id="exec-status-panel">
-            <div class="exec-h">
-              <span id="exec-status-title">Status das unidades</span>
-            </div>
-            <div class="status-grid">
-              <div class="status-card" data-status="hit">
-                <h5 class="status-card__title">Atingidas</h5>
+          <div class="exec-row exec-row--status">
+            <div class="exec-row__title" id="exec-status-title">Status das unidades</div>
+            <div class="exec-row__grid exec-row__grid--status">
+              <section class="exec-panel exec-panel--status" data-status="hit">
+                <div class="exec-h"><span class="status-card__title">Atingidas</span></div>
                 <div id="exec-status-hit" class="list-mini"></div>
-              </div>
-              <div class="status-card" data-status="quase">
-                <h5 class="status-card__title">Quase lá</h5>
+              </section>
+              <section class="exec-panel exec-panel--status" data-status="quase">
+                <div class="exec-h"><span class="status-card__title">Quase lá</span></div>
                 <div id="exec-status-quase" class="list-mini"></div>
-              </div>
-              <div class="status-card" data-status="longe">
-                <h5 class="status-card__title">Longe</h5>
+              </section>
+              <section class="exec-panel exec-panel--status" data-status="longe">
+                <div class="exec-h"><span class="status-card__title">Longe</span></div>
                 <div id="exec-status-longe" class="list-mini"></div>
-              </div>
+              </section>
             </div>
-          </section>
+          </div>
 
-          <section class="exec-panel exec-span-2 exec-panel--scroll">
+          <section class="exec-panel exec-panel--scroll">
             <div class="exec-h exec-h--heatmap">
               <span id="exec-heatmap-title">Heatmap</span>
               <div class="segmented seg-mini" id="exec-heatmap-toggle" role="tablist" aria-label="Modo do heatmap">

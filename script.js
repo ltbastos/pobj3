@@ -25,7 +25,7 @@ const fmtONE = new Intl.NumberFormat("pt-BR", { minimumFractionDigits:1, maximum
 const EXEC_BAR_FILL = "#93c5fd";
 const EXEC_BAR_STROKE = "#60a5fa";
 const EXEC_META_COLOR = "#fca5a5";
-const EXEC_FAMILY_PALETTE = [
+const EXEC_SERIES_PALETTE = [
   "#2563eb", "#9333ea", "#0ea5e9", "#16a34a", "#f97316",
   "#ef4444", "#14b8a6", "#d946ef", "#f59e0b", "#22d3ee"
 ];
@@ -4035,7 +4035,7 @@ function renderResumoKPI(summary, context = {}) {
   kpi.innerHTML = [
     buildCard("Indicadores", "ti ti-list-check", indicadoresAtingidos, indicadoresTotal, "int", visibleItemsHitCount),
     buildCard("Pontos", "ti ti-medal", pontosAtingidos, pontosTotal, "int", visiblePointsHit),
-    buildCard("Variável", "ti ti-cash", varRealBase, varTotalBase, "brl", visibleVarAtingido, visibleVarMeta, { emoji: "🤑" })
+    buildCard("Variável", "ti ti-cash", varRealBase, varTotalBase, "brl", visibleVarAtingido, visibleVarMeta)
   ].join("");
 
   triggerBarAnimation(kpi.querySelectorAll('.hitbar'), shouldAnimateResumo);
@@ -4567,12 +4567,11 @@ function createExecutiveView(){
   if (!host) return;
 
   if (!state.exec) {
-    state.exec = { chartMode: "diario", heatmapMode: "secoes", familyColors: new Map() };
+    state.exec = { heatmapMode: "secoes", seriesColors: new Map() };
   }
-  state.exec.chartMode = state.exec.chartMode || "diario";
   state.exec.heatmapMode = state.exec.heatmapMode || "secoes";
-  if (!(state.exec.familyColors instanceof Map)) {
-    state.exec.familyColors = new Map();
+  if (!(state.exec.seriesColors instanceof Map)) {
+    state.exec.seriesColors = new Map();
   }
 
   const syncSegmented = (containerSelector, dataAttr, stateKey, fallback) => {
@@ -4595,7 +4594,6 @@ function createExecutiveView(){
     });
   };
 
-  syncSegmented('#exec-chart-toggle', 'chart', 'chartMode', 'diario');
   syncSegmented('#exec-heatmap-toggle', 'hm', 'heatmapMode', 'secoes');
 
   if (!host.dataset.execFiltersBound) {
@@ -4710,40 +4708,6 @@ function levelLabel(start){
   }[start];
 }
 
-/* ===== Série e gráfico (SVG responsivo) ===== */
-function makeDailySeries(totalMeta, totalReal, startISO, endISO){
-  const s = dateUTCFromISO(startISO), e = dateUTCFromISO(endISO);
-  const days = [];
-  if (s && e){
-    for (let d = new Date(s); d <= e; d.setUTCDate(d.getUTCDate()+1)){
-      const current = new Date(d);
-      const dow = current.getUTCDay();
-      if (dow === 0 || dow === 6) continue; // somente dias úteis
-      days.push(current);
-    }
-  }
-
-  if (!days.length && s){
-    const fallback = new Date(s);
-    days.push(fallback);
-  }
-
-  const nBiz = days.length || 1;
-
-  // meta igualmente distribuída em dias úteis
-  const perMeta = totalMeta / nBiz;
-  const dailyMeta = days.map(() => perMeta);
-
-  // realizado com variação e normalização ao total
-  let rnd = days.map(()=> 0.6 + Math.random()*1.1);
-  const rndSum = rnd.reduce((a,b)=>a+b,0) || 1;
-  rnd = rnd.map(x=> x / rndSum);
-  const dailyReal = days.map((_,i)=> totalReal * rnd[i]);
-
-  const labels = days.map(d=> String(d.getUTCDate()).padStart(2,"0"));
-  return { labels, dailyReal, dailyMeta };
-}
-
 function chartDimensions(container, fallbackW=900, fallbackH=260){
   if (!container) return { width: fallbackW, height: fallbackH };
   const styles = window.getComputedStyle(container);
@@ -4752,74 +4716,6 @@ function chartDimensions(container, fallbackW=900, fallbackH=260){
   const width = Math.max(320, (container.clientWidth || fallbackW) - padL - padR);
   return { width, height: fallbackH };
 }
-function buildExecChart(container, series){
-  const { width: W, height: H } = chartDimensions(container);
-  const m = { t:20, r:20, b:40, l:64 };
-  const iw = Math.max(0, W - m.l - m.r);
-  const ih = Math.max(0, H - m.t - m.b);
-
-  const n = series.labels.length;
-  const values = [...series.dailyMeta, ...series.dailyReal];
-  const maxVal = values.length ? Math.max(...values) : 0;
-  const maxY = (maxVal || 1) * 1.05;
-
-  const x = i => m.l + (iw / Math.max(1,n-1)) * i;
-  const y = v => m.t + ih - (v / maxY) * ih;
-
-  const barW = Math.max(4, iw / Math.max(1, n * 1.6));
-
-  const axisY = H - m.b;
-
-  const gy = [];
-  for(let k=0;k<=4;k++){
-    const val = (maxY/4)*k;
-    gy.push({ y: y(val), label: formatBRLReadable(val) });
-  }
-
-  const path = (arr)=> arr.map((v,i)=> `${i?"L":"M"} ${x(i)} ${y(v)}`).join(" ");
-  const bars = series.dailyReal.map((v,i)=> {
-    const height = Math.max(0, y(0) - y(v));
-    const day = series.labels?.[i] || String(i + 1).padStart(2, "0");
-    const valueLabel = formatBRLReadable(v);
-    return `<rect class="exec-bar" style="--index:${i}" x="${x(i)-barW/2}" y="${y(v)}" width="${barW}" height="${height}" fill="${EXEC_BAR_FILL}" stroke="${EXEC_BAR_STROKE}" stroke-width="1.2" rx="3"><title>Realizado dia ${day}: ${valueLabel}</title></rect>`;
-  }).join("");
-
-  const barLabels = series.dailyReal.map((v,i)=> {
-    if (v <= 0) return "";
-    const text = formatBRLReadable(v);
-    const ty = Math.max(m.t + 12, y(v) - 6);
-    return `<text x="${x(i)}" y="${ty}" font-size="10" font-weight="700" text-anchor="middle" fill="#1f2937">${text}</text>`;
-  }).join("");
-
-  const lineMeta = `<path class="exec-meta-line" d="${path(series.dailyMeta)}" fill="none" stroke="${EXEC_META_COLOR}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 3" />`;
-  const metaPoints = series.dailyMeta.map((v,i)=> {
-    const day = series.labels?.[i] || String(i + 1).padStart(2, "0");
-    const valueLabel = formatBRLReadable(v);
-    return `<circle class="exec-meta-point" style="--index:${i}" cx="${x(i)}" cy="${y(v)}" r="2.8" fill="${EXEC_META_COLOR}" stroke="#fff" stroke-width="1.2"><title>Meta dia ${day}: ${valueLabel}</title></circle>`;
-  }).join("");
-
-  const xlabels = series.labels.map((lab,i) =>
-    `<text x="${x(i)}" y="${axisY + 16}" font-size="9" text-anchor="middle" fill="#6b7280">${lab}</text>`
-  ).join("");
-
-  const gridY = gy.map(g =>
-    `<line x1="${m.l}" y1="${g.y}" x2="${W-m.r}" y2="${g.y}" stroke="#eef2f7"/>
-     <text x="${m.l-6}" y="${g.y+3}" font-size="10" text-anchor="end" fill="#6b7280">${g.label}</text>`
-  ).join("");
-
-  container.innerHTML = `
-    <svg class="exec-chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Barras diárias de realizado com linha de meta">
-      <rect x="0" y="0" width="${W}" height="${H}" fill="white"/>
-      ${gridY}
-      ${bars}
-      ${barLabels}
-      ${lineMeta}
-      ${metaPoints}
-      <line x1="${m.l}" y1="${axisY}" x2="${W-m.r}" y2="${axisY}" stroke="#e5e7eb"/>
-      ${xlabels}
-    </svg>`;
-}
-
 function monthKeyLabel(key){
   if (!key) return "—";
   const [y,m] = key.split('-');
@@ -4873,12 +4769,12 @@ function buildMonthlyAxis(period){
   return keys;
 }
 
-function ensureExecFamilyColor(id){
-  const palette = EXEC_FAMILY_PALETTE;
+function ensureExecSeriesColor(id){
+  const palette = EXEC_SERIES_PALETTE;
   if (!palette.length) return '#2563eb';
   if (!id) return palette[0];
-  if (state.exec?.familyColors instanceof Map) {
-    const map = state.exec.familyColors;
+  if (state.exec?.seriesColors instanceof Map) {
+    const map = state.exec.seriesColors;
     if (map.has(id)) return map.get(id);
     const color = palette[map.size % palette.length];
     map.set(id, color);
@@ -4887,51 +4783,56 @@ function ensureExecFamilyColor(id){
   return palette[0];
 }
 
-function makeMonthlyFamilySeries(rows, period){
+function makeMonthlySectionSeries(rows, period){
   const monthKeys = buildMonthlyAxis(period);
   const monthIndex = new Map(monthKeys.map((key, idx) => [key, idx]));
-  const families = new Map();
+  const sections = new Map();
+  const sectionOrder = new Map(CARD_SECTIONS_DEF.map((sec, idx) => [sec.id, idx]));
 
   rows.forEach(r => {
     const rawDate = r?.competencia || r?.mes || r?.data || r?.dataReferencia || r?.dt;
     const key = normalizeMonthKey(rawDate);
     if (!monthIndex.has(key)) return;
     const idx = monthIndex.get(key);
-    const familia = resolveFamilyMetaFromRow(r);
-    if (!familia.id) return;
+    const section = resolveSectionMetaFromRow(r);
+    if (!section.id) return;
 
-    let entry = families.get(familia.id);
+    let entry = sections.get(section.id);
     if (!entry) {
       entry = {
-        id: familia.id,
-        label: familia.label || familia.id,
+        id: section.id,
+        label: section.label || getSectionLabel(section.id) || section.id,
         meta: Array(monthKeys.length).fill(0),
         real: Array(monthKeys.length).fill(0)
       };
-      families.set(familia.id, entry);
-    } else if (!entry.label && familia.label) {
-      entry.label = familia.label;
+      sections.set(section.id, entry);
+    } else if (!entry.label && section.label) {
+      entry.label = section.label;
     }
 
     entry.meta[idx] += toNumber(r.meta_mens ?? r.meta ?? 0);
     entry.real[idx] += toNumber(r.real_mens ?? r.realizado ?? 0);
   });
 
-  const series = [...families.values()].map(entry => {
+  const series = [...sections.values()].map(entry => {
     const values = entry.meta.map((meta, idx) => {
       if (!Number.isFinite(meta) || meta <= 0) return null;
       const realVal = entry.real[idx] ?? 0;
       return (realVal / meta) * 100;
     });
-    const hasValue = values.some(v => Number.isFinite(v));
-    if (!hasValue) return null;
+    if (!values.some(v => Number.isFinite(v))) return null;
     return {
       id: entry.id,
-      label: entry.label || entry.id,
+      label: entry.label || getSectionLabel(entry.id) || entry.id,
       values,
-      color: ensureExecFamilyColor(entry.id)
+      color: ensureExecSeriesColor(entry.id)
     };
-  }).filter(Boolean).sort((a,b)=> a.label.localeCompare(b.label, 'pt-BR', { sensitivity:'base' }));
+  }).filter(Boolean).sort((a, b) => {
+    const ai = sectionOrder.has(a.id) ? sectionOrder.get(a.id) : Number.MAX_SAFE_INTEGER;
+    const bi = sectionOrder.has(b.id) ? sectionOrder.get(b.id) : Number.MAX_SAFE_INTEGER;
+    if (ai !== bi) return ai - bi;
+    return a.label.localeCompare(b.label, 'pt-BR', { sensitivity: 'base' });
+  });
 
   return {
     keys: monthKeys,
@@ -5024,7 +4925,6 @@ function renderExecutiveView(){
   const chartC = document.getElementById("exec-chart");
   const chartTitleEl = document.getElementById("exec-chart-title");
   const chartLegend = document.getElementById("exec-chart-legend");
-  const chartToggle = document.getElementById("exec-chart-toggle");
   const hm     = document.getElementById("exec-heatmap");
   const rankTopEl = document.getElementById("exec-rank-top");
   const rankBottomEl = document.getElementById("exec-rank-bottom");
@@ -5052,14 +4952,6 @@ function renderExecutiveView(){
     dateEnd: execMonthlyPeriod.end,
   });
 
-  const chartMode = state.exec?.chartMode || "diario";
-  if (chartToggle){
-    chartToggle.querySelectorAll('.seg-btn').forEach(btn=>{
-      const mode = btn.dataset.chart || "diario";
-      btn.classList.toggle('is-active', mode === chartMode);
-    });
-  }
-
   // nível inicial
   const start = execStartLevelFromFilters();
   const startKey = levelKeyFor(start);
@@ -5067,7 +4959,7 @@ function renderExecutiveView(){
 
   // títulos conforme nível
   document.getElementById("exec-rank-title").textContent   = `Desempenho por ${L.sing}`;
-  document.getElementById("exec-heatmap-title").textContent= `Heatmap — ${L.short} × Família`;
+  document.getElementById("exec-heatmap-title").textContent= `Heatmap — ${L.short} × Seções`;
   document.getElementById("exec-status-title").textContent = `Status das ${L.plural}`;
 
   // contexto
@@ -5145,36 +5037,22 @@ function renderExecutiveView(){
 
   // Gráfico
   if (chartC){
-    const renderChart = () => {
-      const mode = state.exec?.chartMode || "diario";
-      if (mode === "mensal"){
-        const monthlySeries = makeMonthlyFamilySeries(rowsMonthly, execMonthlyPeriod);
-        buildExecMonthlyLines(chartC, monthlySeries);
-        chartC.setAttribute("aria-label", "Linhas mensais de atingimento por família de produtos");
-        if (chartTitleEl) chartTitleEl.textContent = "Evolução mensal";
-        if (chartLegend){
-          if (monthlySeries.series.length){
-            chartLegend.innerHTML = monthlySeries.series.map(serie => `
-              <span class="legend-item">
-                <span class="legend-swatch legend-swatch--line" style="--swatch:${serie.color}"></span>${escapeHTML(serie.label)}
-              </span>`).join("");
-          } else {
-            chartLegend.innerHTML = `<span class="legend-item muted">Sem famílias para exibir.</span>`;
-          }
-        }
+    const monthlySeries = makeMonthlySectionSeries(rowsMonthly, execMonthlyPeriod);
+    chartC.setAttribute("aria-label", "Linhas mensais de atingimento por seção");
+    if (chartTitleEl) chartTitleEl.textContent = "Evolução mensal por seção";
+    if (chartLegend){
+      if (monthlySeries.series.length){
+        chartLegend.innerHTML = monthlySeries.series.map(serie => `
+          <span class="legend-item">
+            <span class="legend-swatch legend-swatch--line" style="--swatch:${serie.color}"></span>${escapeHTML(serie.label)}
+          </span>`).join("");
       } else {
-        const dailySeries = makeDailySeries(total.meta_mens, total.real_mens, state.period.start, state.period.end);
-        buildExecChart(chartC, dailySeries);
-        chartC.setAttribute("aria-label", "Barras diárias de realizado com linha de meta");
-        if (chartTitleEl) chartTitleEl.textContent = "Evolução diária";
-        if (chartLegend){
-          chartLegend.innerHTML = `
-            <span class="legend-item"><span class="legend-swatch legend-swatch--bar-real"></span>Realizado diário (barra)</span>
-            <span class="legend-item"><span class="legend-swatch legend-swatch--meta-line"></span>Meta diária (linha)</span>
-          `;
-        }
+        chartLegend.innerHTML = `<span class="legend-item muted">Sem seções para exibir.</span>`;
       }
-    };
+    }
+
+    host.__execChartDataset = monthlySeries;
+    const renderChart = () => buildExecMonthlyLines(chartC, host.__execChartDataset);
 
     renderChart();
     host.__execChartRender = renderChart;
@@ -5201,22 +5079,32 @@ function renderExecutiveView(){
 
   const renderRankList = (container, list) => {
     if (!container) return;
-    if (!list.length){
-      container.innerHTML = `<div class="muted">Sem dados para exibir.</div>`;
-      return;
+    const rows = list.slice(0, 5);
+    while (rows.length < 5) {
+      rows.push({ placeholder:true, key:`placeholder-${rows.length}` });
     }
-    container.innerHTML = list.map(row => {
+
+    container.innerHTML = rows.map(row => {
+      if (row.placeholder) {
+        return `
+          <div class="rank-mini__row rank-mini__row--empty" data-placeholder="true">
+            <div class="rank-mini__name"><span class="rank-mini__label">Sem dados disponíveis</span></div>
+            <div class="rank-mini__bar"><span style="width:0%"></span></div>
+            <div class="rank-mini__pct">—</div>
+            <div class="rank-mini__vals">—</div>
+          </div>`;
+      }
       const rankNumber = (rankIndex.get(row.key) ?? 0) + 1;
       const safeKey = escapeHTML(row.key);
-      const displayName = `#${rankNumber} • ${row.label || row.key}`;
+      const label = row.label || row.key;
       const pctClass = pctBadgeCls(row.p_mens);
       const realFull = fmtBRL.format(Math.round(row.real_mens));
       const metaFull = fmtBRL.format(Math.round(row.meta_mens));
       const realDisplay = formatBRLReadable(row.real_mens);
       const metaDisplay = formatBRLReadable(row.meta_mens);
       return `
-        <div class="rank-mini__row${row.key === myUnit ? ' rank-mini__row--mine' : ''}" data-key="${safeKey}" title="${escapeHTML(row.label || row.key)}">
-          <div class="rank-mini__name">${escapeHTML(displayName)}</div>
+        <div class="rank-mini__row${row.key === myUnit ? ' rank-mini__row--mine' : ''}" data-key="${safeKey}" data-rank="${rankNumber}" title="${escapeHTML(`Ranking #${rankNumber} — ${label}`)}">
+          <div class="rank-mini__name"><span class="rank-mini__label">${escapeHTML(label)}</span></div>
           <div class="rank-mini__bar"><span style="width:${Math.min(100, Math.max(0, row.p_mens))}%"></span></div>
           <div class="rank-mini__pct"><span class="att-badge ${pctClass}">${row.p_mens.toFixed(1)}%</span></div>
           <div class="rank-mini__vals"><strong title="${realFull}">${realDisplay}</strong> <small title="${metaFull}">/ ${metaDisplay}</small></div>
@@ -5224,6 +5112,7 @@ function renderExecutiveView(){
     }).join("");
 
     container.querySelectorAll(".rank-mini__row").forEach(rowEl => {
+      if (rowEl.dataset.placeholder === "true") return;
       rowEl.addEventListener("click", () => {
         const keyVal = rowEl.getAttribute("data-key");
         const selector = EXEC_FILTER_SELECTORS[start];
@@ -5254,11 +5143,18 @@ function renderExecutiveView(){
 
   const renderStatusList = (container, list, type) => {
     if (!container) return;
-    if (!list.length){
-      container.innerHTML = `<div class="muted">Sem dados no momento.</div>`;
-      return;
+    const rows = list.slice(0, 5);
+    while (rows.length < 5) {
+      rows.push({ placeholder:true, key:`placeholder-${rows.length}` });
     }
-    container.innerHTML = list.map(row => {
+    container.innerHTML = rows.map(row => {
+      if (row.placeholder) {
+        return `
+          <div class="list-mini__row list-mini__row--empty" data-placeholder="true">
+            <div class="list-mini__name">Sem dados disponíveis</div>
+            <div class="list-mini__val">—</div>
+          </div>`;
+      }
       const safeKey = escapeHTML(row.key);
       const label = escapeHTML(row.label || row.key);
       let valueHTML = "";
@@ -5277,6 +5173,7 @@ function renderExecutiveView(){
     }).join("");
 
     container.querySelectorAll(".list-mini__row").forEach(rowEl => {
+      if (rowEl.dataset.placeholder === "true") return;
       rowEl.addEventListener("click", () => {
         const keyVal = rowEl.getAttribute("data-key");
         const selector = EXEC_FILTER_SELECTORS[start];
@@ -5343,7 +5240,7 @@ function renderExecHeatmapSections(hm, rows, startKey, start, levelMeta){
   })).sort((a,b)=> a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
 
   const columnCount = Math.max(1, sectionEntries.length);
-  const rowStyle = ` style="--hm-cols:${columnCount}"`;
+  const rowStyle = ` style="--hm-cols:${columnCount}; --hm-first:240px; --hm-cell:136px"`;
   let html = `<div class="hm-row hm-head"${rowStyle}><div class="hm-cell hm-corner">${escapeHTML(levelMeta.short)} \\ Seção</div>${
     sectionEntries.map(sec => `<div class="hm-cell hm-col" title="${escapeHTML(sec.label)}">${escapeHTML(sec.label)}</div>`).join("")
   }</div>`;
@@ -5444,7 +5341,7 @@ function renderExecHeatmapMeta(hm, rows, period){
   });
 
   const filters = getFilterValues();
-  const rowStyle = ` style="--hm-cols:${monthKeys.length}"`;
+  const rowStyle = ` style="--hm-cols:${monthKeys.length}; --hm-first:220px; --hm-cell:120px"`;
   let html = `<div class="hm-row hm-head"${rowStyle}><div class="hm-cell hm-corner">Hierarquia \\ Mês</div>${
     monthLabels.map(label => `<div class="hm-cell hm-col">${escapeHTML(label)}</div>`).join("")
   }</div>`;
