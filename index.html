@@ -19,27 +19,44 @@
 <body>
   <!-- TOPBAR -->
   <header class="topbar">
-  <div class="topbar__left">
-    <button class="topbar-hamburger" id="btn-open-drawer" aria-label="Abrir menu">
-      <i class="ti ti-menu-2"></i>
-    </button>
-
-    <div class="logo">
-      <span class="logo__mark" aria-hidden="true"></span>
-      <span class="logo__text">Bradesco</span>
+    <div class="topbar__left">
+      <div class="logo">
+        <span class="logo__mark" aria-hidden="true"></span>
+        <span class="logo__text">Bradesco</span>
+      </div>
     </div>
-  </div>
 
-  <div class="topbar__right">
-    <div class="userbox">
-      <img class="userbox__avatar" src="https://i.pravatar.cc/80?img=12" alt="Foto do usuário"/>
-      <div class="userbox__name">X Burguer</div>
-      <button class="btn btn--ghost btn--logout" type="button">
-        <i class="ti ti-logout-2"></i> <span class="btn-label">Sair</span>
-      </button>
+    <div class="topbar__right">
+      <div class="userbox">
+        <button class="userbox__trigger" id="btn-user-menu" type="button" aria-haspopup="true" aria-expanded="false">
+          <img class="userbox__avatar" src="https://i.pravatar.cc/80?img=12" alt="Foto do usuário"/>
+          <span class="userbox__name">X Burguer</span>
+          <i class="ti ti-chevron-down" aria-hidden="true"></i>
+        </button>
+        <div class="userbox__menu" id="user-menu" role="menu" aria-hidden="true">
+          <span class="userbox__menu-title">Links úteis</span>
+          <button class="userbox__menu-item" type="button" data-action="omega">Omega</button>
+          <button class="userbox__menu-item" type="button" data-action="portal">Portal PJ</button>
+          <div class="userbox__submenu">
+            <button class="userbox__menu-item userbox__menu-item--has-sub" type="button" data-submenu="manuais" aria-expanded="false">
+              Manuais
+              <i class="ti ti-chevron-right" aria-hidden="true"></i>
+            </button>
+            <div class="userbox__submenu-list" id="user-submenu-manuais" hidden>
+              <button class="userbox__menu-item" type="button" data-action="manual1">Manual 1</button>
+              <button class="userbox__menu-item" type="button" data-action="manual2">Manual 2</button>
+            </div>
+          </div>
+          <button class="userbox__menu-item" type="button" data-action="mapao">Mapão de Oportunidades</button>
+          <hr class="userbox__divider"/>
+          <button class="userbox__menu-item userbox__menu-item--logout" type="button" data-action="logout">
+            <i class="ti ti-logout-2" aria-hidden="true"></i>
+            <span>Sair</span>
+          </button>
+        </div>
+      </div>
     </div>
-  </div>
-</header>
+  </header>
 
 
   <main class="container">

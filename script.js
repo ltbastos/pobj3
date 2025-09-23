@@ -32,17 +32,6 @@ const setActiveTab = (viewId = "cards") => {
     const expected = tab.dataset.view || "";
     tab.classList.toggle("is-active", expected === target);
   });
-  const sidebarLinks = Array.from(document.querySelectorAll(".sidebar__link"));
-  if (sidebarLinks.length) {
-    sidebarLinks.forEach(link => {
-      const route = link.dataset.route || "";
-      if (target === "campanhas") {
-        link.classList.toggle("is-active", route === "campanhas");
-      } else if (["cards", "table", "ranking", "exec"].includes(target)) {
-        link.classList.toggle("is-active", route === "pobj");
-      }
-    });
-  }
 };
 const fmtBRLParts = fmtBRL.formatToParts(1);
 const CURRENCY_SYMBOL = fmtBRLParts.find(p => p.type === "currency")?.value || "R$";
@@ -2177,144 +2166,6 @@ async function getData(){
 }
 
 /* ===== Sidebar retrátil (criada por JS, sem CSS injetado) ===== */
-function ensureSidebar(){
-  if (document.getElementById("app-shell")) return;
-
-  // pega elementos existentes
-  const topbar = document.querySelector(".topbar");
-  const main   = document.querySelector("main.container");
-  if(!topbar || !main) return;
-
-  // cria shell
-  const shell = document.createElement("div");
-  shell.id = "app-shell";
-  shell.className = "app-shell";
-
-  // cria sidebar
-  const sb = document.createElement("aside");
-  sb.id = "sidebar";
-  sb.className = "sidebar sidebar--collapsed"; // começa recolhida em desktop
-  sb.innerHTML = `
-  <div class="sidebar__brand">
-    <button id="sb-btn" class="hamburger" type="button" aria-label="Expandir/retrair menu" aria-expanded="false">
-      <i class="ti ti-layout-sidebar-right"></i>
-    </button>
-    <span class="sidebar__title">Menu</span>
-  </div>
-  <nav class="sidebar__nav">
-    <a class="sidebar__link is-active" href="#" data-route="pobj">
-      <i class="ti ti-gauge"></i><span>POBJ</span>
-    </a>
-    <a class="sidebar__link" href="#" data-route="omega">
-      <i class="ti ti-planet"></i><span>Omega</span>
-    </a>
-    <a class="sidebar__link" href="#" data-route="campanhas">
-      <i class="ti ti-speakerphone"></i><span>Campanhas</span>
-    </a>
-    <a class="sidebar__link" href="#" data-route="portal">
-      <i class="ti ti-building-bank"></i><span>Portal PJ</span>
-    </a>
-    <a class="sidebar__link" href="#" data-route="mapao">
-      <i class="ti ti-map"></i><span>Mapão de Oportunidades</span>
-    </a>
-    <a class="sidebar__link" href="#" data-route="manuais">
-      <i class="ti ti-book-2"></i><span>Manuais</span>
-    </a>
-  </nav>
-`;
-
-  // mover main para content
-  const content = document.createElement("div");
-  content.className = "content";
-  content.appendChild(main);
-
-  // backdrop pro mobile
-  const backdrop = document.createElement("div");
-  backdrop.className = "sidebar-backdrop";
-  backdrop.id = "sidebar-backdrop";
-
-  // injeta na página (logo abaixo da topbar)
-  topbar.insertAdjacentElement("afterend", shell);
-  shell.appendChild(sb);
-  shell.appendChild(content);
-  shell.appendChild(backdrop);
-
-  // estado
-  const LS_KEY = "pobj.sidebar.collapsed";
-  // Reaproveita o hambúrguer que já está no HTML ou cria um se não existir
-  let btnTop = document.querySelector(".topbar-hamburger");
-  if(!btnTop){
-    btnTop = document.createElement("button");
-    btnTop.className = "topbar-hamburger";
-    btnTop.innerHTML = `<i class="ti ti-menu-2"></i>`;
-    document.querySelector(".topbar__left")?.prepend(btnTop);
-  }
-  btnTop.type = "button";
-  btnTop.setAttribute("aria-expanded", "false");
-
-  const btnSB  = document.getElementById("sb-btn");
-
-  // aplica colapso salvo
-  try{
-    const persisted = localStorage.getItem(LS_KEY);
-    if(persisted === "0") sb.classList.remove("sidebar--collapsed");
-    if(persisted === "1") sb.classList.add("sidebar--collapsed");
-  }catch(_){}
-
-  // sync aria-expanded inicial
-  btnSB?.setAttribute("aria-expanded", String(!sb.classList.contains("sidebar--collapsed")));
-
-  const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
-
-  function toggleDesktop(){
-    sb.classList.toggle("sidebar--collapsed");
-    btnSB?.setAttribute("aria-expanded", String(!sb.classList.contains("sidebar--collapsed")));
-    try{ localStorage.setItem(LS_KEY, sb.classList.contains("sidebar--collapsed") ? "1" : "0"); }catch(_){}
-  }
-  function openMobile(){
-    if (!isMobile()) return;
-    openMobileFilters();
-  }
-  function closeMobile(){
-    if (!isMobile()) return;
-    closeMobileFilters();
-  }
-  function toggleMobile(){
-    if (!isMobile()) return;
-    const isOpen = document.body.classList.contains("filters-open");
-    if (isOpen) {
-      closeMobileFilters();
-    } else {
-      openMobileFilters();
-    }
-    btnTop?.setAttribute("aria-expanded", String(!isOpen));
-    btnSB?.setAttribute("aria-expanded", String(!isOpen));
-  }
-
-  // listeners
-  btnSB?.addEventListener("click", ()=> isMobile() ? toggleMobile() : toggleDesktop());
-  btnTop?.addEventListener("click", ()=> isMobile() ? toggleMobile() : toggleDesktop());
-  backdrop.addEventListener("click", ()=> { if (isMobile()) closeMobileFilters(); });
-  window.addEventListener("resize", ()=> { if(!isMobile()) closeMobileFilters(); });
-
-  // navegação “fake”
-  document.querySelectorAll(".sidebar__link").forEach(a=>{
-    a.addEventListener("click", (e)=>{
-      e.preventDefault();
-      document.querySelectorAll(".sidebar__link").forEach(x=>x.classList.remove("is-active"));
-      a.classList.add("is-active");
-      if(isMobile()) closeMobile();
-      const route = a.dataset.route;
-      if (route === "campanhas") {
-        if (state.activeView !== "campanhas") switchView("campanhas");
-      } else if (route === "pobj") {
-        if (state.activeView !== "cards") switchView("cards");
-      }
-    });
-  });
-}
-
-
 /* ===== Estado ===== */
 const state = {
   _dataset:null,
@@ -2349,7 +2200,7 @@ const state = {
   animations:{
     resumo:{
       kpiKey:null,
-      varRatios:new Map(),
+      metaFill:null,
     },
     campanhas:{
       team:new Map(),
@@ -2575,8 +2426,6 @@ function setMobileFiltersState(open) {
 
   const hamburger = document.querySelector(".topbar-hamburger");
   if (hamburger) hamburger.setAttribute("aria-expanded", open ? "true" : "false");
-  const sidebarToggle = document.getElementById("sb-btn");
-  if (sidebarToggle) sidebarToggle.setAttribute("aria-expanded", open ? "true" : "false");
 
   const backdrop = document.getElementById("filters-backdrop");
   if (backdrop) {
@@ -2631,6 +2480,78 @@ function setupMobileFilters(){
     });
     setupMobileFilters._escBound = true;
   }
+}
+
+let userMenuBound = false;
+function setupUserMenu(){
+  if (userMenuBound) return;
+  const trigger = document.getElementById("btn-user-menu");
+  const menu = document.getElementById("user-menu");
+  if (!trigger || !menu) return;
+
+  const subToggle = menu.querySelector('[data-submenu="manuais"]');
+  const subList = document.getElementById("user-submenu-manuais");
+
+  const closeSubmenu = () => {
+    if (!subToggle || !subList) return;
+    subToggle.setAttribute("aria-expanded", "false");
+    subList.hidden = true;
+    subList.classList.remove("is-open");
+  };
+
+  const closeMenu = () => {
+    menu.classList.remove("is-open");
+    menu.setAttribute("aria-hidden", "true");
+    trigger.setAttribute("aria-expanded", "false");
+    closeSubmenu();
+  };
+
+  const openMenu = () => {
+    menu.classList.add("is-open");
+    menu.setAttribute("aria-hidden", "false");
+    trigger.setAttribute("aria-expanded", "true");
+  };
+
+  trigger.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const isOpen = menu.classList.contains("is-open");
+    if (isOpen) closeMenu(); else openMenu();
+  });
+
+  if (subToggle && subList) {
+    subToggle.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const expanded = subToggle.getAttribute("aria-expanded") === "true";
+      const next = !expanded;
+      subToggle.setAttribute("aria-expanded", String(next));
+      if (next) {
+        subList.hidden = false;
+        subList.classList.add("is-open");
+      } else {
+        subList.classList.remove("is-open");
+        subList.hidden = true;
+      }
+    });
+  }
+
+  menu.addEventListener("click", (ev) => {
+    const item = ev.target?.closest?.(".userbox__menu-item");
+    if (!item || item.hasAttribute("data-submenu")) return;
+    closeMenu();
+  });
+
+  document.addEventListener("click", (ev) => {
+    if (!menu.contains(ev.target) && !trigger.contains(ev.target)) {
+      closeMenu();
+    }
+  });
+
+  window.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") closeMenu();
+  });
+
+  userMenuBound = true;
 }
 
 function initMobileCarousel(){
@@ -3937,8 +3858,8 @@ function renderResumoKPI(summary, context = {}) {
   const {
     visibleItemsHitCount = null,
     visiblePointsHit = null,
-    visibleVarAtingido = null,
-    visibleVarMeta = null
+    visibleMetaReal = null,
+    visibleMetaTotal = null
   } = context || {};
 
   let kpi = $("#kpi-summary");
@@ -3954,12 +3875,12 @@ function renderResumoKPI(summary, context = {}) {
   const pontosAtingidos = toNumber(summary.pontosAtingidos ?? visiblePointsHit ?? 0);
   const pontosTotal = toNumber(summary.pontosPossiveis ?? 0);
 
-  const varTotalBase = summary.varPossivel != null
-    ? toNumber(summary.varPossivel)
-    : (visibleVarMeta != null ? toNumber(visibleVarMeta) : Math.round((summary.pontosPossiveis || 0) * 1000));
-  const varAtingidoBase = summary.varAtingido != null
-    ? toNumber(summary.varAtingido)
-    : (visibleVarAtingido != null ? toNumber(visibleVarAtingido) : Math.round(varTotalBase * (summary.varPct || 0)));
+  const metaTotalBase = summary.metaTotal != null
+    ? toNumber(summary.metaTotal)
+    : (visibleMetaTotal != null ? toNumber(visibleMetaTotal) : 0);
+  const metaRealBase = summary.realizadoTotal != null
+    ? toNumber(summary.realizadoTotal)
+    : (visibleMetaReal != null ? toNumber(visibleMetaReal) : 0);
 
   const resumoAnim = state.animations?.resumo;
   const keyParts = [
@@ -3967,8 +3888,8 @@ function renderResumoKPI(summary, context = {}) {
     Math.round(indicadoresTotal || 0),
     Math.round(pontosAtingidos || 0),
     Math.round(pontosTotal || 0),
-    Math.round(varAtingidoBase || 0),
-    Math.round(varTotalBase || 0)
+    Math.round(metaRealBase || 0),
+    Math.round(metaTotalBase || 0)
   ];
   const nextResumoKey = keyParts.join('|');
   const shouldAnimateResumo = resumoAnim?.kpiKey !== nextResumoKey;
@@ -4013,16 +3934,63 @@ function renderResumoKPI(summary, context = {}) {
       </div>`;
   };
 
+  const metaPctRaw = metaTotalBase ? (metaRealBase / metaTotalBase) * 100 : 0;
+  const metaPctLabel = `${metaPctRaw.toFixed(1)}%`;
+  const metaFill = Math.max(0, Math.min(150, metaPctRaw));
+  const metaFillRounded = Number(metaFill.toFixed(2));
+  const metaClass = metaPctRaw < 50 ? "meta-progress--low" : (metaPctRaw < 100 ? "meta-progress--warn" : "meta-progress--ok");
+  const metaGoalLabel = formatBRLReadable(metaTotalBase);
+  const metaGoalFull = fmtBRL.format(Math.round(metaTotalBase));
+  const metaRealLabel = formatBRLReadable(metaRealBase);
+  const metaRealFull = fmtBRL.format(Math.round(metaRealBase));
+  const metaTipHTML = buildCardTooltipHTML({ metric: "valor", meta: metaTotalBase, realizado: metaRealBase });
+
   kpi.innerHTML = [
     buildCard("Indicadores", "ti ti-list-check", indicadoresAtingidos, indicadoresTotal, "int", visibleItemsHitCount),
     buildCard("Pontos", "ti ti-medal", pontosAtingidos, pontosTotal, "int", visiblePointsHit),
-    buildCard("Variável", "ti ti-cash", varAtingidoBase, varTotalBase, "brl", visibleVarAtingido, visibleVarMeta)
+    `
+    <div class="kpi-pill kpi-pill--meta">
+      <div class="kpi-strip__main">
+        <span class="kpi-icon"><i class="ti ti-target-arrow"></i></span>
+        <div class="kpi-strip__text">
+          <span class="kpi-strip__label" title="Meta geral">Meta geral</span>
+          <div class="kpi-strip__stats">
+            <span class="kpi-stat" title="Realizado: ${metaRealFull}">Realizado: <strong>${metaRealLabel}</strong></span>
+            <span class="kpi-stat" title="Meta: ${metaGoalFull}">Meta: <strong>${metaGoalLabel}</strong></span>
+          </div>
+        </div>
+        <button type="button" class="meta-progress__info" aria-label="Abrir detalhes da projeção">
+          <i class="ti ti-info-circle"></i>
+        </button>
+      </div>
+      <div class="meta-progress ${metaClass}" role="progressbar" aria-valuemin="0" aria-valuemax="150" aria-valuenow="${Math.round(Math.min(metaFill, 150))}" aria-valuetext="Atingimento da meta: ${metaPctLabel}">
+        <span class="meta-progress__goal" title="${metaGoalFull}">Meta: ${metaGoalLabel}</span>
+        <div class="meta-progress__track" style="--target:${metaFillRounded}%">
+          <span class="meta-progress__fill">
+            <span class="meta-progress__current" title="${metaRealFull}">${metaRealLabel} <span class="meta-progress__emoji" aria-hidden="true">🤑</span></span>
+          </span>
+        </div>
+        <strong class="meta-progress__pct" title="${metaPctLabel}">${metaPctLabel}</strong>
+      </div>
+      ${metaTipHTML}
+    </div>
+    `
   ].join("");
 
   triggerBarAnimation(kpi.querySelectorAll('.hitbar'), shouldAnimateResumo);
-  if (resumoAnim) resumoAnim.kpiKey = nextResumoKey;
-}
+  const metaTrack = kpi.querySelector('.meta-progress__track');
+  const prevMetaFill = resumoAnim?.metaFill;
+  const animateMeta = shouldAnimateDelta(prevMetaFill, metaFillRounded, 0.25);
+  if (metaTrack) triggerBarAnimation(metaTrack, animateMeta);
 
+  if (resumoAnim) {
+    resumoAnim.kpiKey = nextResumoKey;
+    resumoAnim.metaFill = metaFillRounded;
+  }
+
+  const metaCard = kpi.querySelector('.kpi-pill--meta');
+  if (metaCard) bindMetaCardTooltip(metaCard);
+}
 /* ===== Tooltip dos cards ===== */
 function buildCardTooltipHTML(item) {
   const start = state.period.start, end = state.period.end;
@@ -4051,7 +4019,8 @@ function buildCardTooltipHTML(item) {
   `;
 }
 function positionTip(badge, tip) {
-  const card = badge.closest(".prod-card"); if (!card) return;
+  const card = badge.closest(".prod-card") || badge.closest(".kpi-pill");
+  if (!card) return;
   const b = badge.getBoundingClientRect();
   const c = card.getBoundingClientRect();
   const tw = tip.offsetWidth, th = tip.offsetHeight;
@@ -4060,17 +4029,28 @@ function positionTip(badge, tip) {
   let top = (b.bottom - c.top) + 8;
   if (b.bottom + th + 12 > vh) top = (b.top - c.top) - th - 8;
 
-  let left = c.width - tw - 12;
-  const absLeft = c.left + left;
-  if (absLeft < 12) left = 12;
-  if (absLeft + tw > vw - 12) left = Math.max(12, vw - 12 - c.left - tw);
+  let left;
+  if (card.classList.contains("kpi-pill")) {
+    left = (b.left - c.left) + (b.width / 2) - (tw / 2);
+    const minLeft = 12;
+    const maxLeft = Math.max(minLeft, c.width - tw - 12);
+    left = Math.min(Math.max(left, minLeft), maxLeft);
+    const absLeft = c.left + left;
+    if (absLeft < 12) left = 12;
+    if (absLeft + tw > vw - 12) left = Math.max(12, vw - 12 - c.left - tw);
+  } else {
+    left = c.width - tw - 12;
+    const absLeft = c.left + left;
+    if (absLeft < 12) left = 12;
+    if (absLeft + tw > vw - 12) left = Math.max(12, vw - 12 - c.left - tw);
+  }
 
   tip.style.top = `${top}px`;
   tip.style.left = `${left}px`;
 }
 function closeAllTips(){
   $$(".kpi-tip.is-open").forEach(t=>{ t.classList.remove("is-open"); t.style.left=""; t.style.top=""; });
-  $$(".prod-card.is-tip-open").forEach(c=>c.classList.remove("is-tip-open"));
+  $$(".prod-card.is-tip-open, .kpi-pill.is-tip-open").forEach(c=>c.classList.remove("is-tip-open"));
 }
 
 /* listeners globais para tooltips (uma vez) */
@@ -4079,8 +4059,9 @@ function wireTipGlobalsOnce(){
   if(__tipGlobalsWired) return;
   __tipGlobalsWired = true;
   const close = () => closeAllTips();
-  document.addEventListener("click", (e)=>{ if(!e.target.closest(".prod-card")) close(); });
-  document.addEventListener("touchstart", (e)=>{ if(!e.target.closest(".prod-card")) close(); }, {passive:true});
+  const withinCard = (el) => el.closest?.(".prod-card") || el.closest?.(".kpi-pill");
+  document.addEventListener("click", (e)=>{ if(!withinCard(e.target)) close(); });
+  document.addEventListener("touchstart", (e)=>{ if(!withinCard(e.target)) close(); }, {passive:true});
   document.addEventListener("keydown", (e)=>{ if(e.key==="Escape") close(); });
   document.addEventListener("scroll", close, { capture:true, passive:true });
   window.addEventListener("resize", close);
@@ -4107,6 +4088,38 @@ function bindBadgeTooltip(card){
   card.addEventListener("mouseleave", close);
   badge.addEventListener("click",(e)=>{ e.stopPropagation(); if(tip.classList.contains("is-open")) close(); else open(e); });
   badge.addEventListener("touchstart",(e)=>{ e.stopPropagation(); if(tip.classList.contains("is-open")) close(); else open(e); }, {passive:true});
+
+  wireTipGlobalsOnce();
+}
+
+function bindMetaCardTooltip(card){
+  const tip = card.querySelector(".kpi-tip");
+  const trigger = card.querySelector(".meta-progress__info");
+  if (!tip || !trigger) return;
+
+  const open = () => {
+    closeAllTips();
+    tip.classList.add("is-open");
+    card.classList.add("is-tip-open");
+    positionTip(trigger, tip);
+  };
+  const close = () => {
+    tip.classList.remove("is-open");
+    card.classList.remove("is-tip-open");
+    tip.style.left = "";
+    tip.style.top = "";
+  };
+
+  trigger.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    if (tip.classList.contains("is-open")) close(); else open();
+  });
+
+  const supportsHover = () => window.matchMedia && window.matchMedia("(hover:hover)").matches;
+  trigger.addEventListener("mouseenter", () => { if (supportsHover()) open(); });
+  trigger.addEventListener("mouseleave", () => { if (supportsHover()) close(); });
+  card.addEventListener("mouseleave", () => { if (supportsHover()) close(); });
+  trigger.addEventListener("keydown", (ev) => { if (ev.key === "Escape") close(); });
 
   wireTipGlobalsOnce();
 }
@@ -4227,6 +4240,8 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
   const indicadoresAtingidos = allItems.filter(item => item.atingido).length;
   const pontosPossiveis = allItems.reduce((acc, item) => acc + (item.peso || 0), 0);
   const pontosAtingidos = allItems.filter(item => item.atingido).reduce((acc, item) => acc + (item.peso || 0), 0);
+  const metaTotal = allItems.reduce((acc, item) => acc + (item.meta || 0), 0);
+  const realizadoTotal = allItems.reduce((acc, item) => acc + (item.realizado || 0), 0);
   const varPossivel = allItems.reduce((acc, item) => acc + (item.variavelMeta || 0), 0);
   const varAtingido = allItems.reduce((acc, item) => acc + (item.variavelReal || 0), 0);
 
@@ -4237,6 +4252,9 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
     pontosPossiveis,
     pontosAtingidos,
     pontosPct: pontosPossiveis ? pontosAtingidos / pontosPossiveis : 0,
+    metaTotal,
+    realizadoTotal,
+    metaPct: metaTotal ? realizadoTotal / metaTotal : 0,
     varPossivel,
     varAtingido,
     varPct: varPossivel ? varAtingido / varPossivel : 0
@@ -4266,8 +4284,6 @@ function renderFamilias(sections, summary){
   host.style.gap = "0";
 
   const resumoAnim = state.animations?.resumo;
-  const prevVarRatios = resumoAnim?.varRatios instanceof Map ? resumoAnim.varRatios : new Map();
-  const nextVarRatios = new Map();
 
   const status = getStatusFilter();
   const secaoFilterId = $("#f-secao")?.value || "Todas";
@@ -4276,9 +4292,8 @@ function renderFamilias(sections, summary){
 
   let atingidosVisiveis = 0;
   let pontosAtingidosVisiveis = 0;
-  let varRealVisiveis = 0;
-  let varMetaVisiveis = 0;
-  let hasVisibleVar = false;
+  let metaVisiveis = 0;
+  let realizadoVisiveis = 0;
 
   const kpiHolder = document.createElement("div");
   kpiHolder.id = "kpi-summary";
@@ -4308,17 +4323,17 @@ function renderFamilias(sections, summary){
 
     const sectionTotalPoints = sec.items.reduce((acc,i)=> acc + (i.peso||0), 0);
     const sectionPointsHit   = sec.items.filter(i=> i.atingido).reduce((acc,i)=> acc + (i.peso||0), 0);
-    const sectionVarMeta     = sec.items.reduce((acc,i)=> acc + (i.variavelMeta || 0), 0);
-    const sectionVarReal     = sec.items.reduce((acc,i)=> acc + (i.variavelReal || 0), 0);
+    const sectionMetaTotal   = sec.items.reduce((acc,i)=> acc + (i.meta || 0), 0);
+    const sectionRealTotal   = sec.items.reduce((acc,i)=> acc + (i.realizado || 0), 0);
 
     const sectionPointsHitDisp = formatIntReadable(sectionPointsHit);
     const sectionPointsTotalDisp = formatIntReadable(sectionTotalPoints);
     const sectionPointsHitFull = fmtINT.format(Math.round(sectionPointsHit));
     const sectionPointsTotalFull = fmtINT.format(Math.round(sectionTotalPoints));
-    const sectionVarRealDisp = formatBRLReadable(sectionVarReal);
-    const sectionVarMetaDisp = formatBRLReadable(sectionVarMeta);
-    const sectionVarRealFull = fmtBRL.format(Math.round(sectionVarReal));
-    const sectionVarMetaFull = fmtBRL.format(Math.round(sectionVarMeta));
+    const sectionMetaDisp = formatBRLReadable(sectionMetaTotal);
+    const sectionRealDisp = formatBRLReadable(sectionRealTotal);
+    const sectionMetaFull = fmtBRL.format(Math.round(sectionMetaTotal));
+    const sectionRealFull = fmtBRL.format(Math.round(sectionRealTotal));
 
     const sectionEl = document.createElement("section");
     sectionEl.className = "fam-section";
@@ -4329,7 +4344,7 @@ function renderFamilias(sections, summary){
           <span>${sec.label}</span>
           <small class="fam-section__meta">
             <span class="fam-section__meta-item" title="Pontos: ${sectionPointsHitFull} / ${sectionPointsTotalFull}">Pontos: ${sectionPointsHitDisp} / ${sectionPointsTotalDisp}</span>
-            <span class="fam-section__meta-item" title="Variável: ${sectionVarRealFull} / ${sectionVarMetaFull}">Variável: ${sectionVarRealDisp} / ${sectionVarMetaDisp}</span>
+            <span class="fam-section__meta-item" title="Meta: ${sectionRealFull} / ${sectionMetaFull}">Meta: ${sectionRealDisp} / ${sectionMetaDisp}</span>
           </small>
         </div>
       </header>
@@ -4338,25 +4353,12 @@ function renderFamilias(sections, summary){
 
     itemsFiltered.forEach(f=>{
       if (f.atingido){ atingidosVisiveis += 1; pontosAtingidosVisiveis += (f.peso||0); }
+      metaVisiveis += Number(f.meta) || 0;
+      realizadoVisiveis += Number(f.realizado) || 0;
       const pct = Math.max(0, Math.min(100, f.ating*100)); /* clamp 0..100 */
       const badgeClass = pct < 50 ? "badge--low" : (pct < 100 ? "badge--warn" : "badge--ok");
       const badgeTxt   = pct >= 100 ? `${Math.round(pct)}%` : `${pct.toFixed(1)}%`;
       const narrowStyle= badgeTxt.length >= 5 ? 'style="font-size:11px"' : '';
-
-      const variavelMeta = f.variavelMeta || 0;
-      const variavelReal = f.variavelReal || 0;
-      hasVisibleVar = true;
-      varMetaVisiveis += variavelMeta;
-      varRealVisiveis += variavelReal;
-      const varRatio = variavelMeta ? (variavelReal / variavelMeta) : (f.atingVariavel ?? f.ating ?? 0);
-      const varPct = Math.max(0, varRatio * 100);
-      const varPctLabel = `${varPct.toFixed(1)}%`;
-      const varFillPct = Math.max(0, Math.min(100, varPct));
-      const varFillRounded = Number(varFillPct.toFixed(2));
-      const varTrackClass = varPct < 50 ? "var--low" : (varPct < 100 ? "var--warn" : "var--ok");
-      const varRealCompact = formatCompactBRL(variavelReal);
-      const varMetaCompact = formatCompactBRL(variavelMeta);
-      const varAccessible = `${varPctLabel} (${fmtBRL.format(Math.round(variavelReal))} de ${fmtBRL.format(Math.round(variavelMeta))})`;
 
       const realizadoTxt = formatByMetric(f.metric, f.realizado);
       const metaTxt      = formatByMetric(f.metric, f.meta);
@@ -4382,44 +4384,20 @@ function renderFamilias(sections, summary){
             <div class="kv"><small>Meta</small><strong class="has-ellipsis" title="${metaFull}">${metaTxt}</strong></div>
           </div>
 
-          <div class="prod-card__var">
-            <div class="prod-card__var-head">
-              <small>Remuneração variável</small>
-              <strong title="${varPctLabel}">${varPctLabel}</strong>
-            </div>
-            <div class="prod-card__var-track ${varTrackClass}" role="progressbar" aria-valuemin="0" aria-valuemax="150" aria-valuenow="${Math.round(Math.min(varPct,150))}" aria-valuetext="${varAccessible}" aria-label="Atingimento da remuneração variável">
-              <span class="prod-card__var-fill" style="--target:${varFillRounded}%"></span>
-              <span class="prod-card__var-label prod-card__var-label--current" title="${fmtBRL.format(Math.round(variavelReal))}">${varRealCompact}</span>
-              <span class="prod-card__var-label prod-card__var-label--target" title="${fmtBRL.format(Math.round(variavelMeta))}">${varMetaCompact}</span>
-            </div>
-          </div>
-
           <div class="prod-card__foot">Atualizado em ${f.ultimaAtualizacao}</div>
           ${buildCardTooltipHTML(f)}
         </article>
       `);
-      nextVarRatios.set(f.id, varFillRounded);
-      const cardEl = grid.lastElementChild;
-      if (cardEl) {
-        const trackEl = cardEl.querySelector(".prod-card__var-track");
-        if (trackEl) {
-          const prevRatio = prevVarRatios.get(f.id);
-          const animateVar = shouldAnimateDelta(prevRatio, varFillRounded, 0.25);
-          triggerBarAnimation(trackEl, animateVar);
-        }
-      }
     });
 
     host.appendChild(sectionEl);
   });
 
-  if (resumoAnim) resumoAnim.varRatios = nextVarRatios;
-
   renderResumoKPI(summary, {
     visibleItemsHitCount: atingidosVisiveis,
     visiblePointsHit: pontosAtingidosVisiveis,
-    visibleVarAtingido: hasVisibleVar ? varRealVisiveis : null,
-    visibleVarMeta: hasVisibleVar ? varMetaVisiveis : null
+    visibleMetaReal: realizadoVisiveis,
+    visibleMetaTotal: metaVisiveis
   });
 
   $$(".prod-card").forEach(card=>{
@@ -6591,10 +6569,10 @@ async function loadCSVAuto(url) {
 
 /* ===== Boot ===== */
 (async function(){
-  ensureSidebar();
   ensureLoader();
   enableSimpleTooltip();
   injectStyles();
+  setupUserMenu();
   await loadBaseData();
   initCombos();
   bindEvents();
