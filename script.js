@@ -2244,6 +2244,50 @@ function shouldAnimateDelta(prev, next, tolerance = 0.1){
   return Math.abs(prev - next) > tolerance;
 }
 
+let __varTrackResizeBound = false;
+function positionVarTrackLabel(trackEl){
+  if (!trackEl) return;
+  const label = trackEl.querySelector('.prod-card__var-label');
+  if (!label) return;
+  const trackWidth = trackEl.clientWidth;
+  if (!trackWidth) return;
+
+  const ratio = Number(trackEl.dataset?.ratio);
+  const safeRatio = Number.isFinite(ratio) ? Math.max(0, Math.min(100, ratio)) : 0;
+  const padding = 6;
+  const maxWidth = Math.max(trackWidth - (padding * 2), 0);
+  label.style.maxWidth = `${maxWidth}px`;
+
+  const labelWidth = label.offsetWidth;
+  const tip = (safeRatio / 100) * trackWidth;
+  const maxLeft = trackWidth - padding;
+  const minLeft = Math.min(maxLeft, labelWidth + padding);
+  let left = Math.min(tip, maxLeft);
+  if (left < minLeft) left = minLeft;
+
+  label.style.left = `${left}px`;
+}
+
+function layoutProdVarTracks(){
+  $$('.prod-card__var-track').forEach(track => {
+    if (!track?.offsetParent) return;
+    positionVarTrackLabel(track);
+  });
+}
+
+function ensureVarLabelResizeListener(){
+  if (typeof window === 'undefined') return;
+  if (__varTrackResizeBound) return;
+  __varTrackResizeBound = true;
+  window.addEventListener('resize', () => {
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(layoutProdVarTracks);
+    } else {
+      layoutProdVarTracks();
+    }
+  });
+}
+
 const contractSuggestState = { items: [], highlight: -1, open: false, term: "", pending: null };
 let contractSuggestDocBound = false;
 let contractSuggestPanelBound = false;
@@ -3907,7 +3951,7 @@ function renderResumoKPI(summary, context = {}) {
     return title;
   };
 
-  const buildCard = (titulo, iconClass, atingidos, total, fmtType, visibleAting = null, visibleTotal = null) => {
+  const buildCard = (titulo, iconClass, atingidos, total, fmtType, visibleAting = null, visibleTotal = null, options = {}) => {
     const pctRaw = total ? (atingidos / total) * 100 : 0;
     const pct100 = Math.max(0, Math.min(100, pctRaw));
     const hbClass = hitbarClass(pctRaw);
@@ -3915,6 +3959,9 @@ function renderResumoKPI(summary, context = {}) {
     const fillTarget = pct100.toFixed(2);
     const atgTitle = buildTitle("Atingidos", fmtType, atingidos, visibleAting);
     const totTitle = buildTitle("Total", fmtType, total, visibleTotal);
+    const hitbarClasses = ["hitbar", hbClass];
+    if (options && options.emoji) hitbarClasses.push("hitbar--has-emoji");
+
     return `
       <div class="kpi-pill">
         <div class="kpi-strip__main">
@@ -3927,7 +3974,7 @@ function renderResumoKPI(summary, context = {}) {
             </div>
           </div>
         </div>
-        <div class="hitbar ${hbClass}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct100.toFixed(1)}" aria-valuetext="${titulo}: ${pctLabel}">
+        <div class="${hitbarClasses.join(' ')}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct100.toFixed(1)}" aria-valuetext="${titulo}: ${pctLabel}">
           <span class="hitbar__track"><span class="hitbar__fill" style="--target:${fillTarget}%"></span></span>
           <strong title="${pctLabel}">${pctLabel}</strong>
         </div>
@@ -3937,7 +3984,7 @@ function renderResumoKPI(summary, context = {}) {
   kpi.innerHTML = [
     buildCard("Indicadores", "ti ti-list-check", indicadoresAtingidos, indicadoresTotal, "int", visibleItemsHitCount),
     buildCard("Pontos", "ti ti-medal", pontosAtingidos, pontosTotal, "int", visiblePointsHit),
-    buildCard("Variável", "ti ti-cash", varRealBase, varTotalBase, "brl", visibleVarAtingido, visibleVarMeta)
+    buildCard("Variável", "ti ti-cash", varRealBase, varTotalBase, "brl", visibleVarAtingido, visibleVarMeta, { emoji: true })
   ].join("");
 
   triggerBarAnimation(kpi.querySelectorAll('.hitbar'), shouldAnimateResumo);
@@ -3948,24 +3995,29 @@ function buildCardTooltipHTML(item) {
   const start = state.period.start, end = state.period.end;
   const diasTotais     = businessDaysBetweenInclusive(start, end);
   const diasRestantes  = businessDaysRemainingFromToday(start, end);
-  const diasDecorridos = Math.max(0, diasTotais - diasRestantes);
+  const diasDecorridos = Math.max(0, Math.min(diasTotais, diasTotais - diasRestantes));
 
   let meta = item.meta, realizado = item.realizado;
   if (item.metric === "perc") meta = 100;
   const faltaTotal       = Math.max(0, meta - realizado);
   const necessarioPorDia = diasRestantes > 0 ? (faltaTotal / diasRestantes) : 0;
   const mediaDiaria      = diasDecorridos > 0 ? (realizado / diasDecorridos) : 0;
-  const forecast         = mediaDiaria * diasTotais;
+  const forecast         = mediaDiaria * (diasTotais || 0);
+
+  const necessarioPorDiaDisp = diasRestantes > 0 ? fmt(item.metric, necessarioPorDia) : "—";
+  const mediaDiariaDisp      = diasDecorridos > 0 ? fmt(item.metric, mediaDiaria) : "—";
 
   const fmt = (m,v)=> m==="perc" ? `${v.toFixed(1)}%` : (m==="qtd" ? fmtINT.format(Math.round(v)) : fmtBRL.format(Math.round(v)));
 
   return `
     <div class="kpi-tip" role="dialog" aria-label="Detalhes do indicador">
       <h5>Projeção e metas</h5>
+      <div class="row"><span>Dias úteis no período</span><span>${fmtINT.format(diasTotais)}</span></div>
+      <div class="row"><span>Dias úteis trabalhados</span><span>${fmtINT.format(diasDecorridos)}</span></div>
       <div class="row"><span>Dias úteis que faltam</span><span>${fmtINT.format(diasRestantes)}</span></div>
-      <div class="row"><span>Falta para meta</span><span>${fmt(item.metric, faltaTotal)}</span></div>
-      <div class="row"><span>Necessário por dia</span><span>${fmt(item.metric, necessarioPorDia)}</span></div>
-      <div class="row"><span>Média diária atual</span><span>${fmt(item.metric, mediaDiaria)}</span></div>
+      <div class="row"><span>Falta para a meta</span><span>${fmt(item.metric, faltaTotal)}</span></div>
+      <div class="row"><span>Meta diária necessária</span><span>${necessarioPorDiaDisp}</span></div>
+      <div class="row"><span>Média diária atual</span><span>${mediaDiariaDisp}</span></div>
       <div class="row"><span>Forecast (ritmo atual)</span><span>${fmt(item.metric, forecast)}</span></div>
     </div>
   `;
@@ -4285,7 +4337,7 @@ function renderFamilias(sections, summary){
       const metaRatio = f.meta ? (f.realizado / f.meta) : 0;
       const metaPct = Math.max(0, metaRatio * 100);
       const metaPctLabel = `${metaPct.toFixed(1)}%`;
-      const metaFill = Math.max(0, Math.min(130, metaPct));
+      const metaFill = Math.max(0, Math.min(100, metaPct));
       const metaFillRounded = Number(metaFill.toFixed(2));
       const metaTrackClass = metaPct < 50 ? "var--low" : (metaPct < 100 ? "var--warn" : "var--ok");
       const metaAccessible = `${metaPctLabel} (${realizadoFull} de ${metaFull})`;
@@ -4316,10 +4368,9 @@ function renderFamilias(sections, summary){
             </div>
             <div class="prod-card__var-body">
               <span class="prod-card__var-goal" title="${metaFull}">Meta: ${metaTxt}</span>
-              <div class="prod-card__var-track ${metaTrackClass}" role="progressbar" aria-valuemin="0" aria-valuemax="150" aria-valuenow="${Math.round(Math.min(metaPct, 150))}" aria-valuetext="${metaAccessible}">
-                <span class="prod-card__var-fill" style="--target:${metaFillRounded}%">
-                  <span class="prod-card__var-label" title="${realizadoFull}">${realizadoTxt} <span class="prod-card__var-emoji" aria-hidden="true">🤑</span></span>
-                </span>
+              <div class="prod-card__var-track ${metaTrackClass}" data-ratio="${metaFillRounded}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(metaFillRounded)}" aria-valuetext="${metaAccessible}">
+                <span class="prod-card__var-fill" style="--target:${metaFillRounded}%"></span>
+                <span class="prod-card__var-label" title="${realizadoFull}">${realizadoTxt}</span>
               </div>
             </div>
           </div>
@@ -4343,6 +4394,13 @@ function renderFamilias(sections, summary){
 
     host.appendChild(sectionEl);
   });
+
+  if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+    window.requestAnimationFrame(layoutProdVarTracks);
+  } else {
+    layoutProdVarTracks();
+  }
+  ensureVarLabelResizeListener();
 
   if (resumoAnim) resumoAnim.varRatios = nextVarRatios;
 
