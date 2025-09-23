@@ -545,16 +545,6 @@ select.input{
 }
 .hitbar__fill{ position:absolute; left:0; top:0; bottom:0; width:var(--target, 0%); background:#bbf7d0; transform-origin:left center; transform:scaleX(1); will-change:transform; }
 .hitbar.is-animating .hitbar__fill{ animation:bar-fill-grow var(--bar-anim-duration, .7s) cubic-bezier(0.25,0.9,0.3,1.2) forwards; }
-.hitbar--has-emoji .hitbar__track{ overflow:visible; }
-.hitbar--has-emoji .hitbar__fill{ overflow:visible; }
-.hitbar--has-emoji .hitbar__fill::after{
-  content:"🤑";
-  position:absolute;
-  top:50%;
-  right:-10px;
-  transform:translateY(-50%);
-  font-size:14px;
-}
 .hitbar--low  .hitbar__fill{ background:#fecaca; }
 .hitbar--warn .hitbar__fill{ background:#fed7aa; }
 .hitbar strong{

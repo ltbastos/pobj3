@@ -3951,7 +3951,7 @@ function renderResumoKPI(summary, context = {}) {
     return title;
   };
 
-  const buildCard = (titulo, iconClass, atingidos, total, fmtType, visibleAting = null, visibleTotal = null, options = {}) => {
+  const buildCard = (titulo, iconClass, atingidos, total, fmtType, visibleAting = null, visibleTotal = null) => {
     const pctRaw = total ? (atingidos / total) * 100 : 0;
     const pct100 = Math.max(0, Math.min(100, pctRaw));
     const hbClass = hitbarClass(pctRaw);
@@ -3960,7 +3960,6 @@ function renderResumoKPI(summary, context = {}) {
     const atgTitle = buildTitle("Atingidos", fmtType, atingidos, visibleAting);
     const totTitle = buildTitle("Total", fmtType, total, visibleTotal);
     const hitbarClasses = ["hitbar", hbClass];
-    if (options && options.emoji) hitbarClasses.push("hitbar--has-emoji");
 
     return `
       <div class="kpi-pill">
@@ -3984,7 +3983,7 @@ function renderResumoKPI(summary, context = {}) {
   kpi.innerHTML = [
     buildCard("Indicadores", "ti ti-list-check", indicadoresAtingidos, indicadoresTotal, "int", visibleItemsHitCount),
     buildCard("Pontos", "ti ti-medal", pontosAtingidos, pontosTotal, "int", visiblePointsHit),
-    buildCard("Variável", "ti ti-cash", varRealBase, varTotalBase, "brl", visibleVarAtingido, visibleVarMeta, { emoji: true })
+    buildCard("Variável", "ti ti-cash", varRealBase, varTotalBase, "brl", visibleVarAtingido, visibleVarMeta)
   ].join("");
 
   triggerBarAnimation(kpi.querySelectorAll('.hitbar'), shouldAnimateResumo);
@@ -4364,8 +4363,8 @@ function renderFamilias(sections, summary){
           </div>
 
           <div class="prod-card__kpis">
-            <div class="kv"><small>Realizado</small><strong class="has-ellipsis" title="${realizadoFull}">${realizadoTxt}</strong></div>
             <div class="kv"><small>Meta</small><strong class="has-ellipsis" title="${metaFull}">${metaTxt}</strong></div>
+            <div class="kv"><small>Realizado</small><strong class="has-ellipsis" title="${realizadoFull}">${realizadoTxt}</strong></div>
           </div>
 
           <div class="prod-card__var">
@@ -4374,7 +4373,7 @@ function renderFamilias(sections, summary){
               <strong title="${metaPctLabel}">${metaPctLabel}</strong>
             </div>
             <div class="prod-card__var-body">
-              <span class="prod-card__var-goal" title="${metaFull}">Meta: ${metaTxt}</span>
+              <span class="prod-card__var-goal" title="${metaFull}">${metaTxt}</span>
               <div class="prod-card__var-track ${metaTrackClass}" data-ratio="${metaFillRounded}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(metaFillRounded)}" aria-valuetext="${metaAccessible}">
                 <span class="prod-card__var-fill" style="--target:${metaFillRounded}%"></span>
                 <span class="prod-card__var-label" title="${realizadoFull}">${realizadoTxt}</span>
