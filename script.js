@@ -25,6 +25,10 @@ const fmtONE = new Intl.NumberFormat("pt-BR", { minimumFractionDigits:1, maximum
 const EXEC_BAR_FILL = "#93c5fd";
 const EXEC_BAR_STROKE = "#60a5fa";
 const EXEC_META_COLOR = "#fca5a5";
+const EXEC_FAMILY_PALETTE = [
+  "#2563eb", "#9333ea", "#0ea5e9", "#16a34a", "#f97316",
+  "#ef4444", "#14b8a6", "#d946ef", "#f59e0b", "#22d3ee"
+];
 const setActiveTab = (viewId = "cards") => {
   const tabs = Array.from($$(".tab"));
   const target = tabs.some(tab => (tab.dataset.view || "") === viewId) ? viewId : "cards";
@@ -1204,6 +1208,41 @@ const SECTION_BY_ID = new Map(CARD_SECTIONS_DEF.map(sec => [sec.id, sec]));
 function getSectionLabel(id) {
   if (!id) return "";
   return SECTION_BY_ID.get(id)?.label || id;
+}
+
+function resolveSectionMetaFromRow(row) {
+  if (!row) return { id: "", label: "" };
+  const prodMeta = row.produtoId ? PRODUTO_TO_FAMILIA.get(row.produtoId) : null;
+  const fromRow = row.secaoId || row.secao || row.familiaSecaoId;
+  const fromProd = prodMeta?.secaoId || PRODUCT_INDEX.get(row.produtoId)?.sectionId || "";
+  const sectionId = fromRow || fromProd || "";
+  const label = row.secaoNome
+    || prodMeta?.secaoNome
+    || getSectionLabel(sectionId)
+    || sectionId;
+  return { id: sectionId, label: label || sectionId };
+}
+
+function resolveFamilyMetaFromRow(row) {
+  if (!row) return { id: "", label: "" };
+  const prodMeta = row.produtoId ? PRODUTO_TO_FAMILIA.get(row.produtoId) : null;
+  let familiaId = row.familiaId || row.familia || prodMeta?.id || "";
+  let familiaLabel = row.familiaNome || prodMeta?.nome || "";
+
+  if (familiaId && !familiaLabel) {
+    const famRow = FAMILIA_BY_ID.get(familiaId);
+    if (famRow?.nome) familiaLabel = famRow.nome;
+  }
+
+  if (!familiaId) {
+    const sectionMeta = resolveSectionMetaFromRow(row);
+    familiaId = sectionMeta.id || "";
+    familiaLabel = sectionMeta.label || familiaId;
+  }
+
+  if (!familiaLabel) familiaLabel = familiaId;
+
+  return { id: familiaId, label: familiaLabel };
 }
 
 /* Índice produto → seção/meta */
@@ -3958,15 +3997,19 @@ function renderResumoKPI(summary, context = {}) {
     return title;
   };
 
-  const buildCard = (titulo, iconClass, atingidos, total, fmtType, visibleAting = null, visibleTotal = null) => {
+  const buildCard = (titulo, iconClass, atingidos, total, fmtType, visibleAting = null, visibleTotal = null, options = {}) => {
     const pctRaw = total ? (atingidos / total) * 100 : 0;
     const pct100 = Math.max(0, Math.min(100, pctRaw));
     const hbClass = hitbarClass(pctRaw);
     const pctLabel = `${pctRaw.toFixed(1)}%`;
     const fillTarget = pct100.toFixed(2);
+    const thumbPos = Math.max(0, Math.min(100, pctRaw));
     const atgTitle = buildTitle("Atingidos", fmtType, atingidos, visibleAting);
     const totTitle = buildTitle("Total", fmtType, total, visibleTotal);
     const hitbarClasses = ["hitbar", hbClass];
+    if (options.emoji) hitbarClasses.push("hitbar--emoji");
+    const trackStyle = `style="--target:${fillTarget}%; --thumb:${thumbPos.toFixed(2)}"`;
+    const emojiHTML = options.emoji ? `<span class="hitbar__emoji" aria-hidden="true">${options.emoji}</span>` : "";
 
     return `
       <div class="kpi-pill">
@@ -3981,8 +4024,10 @@ function renderResumoKPI(summary, context = {}) {
           </div>
         </div>
         <div class="${hitbarClasses.join(' ')}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct100.toFixed(1)}" aria-valuetext="${titulo}: ${pctLabel}">
-          <span class="hitbar__track"><span class="hitbar__fill" style="--target:${fillTarget}%"></span></span>
-          <strong title="${pctLabel}">${pctLabel}</strong>
+          <span class="hitbar__track" ${trackStyle}>
+            <span class="hitbar__fill"></span>
+            <span class="hitbar__thumb">${emojiHTML}<span class="hitbar__pct">${pctLabel}</span></span>
+          </span>
         </div>
       </div>`;
   };
@@ -3990,7 +4035,7 @@ function renderResumoKPI(summary, context = {}) {
   kpi.innerHTML = [
     buildCard("Indicadores", "ti ti-list-check", indicadoresAtingidos, indicadoresTotal, "int", visibleItemsHitCount),
     buildCard("Pontos", "ti ti-medal", pontosAtingidos, pontosTotal, "int", visiblePointsHit),
-    buildCard("Variável", "ti ti-cash", varRealBase, varTotalBase, "brl", visibleVarAtingido, visibleVarMeta)
+    buildCard("Variável", "ti ti-cash", varRealBase, varTotalBase, "brl", visibleVarAtingido, visibleVarMeta, { emoji: "🤑" })
   ].join("");
 
   triggerBarAnimation(kpi.querySelectorAll('.hitbar'), shouldAnimateResumo);
@@ -4381,13 +4426,13 @@ function renderFamilias(sections, summary){
           <div class="prod-card__var">
             <div class="prod-card__var-head">
               <small>Atingimento de pontos</small>
-              <strong title="${pontosPctLabel}">${pontosPctLabel}</strong>
+              <strong title="Atingido: ${pontosRealTxt} · Meta: ${pontosMetaTxt}">${pontosPctLabel}</strong>
             </div>
             <div class="prod-card__var-body">
               <span class="prod-card__var-goal" title="${pontosMetaTxt}">${pontosMetaTxt}</span>
               <div class="prod-card__var-track ${pontosTrackClass}" data-ratio="${pontosFillRounded}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pontosFillRounded)}" aria-valuetext="${pontosAccessible}">
                 <span class="prod-card__var-fill" style="--target:${pontosFillRounded}%"></span>
-                <span class="prod-card__var-label" title="${pontosRealTxt}">${pontosRealTxt}</span>
+                <span class="prod-card__var-label" title="Atingido: ${pontosRealTxt} · ${pontosPctLabel}">${pontosPctLabel}</span>
               </div>
             </div>
           </div>
@@ -4522,11 +4567,13 @@ function createExecutiveView(){
   if (!host) return;
 
   if (!state.exec) {
-    state.exec = { rankMode: "top", statusMode: "quase", chartMode: "diario" };
+    state.exec = { chartMode: "diario", heatmapMode: "secoes", familyColors: new Map() };
   }
-  state.exec.rankMode  = state.exec.rankMode  || "top";
-  state.exec.statusMode= state.exec.statusMode|| "quase";
   state.exec.chartMode = state.exec.chartMode || "diario";
+  state.exec.heatmapMode = state.exec.heatmapMode || "secoes";
+  if (!(state.exec.familyColors instanceof Map)) {
+    state.exec.familyColors = new Map();
+  }
 
   const syncSegmented = (containerSelector, dataAttr, stateKey, fallback) => {
     const container = host.querySelector(containerSelector);
@@ -4548,9 +4595,8 @@ function createExecutiveView(){
     });
   };
 
-  syncSegmented('#exec-rank-panel', 'rk', 'rankMode', 'top');
-  syncSegmented('#exec-status-panel', 'st', 'statusMode', 'quase');
   syncSegmented('#exec-chart-toggle', 'chart', 'chartMode', 'diario');
+  syncSegmented('#exec-heatmap-toggle', 'hm', 'heatmapMode', 'secoes');
 
   if (!host.dataset.execFiltersBound) {
     const execSel = ["#f-segmento","#f-diretoria","#f-gerencia","#f-agencia","#f-ggestao","#f-gerente","#f-familia","#f-produto","#f-status-kpi"];
@@ -4565,25 +4611,71 @@ function createExecutiveView(){
 }
 
 /* Helpers de agregação para a Visão Executiva */
+function resolveExecValueForKey(row, key, fallback = "—") {
+  if (!row) return fallback;
+  switch (key) {
+    case "gerenciaRegional": return row.gerenciaRegional || row.diretoria || fallback;
+    case "agencia":         return row.agencia || row.agenciaCodigo || fallback;
+    case "gerenteGestao":   return row.gerenteGestao || fallback;
+    case "gerente":         return row.gerente || fallback;
+    case "prodOrSub":       return row.prodOrSub || row.produtoId || row.produto || fallback;
+    case "diretoria":       return row.diretoria || fallback;
+    default:                 return row[key] || fallback;
+  }
+}
+
+function resolveExecLabelForKey(row, key, fallback = "") {
+  if (!row) return fallback;
+  const candidates = {
+    gerenciaRegional: ["gerenciaNome", "regional", "gerenciaRegional"],
+    agencia: ["agenciaNome", "agencia", "agenciaCodigo"],
+    gerenteGestao: ["gerenteGestaoNome", "gerenteGestao"],
+    gerente: ["gerenteNome", "gerente"],
+    prodOrSub: ["produtoNome", "prodOrSub", "produto", "produtoId"],
+    diretoria: ["diretoriaNome", "diretoria"],
+    __total__: ["Consolidado"]
+  };
+  const fields = candidates[key] || [key];
+  for (const field of fields) {
+    if (field === "Consolidado") return "Consolidado";
+    const value = row[field];
+    if (value) return value;
+  }
+  return fallback || resolveExecValueForKey(row, key, "") || "";
+}
+
 function execAggBy(rows, key){
   const map = new Map();
   rows.forEach(r=>{
-    const k = key === "__total__" ? "__total__" : (r[key] || "—");
-    const o = map.get(k) || { key:k, real_mens:0, meta_mens:0, real_acum:0, meta_acum:0, qtd:0 };
-    o.real_mens += (r.real_mens ?? r.realizado ?? 0);
-    o.meta_mens += (r.meta_mens ?? r.meta ?? 0);
-    o.real_acum += (r.real_acum ?? r.realizado ?? 0);
-    o.meta_acum += (r.meta_acum ?? r.meta ?? 0);
-    o.qtd       += (r.qtd ?? 0);
-    map.set(k,o);
+    const groupKey = key === "__total__" ? "__total__" : resolveExecValueForKey(r, key, "—");
+    const current = map.get(groupKey) || { key: groupKey, label: "", real_mens:0, meta_mens:0, real_acum:0, meta_acum:0, qtd:0 };
+    const labelCandidate = resolveExecLabelForKey(r, key, current.label || groupKey);
+    if (labelCandidate && !current.label) current.label = labelCandidate;
+    current.real_mens += (r.real_mens ?? r.realizado ?? 0);
+    current.meta_mens += (r.meta_mens ?? r.meta ?? 0);
+    current.real_acum += (r.real_acum ?? r.realizado ?? 0);
+    current.meta_acum += (r.meta_acum ?? r.meta ?? 0);
+    current.qtd       += (r.qtd ?? 0);
+    map.set(groupKey, current);
   });
   return [...map.values()].map(x=>{
+    if (!x.label) {
+      x.label = key === "__total__" ? "Consolidado" : x.key;
+    }
     const ating_mens = x.meta_mens ? x.real_mens/x.meta_mens : 0;
     const ating_acum = x.meta_acum ? x.real_acum/x.meta_acum : 0;
     const def_mens   = x.real_mens - x.meta_mens;
     return { ...x, ating_mens, ating_acum, def_mens, p_mens: ating_mens*100, p_acum: ating_acum*100 };
   });
 }
+
+const EXEC_FILTER_SELECTORS = {
+  gerencia: "#f-gerencia",
+  agencia:  "#f-agencia",
+  gGestao:  "#f-ggestao",
+  gerente:  "#f-gerente",
+  prodsub:  "#f-produto"
+};
 function pctBadgeCls(p){ return p<50?"att-low":(p<100?"att-warn":"att-ok"); }
 function moneyBadgeCls(v){ return v>=0?"def-pos":"def-neg"; }
 
@@ -4754,7 +4846,7 @@ function normalizeMonthKey(value){
   return "";
 }
 
-function makeMonthlySeries(rows, period){
+function buildMonthlyAxis(period){
   const startISO = period?.start || todayISO();
   const endISO = period?.end || startISO;
 
@@ -4764,147 +4856,160 @@ function makeMonthlySeries(rows, period){
   if (!endDate) endDate = startDate;
   if (startDate > endDate) [startDate, endDate] = [endDate, startDate];
 
-  const reference = endDate || startDate;
-  const january = new Date(reference);
-  january.setUTCMonth(0, 1);
-  const monthEnd = new Date(reference);
-  monthEnd.setUTCDate(1);
+  const limit = new Date(endDate);
+  limit.setUTCDate(1);
 
-  const keyToDate = (key) => {
-    const parts = (key || "").split("-");
-    if (parts.length < 2) return null;
-    const year = Number(parts[0]);
-    const month = Number(parts[1]);
-    if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
-    return new Date(Date.UTC(year, month - 1, 1));
-  };
-
-  const monthKeys = [];
-  const cursor = new Date(january);
-  while (cursor <= monthEnd) {
-    monthKeys.push(monthKeyFromDate(cursor));
+  const cursor = new Date(Date.UTC(limit.getUTCFullYear(), 0, 1));
+  const keys = [];
+  while (cursor <= limit) {
+    keys.push(monthKeyFromDate(cursor));
     cursor.setUTCMonth(cursor.getUTCMonth() + 1);
   }
-  const fallbackKey = monthKeys[0] || normalizeMonthKey(startISO) || normalizeMonthKey(todayISO()) || "";
-  if (!monthKeys.length && fallbackKey) monthKeys.push(fallbackKey);
 
-  const buckets = new Map(monthKeys.map(key => [key, { meta:0, real:0 }]));
-  const seenKeys = new Set();
+  if (!keys.length) {
+    keys.push(monthKeyFromDate(limit));
+  }
+
+  return keys;
+}
+
+function ensureExecFamilyColor(id){
+  const palette = EXEC_FAMILY_PALETTE;
+  if (!palette.length) return '#2563eb';
+  if (!id) return palette[0];
+  if (state.exec?.familyColors instanceof Map) {
+    const map = state.exec.familyColors;
+    if (map.has(id)) return map.get(id);
+    const color = palette[map.size % palette.length];
+    map.set(id, color);
+    return color;
+  }
+  return palette[0];
+}
+
+function makeMonthlyFamilySeries(rows, period){
+  const monthKeys = buildMonthlyAxis(period);
+  const monthIndex = new Map(monthKeys.map((key, idx) => [key, idx]));
+  const families = new Map();
 
   rows.forEach(r => {
     const rawDate = r?.competencia || r?.mes || r?.data || r?.dataReferencia || r?.dt;
-    let key = normalizeMonthKey(rawDate);
+    const key = normalizeMonthKey(rawDate);
+    if (!monthIndex.has(key)) return;
+    const idx = monthIndex.get(key);
+    const familia = resolveFamilyMetaFromRow(r);
+    if (!familia.id) return;
 
-    if (!key && rawDate instanceof Date) {
-      key = monthKeyFromDate(rawDate);
+    let entry = families.get(familia.id);
+    if (!entry) {
+      entry = {
+        id: familia.id,
+        label: familia.label || familia.id,
+        meta: Array(monthKeys.length).fill(0),
+        real: Array(monthKeys.length).fill(0)
+      };
+      families.set(familia.id, entry);
+    } else if (!entry.label && familia.label) {
+      entry.label = familia.label;
     }
 
-    if (!key && typeof rawDate === "string") {
-      const isoCandidate = rawDate.length >= 10 ? rawDate.slice(0, 10) : rawDate.length >= 7 ? `${rawDate.slice(0,7)}-01` : "";
-      key = normalizeMonthKey(isoCandidate);
-    }
-
-    if (!key) key = fallbackKey;
-    if (!key) return;
-
-    seenKeys.add(key);
-    if (!buckets.has(key)) buckets.set(key, { meta:0, real:0 });
-    const agg = buckets.get(key);
-    agg.meta += (r.meta_mens ?? r.meta ?? 0);
-    agg.real += (r.real_mens ?? r.realizado ?? 0);
+    entry.meta[idx] += toNumber(r.meta_mens ?? r.meta ?? 0);
+    entry.real[idx] += toNumber(r.real_mens ?? r.realizado ?? 0);
   });
 
-  if (!buckets.size && fallbackKey) {
-    buckets.set(fallbackKey, { meta:0, real:0 });
-  }
+  const series = [...families.values()].map(entry => {
+    const values = entry.meta.map((meta, idx) => {
+      if (!Number.isFinite(meta) || meta <= 0) return null;
+      const realVal = entry.real[idx] ?? 0;
+      return (realVal / meta) * 100;
+    });
+    const hasValue = values.some(v => Number.isFinite(v));
+    if (!hasValue) return null;
+    return {
+      id: entry.id,
+      label: entry.label || entry.id,
+      values,
+      color: ensureExecFamilyColor(entry.id)
+    };
+  }).filter(Boolean).sort((a,b)=> a.label.localeCompare(b.label, 'pt-BR', { sensitivity:'base' }));
 
-  if (seenKeys.size) {
-    const sortedKeys = [...seenKeys].sort((a,b)=> a.localeCompare(b));
-    let startKey = monthKeys[0] || sortedKeys[0];
-    let endKey = monthKeys[monthKeys.length - 1] || sortedKeys[sortedKeys.length - 1];
-    if (sortedKeys[0] && (!startKey || sortedKeys[0] < startKey)) startKey = sortedKeys[0];
-    if (sortedKeys[sortedKeys.length - 1] && (!endKey || sortedKeys[sortedKeys.length - 1] > endKey)) {
-      endKey = sortedKeys[sortedKeys.length - 1];
-    }
-    const startDt = keyToDate(startKey);
-    const endDt = keyToDate(endKey);
-    if (startDt && endDt) {
-      const fillCursor = new Date(startDt);
-      while (fillCursor <= endDt) {
-        const fillKey = monthKeyFromDate(fillCursor);
-        if (!buckets.has(fillKey)) buckets.set(fillKey, { meta:0, real:0 });
-        fillCursor.setUTCMonth(fillCursor.getUTCMonth() + 1);
-      }
-    }
-  }
-
-  const ordered = [...buckets.entries()].sort((a,b)=> a[0].localeCompare(b[0]));
   return {
-    labels: ordered.map(([key])=> monthKeyLabel(key)),
-    meta:   ordered.map(([,v])=> v.meta),
-    real:   ordered.map(([,v])=> v.real)
+    keys: monthKeys,
+    labels: monthKeys.map(monthKeyLabel),
+    series
   };
 }
 
-function buildExecMonthlyChart(container, series){
-  const { width: W, height: H } = chartDimensions(container);
-  const m = { t:20, r:24, b:44, l:64 };
-  const iw = Math.max(0, W - m.l - m.r);
-  const ih = Math.max(0, H - m.t - m.b);
-  const values = [...series.meta, ...series.real];
-  const maxVal = values.length ? Math.max(...values) : 0;
-  const maxY = (maxVal || 1) * 1.05;
-  const n = series.labels.length;
-  const band = iw / Math.max(1, n);
-  const gap = Math.min(18, band * 0.25);
-  const barW = Math.max(18, band - gap);
-
-  const xCenter = i => m.l + band * i + band/2;
-  const xBar = i => xCenter(i) - barW/2;
-  const y = v => m.t + ih - (v / maxY) * ih;
-  const baseColor = EXEC_BAR_FILL;
-
-  const barsReal = series.real.map((v,i)=> {
-    const height = Math.max(0, y(0) - y(v));
-    const label = formatBRLReadable(v);
-    return `<rect class="exec-bar" style="--index:${i}" x="${xBar(i)}" y="${y(v)}" width="${barW}" height="${height}" fill="${baseColor}" stroke="${EXEC_BAR_STROKE}" stroke-width="1.2" rx="4"><title>Realizado mês ${series.labels?.[i] || i + 1}: ${label}</title></rect>`;
-  }).join("");
-
-  const barLabels = series.real.map((v,i)=> {
-    const text = formatBRLReadable(v);
-    const pos = Math.max(m.t + 12, y(v) - 6);
-    return `<text x="${xCenter(i)}" y="${pos}" font-size="10" font-weight="700" text-anchor="middle" fill="#1f2937">${text}</text>`;
-  }).join("");
-
-  const path = (arr)=> arr.map((v,i)=> `${i?"L":"M"} ${xCenter(i)} ${y(v)}`).join(" ");
-  const metaLine = `<path class="exec-meta-line" d="${path(series.meta)}" fill="none" stroke="${EXEC_META_COLOR}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 3" />`;
-  const metaPoints = series.meta.map((v,i)=> {
-    const label = formatBRLReadable(v);
-    return `<circle class="exec-meta-point" style="--index:${i}" cx="${xCenter(i)}" cy="${y(v)}" r="3" fill="${EXEC_META_COLOR}" stroke="#fff" stroke-width="1.2"><title>Meta mês ${series.labels?.[i] || i + 1}: ${label}</title></circle>`;
-  }).join("");
-
-  const gy = [];
-  for(let k=0;k<=4;k++){
-    const val = (maxY/4)*k;
-    gy.push({ y: y(val), label: formatBRLReadable(val) });
+function buildExecMonthlyLines(container, dataset){
+  if (!dataset || !dataset.series?.length) {
+    container.innerHTML = `<div class="muted">Sem dados para exibir.</div>`;
+    return;
   }
 
-  const gridY = gy.map(g =>
-    `<line x1="${m.l}" y1="${g.y}" x2="${W-m.r}" y2="${g.y}" stroke="#eef2f7"/>
-     <text x="${m.l-6}" y="${g.y+3}" font-size="10" text-anchor="end" fill="#6b7280">${g.label}</text>`
-  ).join("");
+  const { width: W, height: H } = chartDimensions(container);
+  const m = { t:28, r:36, b:48, l:64 };
+  const iw = Math.max(0, W - m.l - m.r);
+  const ih = Math.max(0, H - m.t - m.b);
+  const n = dataset.labels.length;
+  const x = (idx) => {
+    if (n <= 1) return m.l + iw / 2;
+    const step = iw / (n - 1);
+    return m.l + step * idx;
+  };
 
-  const xlabels = series.labels.map((lab,i)=> `<text x="${xCenter(i)}" y="${H-8}" font-size="10" text-anchor="middle" fill="#6b7280">${lab}</text>`).join("");
+  const values = dataset.series.flatMap(s => s.values.filter(v => Number.isFinite(v)));
+  const maxVal = values.length ? Math.max(...values) : 0;
+  const yMax = Math.max(120, Math.ceil((maxVal || 100) / 10) * 10);
+  const y = (val) => {
+    const clamped = Math.min(Math.max(val, 0), yMax);
+    return m.t + ih - (clamped / yMax) * ih;
+  };
+
+  const gridLines = [];
+  const steps = 5;
+  for (let k = 0; k <= steps; k++) {
+    const val = (yMax / steps) * k;
+    gridLines.push({ y: y(val), label: `${Math.round(val)}%` });
+  }
+
+  const paths = dataset.series.map(series => {
+    let d = '';
+    let started = false;
+    series.values.forEach((value, idx) => {
+      if (!Number.isFinite(value)) {
+        started = false;
+        return;
+      }
+      const cmd = started ? 'L' : 'M';
+      d += `${cmd} ${x(idx)} ${y(value)} `;
+      started = true;
+    });
+    return `<path class="exec-line" d="${d.trim()}" fill="none" stroke="${series.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><title>${escapeHTML(series.label)}</title></path>`;
+  }).join('');
+
+  const points = dataset.series.map(series => series.values.map((value, idx) => {
+    if (!Number.isFinite(value)) return '';
+    const monthLabel = dataset.labels[idx] || String(idx + 1);
+    const valueLabel = `${value.toFixed(1)}%`;
+    return `<circle class="exec-line__point" cx="${x(idx)}" cy="${y(value)}" r="3.4" fill="${series.color}" stroke="#fff" stroke-width="1.2"><title>${escapeHTML(series.label)} • ${monthLabel}: ${valueLabel}</title></circle>`;
+  }).join('')).join('');
+
+  const gridY = gridLines.map(line =>
+    `<line x1="${m.l}" y1="${line.y}" x2="${W - m.r}" y2="${line.y}" stroke="#eef2f7"/>
+     <text x="${m.l - 6}" y="${line.y + 3}" font-size="10" text-anchor="end" fill="#6b7280">${line.label}</text>`
+  ).join('');
+
+  const xlabels = dataset.labels.map((lab, idx) =>
+    `<text x="${x(idx)}" y="${H - 10}" font-size="10" text-anchor="middle" fill="#6b7280">${escapeHTML(lab)}</text>`
+  ).join('');
 
   container.innerHTML = `
-    <svg class="exec-chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Barras mensais de realizado com linha de meta">
+    <svg class="exec-chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Linhas de atingimento mensal por família">
       <rect x="0" y="0" width="${W}" height="${H}" fill="white"/>
       ${gridY}
-      ${barsReal}
-      ${metaLine}
-      ${metaPoints}
-      ${barLabels}
-      <line x1="${m.l}" y1="${H-m.b}" x2="${W-m.r}" y2="${H-m.b}" stroke="#e5e7eb"/>
+      ${paths}
+      ${points}
+      <line x1="${m.l}" y1="${H - m.b}" x2="${W - m.r}" y2="${H - m.b}" stroke="#e5e7eb"/>
       ${xlabels}
     </svg>`;
 }
@@ -4921,8 +5026,17 @@ function renderExecutiveView(){
   const chartLegend = document.getElementById("exec-chart-legend");
   const chartToggle = document.getElementById("exec-chart-toggle");
   const hm     = document.getElementById("exec-heatmap");
-  const rankEl = document.getElementById("exec-rank");
-  const statusList = document.getElementById("exec-status-list");
+  const rankTopEl = document.getElementById("exec-rank-top");
+  const rankBottomEl = document.getElementById("exec-rank-bottom");
+  const statusHitEl = document.getElementById("exec-status-hit");
+  const statusQuaseEl = document.getElementById("exec-status-quase");
+  const statusLongeEl = document.getElementById("exec-status-longe");
+  const exportBtn = document.getElementById("btn-export-onepage");
+
+  if (exportBtn && !exportBtn.dataset.bound){
+    exportBtn.dataset.bound = "1";
+    exportBtn.addEventListener("click", () => window.print());
+  }
 
   if (!Array.isArray(state._rankingRaw) || !state._rankingRaw.length){
     ctx && (ctx.textContent = "Carregando dados…");
@@ -5021,20 +5135,32 @@ function renderExecutiveView(){
       </div>`;
   }
 
+  const heatmapMode = state.exec.heatmapMode || "secoes";
+  const heatmapTitleEl = document.getElementById("exec-heatmap-title");
+  if (heatmapTitleEl){
+    heatmapTitleEl.textContent = heatmapMode === "meta"
+      ? "Heatmap — Variação da meta (mês a mês)"
+      : `Heatmap — ${L.short} × Seções`;
+  }
+
   // Gráfico
   if (chartC){
     const renderChart = () => {
       const mode = state.exec?.chartMode || "diario";
       if (mode === "mensal"){
-        const monthlySeries = makeMonthlySeries(rowsMonthly, execMonthlyPeriod);
-        buildExecMonthlyChart(chartC, monthlySeries);
-        chartC.setAttribute("aria-label", "Barras mensais de realizado com linha de meta");
+        const monthlySeries = makeMonthlyFamilySeries(rowsMonthly, execMonthlyPeriod);
+        buildExecMonthlyLines(chartC, monthlySeries);
+        chartC.setAttribute("aria-label", "Linhas mensais de atingimento por família de produtos");
         if (chartTitleEl) chartTitleEl.textContent = "Evolução mensal";
         if (chartLegend){
-          chartLegend.innerHTML = `
-            <span class="legend-item"><span class="legend-swatch legend-swatch--bar-real"></span>Realizado mensal (barra)</span>
-            <span class="legend-item"><span class="legend-swatch legend-swatch--meta-line"></span>Meta mensal (linha)</span>
-          `;
+          if (monthlySeries.series.length){
+            chartLegend.innerHTML = monthlySeries.series.map(serie => `
+              <span class="legend-item">
+                <span class="legend-swatch legend-swatch--line" style="--swatch:${serie.color}"></span>${escapeHTML(serie.label)}
+              </span>`).join("");
+          } else {
+            chartLegend.innerHTML = `<span class="legend-item muted">Sem famílias para exibir.</span>`;
+          }
         }
       } else {
         const dailySeries = makeDailySeries(total.meta_mens, total.real_mens, state.period.start, state.period.end);
@@ -5053,7 +5179,6 @@ function renderExecutiveView(){
     renderChart();
     host.__execChartRender = renderChart;
 
-    // redimensiona enquanto essa aba estiver ativa
     if (!host.__execResize){
       let raf = null;
       host.__execResize = () => {
@@ -5066,244 +5191,328 @@ function renderExecutiveView(){
     }
   }
 
-  // Ranking Top/Bottom para o nível atual
-  const grouped = execAggBy(rowsBase, startKey).sort((a,b)=> b.p_mens - a.p_mens);
-  const renderRankRows = (arr)=> arr.map(r=>{
-    const realFull = fmtBRL.format(Math.round(r.real_mens));
-    const realDisplay = formatBRLReadable(r.real_mens);
-    const metaFull = fmtBRL.format(Math.round(r.meta_mens));
-    const metaDisplay = formatBRLReadable(r.meta_mens);
-    return `
-    <div class="rank-mini__row" data-key="${r.key}">
-      <div class="rank-mini__name">${r.key}</div>
-      <div class="rank-mini__bar"><span style="width:${Math.min(100,Math.max(0,r.p_mens))}%"></span></div>
-      <div class="rank-mini__pct"><span class="att-badge ${pctBadgeCls(r.p_mens)}">${r.p_mens.toFixed(1)}%</span></div>
-      <div class="rank-mini__vals"><strong title="${realFull}">${realDisplay}</strong> <small title="${metaFull}">/ ${metaDisplay}</small></div>
-    </div>`;
-  }).join("");
+  // Ranking Top/Bottom
+  const grouped = execAggBy(rowsBase, startKey)
+    .filter(item => item.key !== "__total__")
+    .sort((a,b)=> b.p_mens - a.p_mens);
+  const rankIndex = new Map();
+  grouped.forEach((row, idx) => rankIndex.set(row.key, idx));
+  const myUnit = currentUnitForLevel(start);
 
-  if (rankEl){
-    if (state.exec.rankMode === "bottom"){
-      const worst = grouped.slice(-5).reverse();
-      rankEl.innerHTML = renderRankRows(worst);
-    }else{
-      const best = grouped.slice(0,5);
-      rankEl.innerHTML = renderRankRows(best);
+  const renderRankList = (container, list) => {
+    if (!container) return;
+    if (!list.length){
+      container.innerHTML = `<div class="muted">Sem dados para exibir.</div>`;
+      return;
     }
-    // clique: aplica filtro correspondente e vai pro detalhamento
-    rankEl.querySelectorAll(".rank-mini__row").forEach(row=>{
-      row.addEventListener("click", ()=>{
-        const key = row.getAttribute("data-key");
-        const mapSel = {
-          gerencia: "#f-gerencia",
-          agencia:  "#f-agencia",
-          gGestao:  "#f-ggestao",
-          gerente:  "#f-gerente",
-          prodsub:  "#f-produto"
-        };
-        const sel = document.querySelector(mapSel[start]);
-        if (sel && key){
-          // tenta setar; se não existir na lista, ignora
-          const opt = [...sel.options].find(o=>o.value===key);
-          if (opt){ sel.value = key; sel.dispatchEvent(new Event("change")); }
+    container.innerHTML = list.map(row => {
+      const rankNumber = (rankIndex.get(row.key) ?? 0) + 1;
+      const safeKey = escapeHTML(row.key);
+      const displayName = `#${rankNumber} • ${row.label || row.key}`;
+      const pctClass = pctBadgeCls(row.p_mens);
+      const realFull = fmtBRL.format(Math.round(row.real_mens));
+      const metaFull = fmtBRL.format(Math.round(row.meta_mens));
+      const realDisplay = formatBRLReadable(row.real_mens);
+      const metaDisplay = formatBRLReadable(row.meta_mens);
+      return `
+        <div class="rank-mini__row${row.key === myUnit ? ' rank-mini__row--mine' : ''}" data-key="${safeKey}" title="${escapeHTML(row.label || row.key)}">
+          <div class="rank-mini__name">${escapeHTML(displayName)}</div>
+          <div class="rank-mini__bar"><span style="width:${Math.min(100, Math.max(0, row.p_mens))}%"></span></div>
+          <div class="rank-mini__pct"><span class="att-badge ${pctClass}">${row.p_mens.toFixed(1)}%</span></div>
+          <div class="rank-mini__vals"><strong title="${realFull}">${realDisplay}</strong> <small title="${metaFull}">/ ${metaDisplay}</small></div>
+        </div>`;
+    }).join("");
+
+    container.querySelectorAll(".rank-mini__row").forEach(rowEl => {
+      rowEl.addEventListener("click", () => {
+        const keyVal = rowEl.getAttribute("data-key");
+        const selector = EXEC_FILTER_SELECTORS[start];
+        if (selector && keyVal){
+          const sel = document.querySelector(selector);
+          const option = sel && [...sel.options].find(opt => opt.value === keyVal);
+          if (sel && option){
+            sel.value = keyVal;
+            sel.dispatchEvent(new Event("change"));
+          }
         }
         document.querySelector('.tab[data-view="table"]')?.click();
       });
     });
-  }
+  };
 
-  // Heatmap — (start) × Família
+  if (rankTopEl) renderRankList(rankTopEl, grouped.slice(0, 5));
+  if (rankBottomEl) renderRankList(rankBottomEl, grouped.slice(-5).reverse());
+
+  // Status das unidades
+  const statusBase = execAggBy(rowsBase, startKey).filter(item => item.key !== "__total__");
+  const hitList = statusBase.filter(item => item.p_mens >= 100).slice(0, 5);
+  const quaseList = statusBase.filter(item => item.p_mens >= 90 && item.p_mens < 100).slice(0, 5);
+  const longeList = statusBase
+    .map(item => ({ ...item, gap: item.real_mens - item.meta_mens }))
+    .sort((a,b) => a.gap - b.gap)
+    .slice(0, 5);
+
+  const renderStatusList = (container, list, type) => {
+    if (!container) return;
+    if (!list.length){
+      container.innerHTML = `<div class="muted">Sem dados no momento.</div>`;
+      return;
+    }
+    container.innerHTML = list.map(row => {
+      const safeKey = escapeHTML(row.key);
+      const label = escapeHTML(row.label || row.key);
+      let valueHTML = "";
+      if (type === "hit") {
+        valueHTML = `<span class="att-badge att-ok">${row.p_mens.toFixed(1)}%</span>`;
+      } else if (type === "quase") {
+        valueHTML = `<span class="att-badge att-warn">${row.p_mens.toFixed(1)}%</span>`;
+      } else {
+        valueHTML = `<span class="def-badge def-neg">${fmtBRL.format(row.gap)}</span>`;
+      }
+      return `
+        <div class="list-mini__row" data-key="${safeKey}" title="${label}">
+          <div class="list-mini__name">${label}</div>
+          <div class="list-mini__val">${valueHTML}</div>
+        </div>`;
+    }).join("");
+
+    container.querySelectorAll(".list-mini__row").forEach(rowEl => {
+      rowEl.addEventListener("click", () => {
+        const keyVal = rowEl.getAttribute("data-key");
+        const selector = EXEC_FILTER_SELECTORS[start];
+        if (selector && keyVal){
+          const sel = document.querySelector(selector);
+          const option = sel && [...sel.options].find(opt => opt.value === keyVal);
+          if (sel && option){
+            sel.value = keyVal;
+            sel.dispatchEvent(new Event("change"));
+          }
+        }
+        document.querySelector('.tab[data-view="table"]')?.click();
+      });
+    });
+  };
+
+  renderStatusList(statusHitEl, hitList, "hit");
+  renderStatusList(statusQuaseEl, quaseList, "quase");
+  renderStatusList(statusLongeEl, longeList, "longe");
+
+  // Heatmap
   if (hm){
-    const familiaMeta = new Map();
-    const unidadeMeta = new Map();
-
-    const resolveUnitLabel = (row) => ({
-      gerencia: row.gerenciaNome || row.regional || row.gerenciaRegional,
-      agencia:  row.agenciaNome || row.agencia || row.agenciaCodigo,
-      gGestao:  row.gerenteGestaoNome || row.gerenteGestao,
-      gerente:  row.gerenteNome || row.gerente,
-      prodsub:  row.produtoNome || row.produto || row.prodOrSub,
-    }[start] || row[startKey] || "");
-
-    const resolveUnitId = (row) => ({
-      gerencia: row.gerenciaRegional,
-      agencia:  row.agenciaCodigo || row.agencia,
-      gGestao:  row.gerenteGestao,
-      gerente:  row.gerente,
-      prodsub:  row.produtoId || row.produto || row.prodOrSub,
-    }[start] || row[startKey] || "");
-
-    rowsBase.forEach(r=>{
-      const famKey = r.familiaId || r.familia || PRODUCT_INDEX.get(r.produtoId)?.sectionId;
-      if (famKey){
-        const famLabel = r.familiaNome || r.familia || famKey;
-        const current = familiaMeta.get(famKey);
-        if (!current || (current.label === famKey && famLabel && famLabel !== famKey)){
-          const title = famLabel && famLabel !== famKey ? `${famLabel} (${famKey})` : famLabel || famKey;
-          familiaMeta.set(famKey, { label: famLabel || famKey, title });
-        }
-      }
-
-      const unitValue = r[startKey];
-      if (unitValue){
-        const labelCandidate = resolveUnitLabel(r) || unitValue;
-        const rawId = resolveUnitId(r) || unitValue;
-        const currentUnit = unidadeMeta.get(unitValue);
-        if (!currentUnit || (currentUnit.label === unitValue && labelCandidate && labelCandidate !== unitValue)){
-          const label = labelCandidate || unitValue;
-          const title = rawId && rawId !== label ? `${label} (${rawId})` : label;
-          unidadeMeta.set(unitValue, { label, title });
-        }
-      }
-    });
-
-    const familiaEntries = CARD_SECTIONS_DEF.map(sec => {
-      const meta = familiaMeta.get(sec.id);
-      const label = meta?.label || sec.label || sec.id;
-      const title = meta?.title || (label && label !== sec.id ? `${label} (${sec.id})` : label);
-      if (!familiaMeta.has(sec.id)){
-        familiaMeta.set(sec.id, { label, title });
-      }
-      return { key: sec.id, label, title };
-    });
-    familiaMeta.forEach((meta, key) => {
-      if (!familiaEntries.some(entry => entry.key === key)){
-        const label = meta.label || key;
-        const title = meta.title || (label && label !== key ? `${label} (${key})` : label);
-        familiaEntries.push({ key, label, title });
-      }
-    });
-
-    const unidadeEntries = [...unidadeMeta.entries()].map(([value, meta]) => ({
-      value,
-      label: meta.label || value,
-      title: meta.title || (meta.label && meta.label !== value ? `${meta.label} (${value})` : meta.label || value),
-    })).sort((a,b)=> a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
-
-    const byUF = new Map();
-    rowsBase.forEach(r=>{
-      const unitValue = r[startKey];
-      const famKey = r.familiaId || r.familia || PRODUCT_INDEX.get(r.produtoId)?.sectionId;
-      if (!unitValue || !famKey) return;
-      const bucketKey = `${unitValue}|${famKey}`;
-      const bucket = byUF.get(bucketKey) || { real:0, meta:0 };
-      bucket.real += toNumber(r.real_mens ?? r.realizado ?? 0);
-      bucket.meta += toNumber(r.meta_mens ?? r.meta ?? 0);
-      byUF.set(bucketKey, bucket);
-    });
-
-    if (!unidadeEntries.length || !familiaEntries.length){
-      hm.innerHTML = `<div class="muted">Sem dados para exibir.</div>`;
+    if (heatmapMode === "meta") {
+      renderExecHeatmapMeta(hm, rowsMonthly, execMonthlyPeriod);
     } else {
-      const columnCount = Math.max(1, familiaEntries.length);
-      const rowStyle = ` style="--hm-cols:${columnCount}"`;
-      let html = `<div class="hm-row hm-head"${rowStyle}><div class="hm-cell hm-corner">${escapeHTML(L.short)} \\ Família</div>${
-        familiaEntries.map(f=> `<div class="hm-cell hm-col"${f.title ? ` title="${escapeHTML(f.title)}"` : ""}>${escapeHTML(f.label)}</div>`).join("")
-      }</div>`;
-
-      unidadeEntries.forEach(unit => {
-        const unitTitle = unit.title && unit.title !== unit.label ? unit.title : "";
-        html += `<div class="hm-row"${rowStyle}><div class="hm-cell hm-rowh"${unitTitle ? ` title="${escapeHTML(unitTitle)}"` : ""}>${escapeHTML(unit.label)}</div>`;
-        familiaEntries.forEach(fam => {
-          const key = `${unit.value}|${fam.key}`;
-          const bucket = byUF.get(key) || { real:0, meta:0 };
-          const realVal = toNumber(bucket.real);
-          const metaVal = toNumber(bucket.meta);
-          let cls = "hm-cell hm-val";
-          let text = "—";
-          let title = "";
-
-          if (metaVal > 0){
-            const pct = (realVal / metaVal) * 100;
-            const pctDisplay = Math.round(pct);
-            cls += pct < 50 ? " hm-bad" : (pct < 100 ? " hm-warn" : " hm-ok");
-            text = `${pctDisplay}%`;
-            title = `Atingimento: ${pct.toFixed(1)}%`;
-          } else if (realVal > 0){
-            cls += " hm-empty";
-            title = "Meta não informada";
-          } else {
-            cls += " hm-empty";
-            title = "Sem dados";
-          }
-
-          html += `<div class="${cls}" data-u="${escapeHTML(unit.value)}" data-f="${escapeHTML(fam.key)}"${title ? ` title="${escapeHTML(title)}"` : ""}>${text}</div>`;
-        });
-        html += `</div>`;
-      });
-
-      hm.innerHTML = html;
-
-      hm.querySelectorAll(".hm-val").forEach(c=>{
-        if (c.classList.contains("hm-empty")) return;
-        c.addEventListener("click", ()=>{
-          const u = c.getAttribute("data-u");
-          const mapSel = {
-            gerencia: "#f-gerencia",
-            agencia:  "#f-agencia",
-            gGestao:  "#f-ggestao",
-            gerente:  "#f-gerente",
-            prodsub:  "#f-produto"
-          };
-          const sel = document.querySelector(mapSel[start]);
-          if (sel && u){
-            const opt = [...sel.options].find(o=>o.value===u);
-            if (opt){ sel.value = u; sel.dispatchEvent(new Event("change")); }
-          }
-          state.tableView = "prodsub";
-          document.querySelector('.tab[data-view="table"]')?.click();
-        });
-      });
+      renderExecHeatmapSections(hm, rowsBase, startKey, start, L);
     }
   }
+}
 
-  // Status das unidades (3 listas) no nível inicial
-  if (statusList){
-    const base = execAggBy(rowsBase, startKey);
-    const hit   = base.filter(a => a.p_mens >= 100).sort((a,b)=> b.p_mens - a.p_mens).slice(0,8);
-    const quase = base.filter(a => a.p_mens >= 90 && a.p_mens < 100).sort((a,b)=> b.p_mens - a.p_mens).slice(0,8);
-    const longe = base.map(r => ({ ...r, gap: r.real_mens - r.meta_mens }))
-                      .sort((a,b)=> a.gap - b.gap) // mais negativos primeiro
-                      .slice(0,8);
+function renderExecHeatmapSections(hm, rows, startKey, start, levelMeta){
+  if (!hm) return;
+  const unitMeta = new Map();
+  const sectionEntries = CARD_SECTIONS_DEF.map(sec => ({ id: sec.id, label: sec.label || sec.id }));
+  const aggregates = new Map();
 
-    const row = (name, badgeHTML)=>`
-      <div class="list-mini__row" data-key="${name}">
-        <div class="list-mini__name">${name}</div>
-        <div class="list-mini__val">${badgeHTML}</div>
-      </div>`;
-
-    let html = "";
-    if (state.exec.statusMode === "hit"){
-      html = hit.length ? hit.map(a=> row(a.key, `<span class="att-badge att-ok">${a.p_mens.toFixed(1)}%</span>`)).join("")
-                        : `<div class="muted">Nenhuma unidade atingiu 100% no momento.</div>`;
-    } else if (state.exec.statusMode === "longe"){
-      html = longe.length ? longe.map(a=> row(a.key, `<span class="def-badge def-neg">${fmtBRL.format(a.gap)}</span>`)).join("")
-                          : `<div class="muted">Sem defasagens relevantes agora.</div>`;
-    } else {
-      html = quase.length ? quase.map(a=> row(a.key, `<span class="att-badge att-warn">${a.p_mens.toFixed(1)}%</span>`)).join("")
-                          : `<div class="muted">Nenhuma unidade entre 90–99% no momento.</div>`;
+  rows.forEach(row => {
+    const unitValue = resolveExecValueForKey(row, startKey, "");
+    if (!unitValue) return;
+    const unitLabel = resolveExecLabelForKey(row, startKey, unitValue);
+    if (!unitMeta.has(unitValue)) {
+      const title = unitLabel && unitLabel !== unitValue ? `${unitLabel} (${unitValue})` : unitLabel || unitValue;
+      unitMeta.set(unitValue, { label: unitLabel || unitValue, title });
     }
-    statusList.innerHTML = html;
 
-    statusList.querySelectorAll(".list-mini__row").forEach(row=>{
-      row.addEventListener("click", ()=>{
-        const key = row.getAttribute("data-key");
-        const mapSel = {
-          gerencia: "#f-gerencia",
-          agencia:  "#f-agencia",
-          gGestao:  "#f-ggestao",
-          gerente:  "#f-gerente",
-          prodsub:  "#f-produto"
-        };
-        const sel = document.querySelector(mapSel[start]);
-        if (sel && key){
-          const opt = [...sel.options].find(o=>o.value===key);
-          if (opt){ sel.value = key; sel.dispatchEvent(new Event("change")); }
-        }
-        document.querySelector('.tab[data-view="table"]')?.click();
-      });
-    });
+    const section = resolveSectionMetaFromRow(row);
+    if (!section.id) return;
+    const bucketKey = `${unitValue}|${section.id}`;
+    const bucket = aggregates.get(bucketKey) || { real:0, meta:0 };
+    bucket.real += toNumber(row.real_mens ?? row.realizado ?? 0);
+    bucket.meta += toNumber(row.meta_mens ?? row.meta ?? 0);
+    aggregates.set(bucketKey, bucket);
+  });
+
+  if (!unitMeta.size) {
+    hm.innerHTML = `<div class="muted">Sem dados para exibir.</div>`;
+    return;
   }
+
+  const units = [...unitMeta.entries()].map(([value, meta]) => ({
+    value,
+    label: meta.label,
+    title: meta.title
+  })).sort((a,b)=> a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+
+  const columnCount = Math.max(1, sectionEntries.length);
+  const rowStyle = ` style="--hm-cols:${columnCount}"`;
+  let html = `<div class="hm-row hm-head"${rowStyle}><div class="hm-cell hm-corner">${escapeHTML(levelMeta.short)} \\ Seção</div>${
+    sectionEntries.map(sec => `<div class="hm-cell hm-col" title="${escapeHTML(sec.label)}">${escapeHTML(sec.label)}</div>`).join("")
+  }</div>`;
+
+  units.forEach(unit => {
+    html += `<div class="hm-row"${rowStyle}><div class="hm-cell hm-rowh"${unit.title ? ` title="${escapeHTML(unit.title)}"` : ""}>${escapeHTML(unit.label)}</div>`;
+    sectionEntries.forEach(sec => {
+      const bucket = aggregates.get(`${unit.value}|${sec.id}`) || { real:0, meta:0 };
+      const realVal = toNumber(bucket.real);
+      const metaVal = toNumber(bucket.meta);
+      let cls = "hm-cell hm-val";
+      let text = "—";
+      let title = "";
+
+      if (metaVal > 0){
+        const pct = (realVal / metaVal) * 100;
+        const pctDisplay = Math.round(pct);
+        cls += pct < 50 ? " hm-bad" : (pct < 100 ? " hm-warn" : " hm-ok");
+        text = `${pctDisplay}%`;
+        title = `Atingimento: ${pct.toFixed(1)}%`;
+      } else if (realVal > 0){
+        cls += " hm-empty";
+        title = "Meta não informada";
+      } else {
+        cls += " hm-empty";
+        title = "Sem dados";
+      }
+
+      html += `<div class="${cls}" data-u="${escapeHTML(unit.value)}"${title ? ` title="${escapeHTML(title)}"` : ""}>${text}</div>`;
+    });
+    html += `</div>`;
+  });
+
+  hm.innerHTML = html;
+
+  const selector = EXEC_FILTER_SELECTORS[start];
+  hm.querySelectorAll(".hm-val").forEach(cell => {
+    if (cell.classList.contains("hm-empty")) return;
+    cell.addEventListener("click", () => {
+      const unitValue = cell.getAttribute("data-u");
+      if (selector && unitValue){
+        const sel = document.querySelector(selector);
+        const option = sel && [...sel.options].find(opt => opt.value === unitValue);
+        if (sel && option){
+          sel.value = unitValue;
+          sel.dispatchEvent(new Event("change"));
+        }
+      }
+      state.tableView = "prodsub";
+      document.querySelector('.tab[data-view="table"]')?.click();
+    });
+  });
+}
+
+function renderExecHeatmapMeta(hm, rows, period){
+  if (!hm) return;
+  const monthKeys = buildMonthlyAxis(period);
+  if (!monthKeys.length){
+    hm.innerHTML = `<div class="muted">Sem dados para exibir.</div>`;
+    return;
+  }
+
+  const monthLabels = monthKeys.map(monthKeyLabel);
+  const template = () => monthKeys.reduce((acc, key) => (acc[key] = 0, acc), {});
+  const monthSet = new Set(monthKeys);
+
+  const levels = [
+    { key: "diretoria",       filterKey: "diretoria", label: "Diretoria", plural: "Diretorias" },
+    { key: "gerenciaRegional", filterKey: "gerencia",  label: "Regional",  plural: "Regionais" },
+    { key: "agencia",         filterKey: "agencia",   label: "Agência",   plural: "Agências" },
+    { key: "gerenteGestao",   filterKey: "ggestao",   label: "Ger. de Gestão", plural: "Ger. de Gestão" },
+    { key: "gerente",         filterKey: "gerente",   label: "Gerente",   plural: "Gerentes" }
+  ];
+
+  const dataByLevel = new Map(levels.map(level => [
+    level.key,
+    new Map([["__total__", { id: "__total__", label: `Todas as ${level.plural}`, meta: template() }]])
+  ]));
+
+  rows.forEach(row => {
+    const monthKey = normalizeMonthKey(row.competencia || row.mes || row.data || row.dataReferencia || row.dt);
+    if (!monthSet.has(monthKey)) return;
+    const metaValue = toNumber(row.meta_mens ?? row.meta ?? 0);
+    levels.forEach(level => {
+      const levelMap = dataByLevel.get(level.key);
+      if (!levelMap) return;
+      const totalEntry = levelMap.get("__total__");
+      totalEntry.meta[monthKey] += metaValue;
+      const value = resolveExecValueForKey(row, level.key, "");
+      if (!value) return;
+      let entry = levelMap.get(value);
+      if (!entry) {
+        entry = { id: value, label: resolveExecLabelForKey(row, level.key, value) || value, meta: template() };
+        levelMap.set(value, entry);
+      }
+      entry.meta[monthKey] += metaValue;
+    });
+  });
+
+  const filters = getFilterValues();
+  const rowStyle = ` style="--hm-cols:${monthKeys.length}"`;
+  let html = `<div class="hm-row hm-head"${rowStyle}><div class="hm-cell hm-corner">Hierarquia \\ Mês</div>${
+    monthLabels.map(label => `<div class="hm-cell hm-col">${escapeHTML(label)}</div>`).join("")
+  }</div>`;
+
+  levels.forEach(level => {
+    const levelMap = dataByLevel.get(level.key);
+    if (!levelMap) return;
+    const filterValue = filters[level.filterKey];
+    const normalizedFilter = filterValue && filterValue !== "Todos" && filterValue !== "Todas" ? filterValue : "";
+    let entry = normalizedFilter && levelMap.get(normalizedFilter);
+    if (!entry){
+      const candidates = [...levelMap.keys()].filter(key => key !== "__total__");
+      if (candidates.length === 1) {
+        entry = levelMap.get(candidates[0]);
+      }
+    }
+    if (!entry) entry = levelMap.get("__total__");
+    if (!entry) return;
+
+    html += `<div class="hm-row hm-meta"${rowStyle}><div class="hm-cell hm-rowh">${escapeHTML(entry.label)}</div>`;
+    monthKeys.forEach((key, idx) => {
+      const currentMeta = entry.meta[key] ?? 0;
+      const prevKey = idx > 0 ? monthKeys[idx - 1] : null;
+      const prevMeta = prevKey ? entry.meta[prevKey] ?? 0 : null;
+      let delta = null;
+      if (prevKey){
+        if (prevMeta > 0) {
+          delta = ((currentMeta - prevMeta) / prevMeta) * 100;
+        } else if (currentMeta === 0) {
+          delta = 0;
+        }
+      }
+
+      let cls = "hm-cell hm-meta";
+      let text = "—";
+      if (delta == null) {
+        cls += " hm-empty";
+      } else if (delta < 0) {
+        cls += " hm-down";
+        text = `${delta.toFixed(1)}%`;
+      } else if (delta === 0) {
+        cls += " hm-ok";
+        text = `0.0%`;
+      } else if (delta <= 10) {
+        cls += " hm-ok";
+        text = `+${delta.toFixed(1)}%`;
+      } else if (delta <= 20) {
+        cls += " hm-warn";
+        text = `+${delta.toFixed(1)}%`;
+      } else {
+        cls += " hm-alert";
+        text = `+${delta.toFixed(1)}%`;
+      }
+
+      const monthLabel = monthLabels[idx];
+      const prevLabel = prevKey ? monthLabels[idx - 1] : "";
+      let title = `Meta ${monthLabel}: ${fmtBRL.format(Math.round(currentMeta))}`;
+      if (prevKey){
+        title += ` · Anterior (${prevLabel}): ${fmtBRL.format(Math.round(prevMeta ?? 0))}`;
+        title += delta != null ? ` · Variação: ${delta > 0 ? '+' : ''}${delta.toFixed(1)}%` : ` · Variação: —`;
+      }
+
+      html += `<div class="${cls}" title="${escapeHTML(title)}">${text}</div>`;
+    });
+    html += `</div>`;
+  });
+
+  hm.innerHTML = html;
 }
 
 /* ===== Ranking ===== */
@@ -6120,12 +6329,19 @@ function renderRanking(){
     dataClamped.push(data[myIndexFull]);
   }
 
+  const levelNames = {
+    diretoria: "Diretoria",
+    gerencia: "Regional",
+    agencia: "Agência",
+    gerente: "Gerente"
+  };
+  const nivelNome = levelNames[level] || level.charAt(0).toUpperCase() + level.slice(1);
+  const grupoTexto = typeof myRankFull === "number" ? fmtINT.format(myRankFull) : myRankFull;
   hostSum.innerHTML = `
     <div class="rk-badges">
-      <span class="rk-badge"><strong>Nível:</strong> ${level.charAt(0).toUpperCase()+level.slice(1)}</span>
-      <span class="rk-badge"><strong>Limite do nível:</strong> ${fmtINT.format(gruposLimite)}</span>
-      <span class="rk-badge"><strong>Exibindo:</strong> ${fmtINT.format(dataClamped.length)}</span>
-      <span class="rk-badge"><strong>Sua posição:</strong> ${myRankFull}</span>
+      <span class="rk-badge"><strong>Nível:</strong> ${nivelNome}</span>
+      <span class="rk-badge"><strong>Número do grupo:</strong> ${grupoTexto}</span>
+      <span class="rk-badge"><strong>Quantidade de participantes:</strong> ${fmtINT.format(data.length)}</span>
     </div>
   `;
 

@@ -220,51 +220,73 @@
             <h3>Visão executiva</h3>
             <div class="muted" id="exec-context"></div>
           </div>
+          <div class="exec-head__actions">
+            <button id="btn-export-onepage" class="btn btn--ghost btn--sm" type="button">
+              <i class="ti ti-file-type-pdf" aria-hidden="true"></i>
+              <span>Exportar PDF</span>
+            </button>
+          </div>
         </header>
 
         <div id="exec-kpis" class="exec-kpis"></div>
 
         <section class="exec-panel exec-span-2 exec-chart">
           <div class="exec-h">
-            <span id="exec-chart-title">Evolução do mês</span>
+            <span id="exec-chart-title">Evolução diária</span>
             <div class="segmented seg-mini" id="exec-chart-toggle" role="tablist" aria-label="Modo do gráfico">
               <button type="button" class="seg-btn is-active" data-chart="diario">Dia a dia</button>
               <button type="button" class="seg-btn" data-chart="mensal">Visão mês</button>
             </div>
           </div>
           <div id="exec-chart" class="chart" role="img" aria-label="Barras diárias de realizado com linha de meta"></div>
-          <div id="exec-chart-legend" class="chart-legend">
-            <span class="legend-item"><span class="legend-swatch legend-swatch--bar-real"></span>Realizado diário (barra)</span>
-            <span class="legend-item"><span class="legend-swatch legend-swatch--meta-line"></span>Meta diária (linha)</span>
-          </div>
+          <div id="exec-chart-legend" class="chart-legend"></div>
         </section>
 
         <div class="exec-grid">
-          <section class="exec-panel" id="exec-rank-panel">
+          <section class="exec-panel exec-span-2 exec-panel--rank" id="exec-rank-panel">
             <div class="exec-h">
               <span id="exec-rank-title">Desempenho por unidade</span>
-              <div class="segmented seg-mini" role="tablist" aria-label="Ordenação">
-                <button type="button" class="seg-btn is-active" data-rk="top">Top 5</button>
-                <button type="button" class="seg-btn" data-rk="bottom">Bottom 5</button>
+            </div>
+            <div class="rank-dual">
+              <div class="rank-dual__col">
+                <h5 class="rank-dual__title">Top 5</h5>
+                <div id="exec-rank-top" class="rank-mini"></div>
+              </div>
+              <div class="rank-dual__col">
+                <h5 class="rank-dual__title">Bottom 5</h5>
+                <div id="exec-rank-bottom" class="rank-mini"></div>
               </div>
             </div>
-            <div id="exec-rank" class="rank-mini"></div>
           </section>
 
-          <section class="exec-panel" id="exec-status-panel">
+          <section class="exec-panel exec-span-2 exec-panel--status" id="exec-status-panel">
             <div class="exec-h">
               <span id="exec-status-title">Status das unidades</span>
-              <div class="segmented seg-mini" role="tablist" aria-label="Status">
-                <button type="button" class="seg-btn" data-st="hit">Atingidas</button>
-                <button type="button" class="seg-btn is-active" data-st="quase">Quase lá</button>
-                <button type="button" class="seg-btn" data-st="longe">Longe</button>
+            </div>
+            <div class="status-grid">
+              <div class="status-card" data-status="hit">
+                <h5 class="status-card__title">Atingidas</h5>
+                <div id="exec-status-hit" class="list-mini"></div>
+              </div>
+              <div class="status-card" data-status="quase">
+                <h5 class="status-card__title">Quase lá</h5>
+                <div id="exec-status-quase" class="list-mini"></div>
+              </div>
+              <div class="status-card" data-status="longe">
+                <h5 class="status-card__title">Longe</h5>
+                <div id="exec-status-longe" class="list-mini"></div>
               </div>
             </div>
-            <div id="exec-status-list" class="list-mini"></div>
           </section>
 
           <section class="exec-panel exec-span-2 exec-panel--scroll">
-            <h4 class="exec-h"><span id="exec-heatmap-title">Heatmap</span></h4>
+            <div class="exec-h exec-h--heatmap">
+              <span id="exec-heatmap-title">Heatmap</span>
+              <div class="segmented seg-mini" id="exec-heatmap-toggle" role="tablist" aria-label="Modo do heatmap">
+                <button type="button" class="seg-btn is-active" data-hm="secoes">Seções</button>
+                <button type="button" class="seg-btn" data-hm="meta">Meta</button>
+              </div>
+            </div>
             <div id="exec-heatmap" class="hm"></div>
           </section>
         </div>
