@@ -553,21 +553,19 @@ select.input{
   color:#111827;
   white-space:nowrap;
 }
-.meta-progress{ display:flex; align-items:center; gap:12px; width:100%; min-width:0; flex-wrap:wrap; }
-.meta-progress__goal{ font-size:12px; font-weight:700; color:#475569; min-width:max-content; }
-.meta-progress__track{ position:relative; flex:1 1 auto; min-width:0; height:12px; border-radius:999px; background:#eef2ff; border:1px solid #e5e7eb; overflow:visible; --bar-anim-duration:.7s; }
-.meta-progress__fill{ position:absolute; inset:0; width:min(var(--target, 0%), 130%); background:linear-gradient(90deg,#bbf7d0,#34d399); border-radius:999px; transform-origin:left center; transform:scaleX(1); display:block; }
-.meta-progress__track.is-animating .meta-progress__fill{ animation:bar-fill-grow var(--bar-anim-duration, .7s) cubic-bezier(0.25,0.9,0.3,1.2) forwards; }
-.meta-progress--low .meta-progress__fill{ background:linear-gradient(90deg,#fecaca,#f87171); }
-.meta-progress--warn .meta-progress__fill{ background:linear-gradient(90deg,#fed7aa,#fb923c); }
-.meta-progress--ok .meta-progress__fill{ background:linear-gradient(90deg,#bbf7d0,#22c55e); }
-.meta-progress__current{ position:absolute; top:50%; right:-10px; transform:translate(100%, -50%); background:#fff; color:#0f172a; font-size:12px; font-weight:800; padding:4px 10px; border-radius:999px; box-shadow:0 12px 28px rgba(15,23,42,.18); display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
-.meta-progress__emoji{ font-size:15px; }
-.meta-progress__pct{ font-size:13px; font-weight:800; color:#0f172a; margin-left:auto; }
-.kpi-pill--meta .kpi-strip__main{ align-items:center; gap:12px; }
-.meta-progress__info{ width:32px; height:32px; border-radius:10px; border:1px solid rgba(179,0,0,.22); background:rgba(179,0,0,.12); color:var(--brand); display:grid; place-items:center; cursor:pointer; transition:background .2s ease, box-shadow .2s ease; margin-left:auto; }
-.meta-progress__info:hover,
-.meta-progress__info:focus-visible{ background:rgba(179,0,0,.18); box-shadow:0 8px 20px rgba(179,0,0,.22); outline:none; }
+.prod-card__var{ display:flex; flex-direction:column; gap:6px; }
+.prod-card__var-head{ display:flex; align-items:center; justify-content:space-between; font-size:12px; color:#4b5563; }
+.prod-card__var-head strong{ font-size:13px; color:#111827; font-weight:800; }
+.prod-card__var-body{ display:flex; align-items:center; gap:12px; }
+.prod-card__var-goal{ font-size:12px; font-weight:700; color:#475569; white-space:nowrap; min-width:max-content; }
+.prod-card__var-track{ position:relative; flex:1 1 auto; min-width:0; height:18px; border-radius:999px; border:1px solid #e5e7eb; background:#f8fafc; overflow:visible; --bar-anim-duration:.85s; }
+.prod-card__var-fill{ position:absolute; left:2px; top:3px; bottom:3px; border-radius:999px; width:var(--target, 0%); transform-origin:left center; transform:scaleX(1); will-change:transform; overflow:visible; }
+.prod-card__var-track.var--low  .prod-card__var-fill{ background:#fecaca; }
+.prod-card__var-track.var--warn .prod-card__var-fill{ background:#fed7aa; }
+.prod-card__var-track.var--ok   .prod-card__var-fill{ background:#bbf7d0; }
+.prod-card__var-track.is-animating .prod-card__var-fill{ animation:bar-fill-grow var(--bar-anim-duration, .85s) cubic-bezier(0.25,0.9,0.3,1.2) forwards; }
+.prod-card__var-label{ position:absolute; top:50%; right:-10px; transform:translate(100%, -50%); background:#fff; border-radius:999px; padding:4px 10px; font-size:11.5px; font-weight:800; color:#0f172a; box-shadow:0 12px 28px rgba(15,23,42,.16); display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
+.prod-card__var-emoji{ font-size:14px; }
 
 
 @keyframes bar-fill-grow{
@@ -581,6 +579,10 @@ select.input{
 @media (max-width: 640px){
   .kpi-summary{ gap:12px; }
   .kpi-pill{ padding:20px 16px; }
+  .prod-card__var-body{ flex-direction:column; align-items:flex-start; gap:6px; }
+  .prod-card__var-goal{ font-size:11px; }
+  .prod-card__var-track{ height:16px; }
+  .prod-card__var-label{ font-size:10.5px; padding:3px 8px; right:-6px; }
 }
 
 /* =========================================================
@@ -643,8 +645,40 @@ select.input{
 .kv small{ display:block; color:#6b7280; font-size:12px; margin-bottom:4px; }
 .kv strong{ display:block; font-size:16px; line-height:1.15; white-space:nowrap; }
 
-/* Barra de variÃ¡vel */
+/* Barra de atingimento dentro do card */
 
+/* RodapÃ© do card */
+.prod-card__foot{
+  margin-top:auto;
+  padding-top:6px;
+  font-size:11px;
+  color:var(--muted);
+  text-align:right;
+  align-self:flex-end;
+}
+
+/* Tooltip dos cards */
+.kpi-tip{
+  position:absolute;
+  right:0;
+  top:60px;
+  z-index:50;
+  width:320px;
+  background:#0f172a;
+  color:#e2e8f0;
+  border-radius:12px;
+  border:1px solid #1e293b;
+  box-shadow:0 12px 28px rgba(2,6,23,.35);
+  padding:10px 12px;
+  display:none;
+  pointer-events:auto;
+}
+.kpi-tip.is-open{ display:block; }
+.kpi-tip h5{ margin:0 0 6px; font-size:12px; color:#93c5fd; }
+.kpi-tip .row{ display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-top:1px dashed #334155; }
+.kpi-tip .row:first-of-type{ border-top:none; }
+.kpi-tip .row span:first-child{ color:#94a3b8; font-size:12px; }
+.kpi-tip .row span:last-child{ font-weight:800; color:#e5e7eb; font-size:12.5px; }
 
 /* =========================================================
    Barra de chips + filtros aplicados (Tabela)

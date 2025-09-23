@@ -2200,7 +2200,7 @@ const state = {
   animations:{
     resumo:{
       kpiKey:null,
-      metaFill:null,
+      varRatios:new Map(),
     },
     campanhas:{
       team:new Map(),
@@ -3858,8 +3858,8 @@ function renderResumoKPI(summary, context = {}) {
   const {
     visibleItemsHitCount = null,
     visiblePointsHit = null,
-    visibleMetaReal = null,
-    visibleMetaTotal = null
+    visibleVarAtingido = null,
+    visibleVarMeta = null
   } = context || {};
 
   let kpi = $("#kpi-summary");
@@ -3875,12 +3875,12 @@ function renderResumoKPI(summary, context = {}) {
   const pontosAtingidos = toNumber(summary.pontosAtingidos ?? visiblePointsHit ?? 0);
   const pontosTotal = toNumber(summary.pontosPossiveis ?? 0);
 
-  const metaTotalBase = summary.metaTotal != null
-    ? toNumber(summary.metaTotal)
-    : (visibleMetaTotal != null ? toNumber(visibleMetaTotal) : 0);
-  const metaRealBase = summary.realizadoTotal != null
-    ? toNumber(summary.realizadoTotal)
-    : (visibleMetaReal != null ? toNumber(visibleMetaReal) : 0);
+  const varTotalBase = summary.varPossivel != null
+    ? toNumber(summary.varPossivel)
+    : (visibleVarMeta != null ? toNumber(visibleVarMeta) : 0);
+  const varRealBase = summary.varAtingido != null
+    ? toNumber(summary.varAtingido)
+    : (visibleVarAtingido != null ? toNumber(visibleVarAtingido) : 0);
 
   const resumoAnim = state.animations?.resumo;
   const keyParts = [
@@ -3888,8 +3888,8 @@ function renderResumoKPI(summary, context = {}) {
     Math.round(indicadoresTotal || 0),
     Math.round(pontosAtingidos || 0),
     Math.round(pontosTotal || 0),
-    Math.round(metaRealBase || 0),
-    Math.round(metaTotalBase || 0)
+    Math.round(varRealBase || 0),
+    Math.round(varTotalBase || 0)
   ];
   const nextResumoKey = keyParts.join('|');
   const shouldAnimateResumo = resumoAnim?.kpiKey !== nextResumoKey;
@@ -3934,62 +3934,14 @@ function renderResumoKPI(summary, context = {}) {
       </div>`;
   };
 
-  const metaPctRaw = metaTotalBase ? (metaRealBase / metaTotalBase) * 100 : 0;
-  const metaPctLabel = `${metaPctRaw.toFixed(1)}%`;
-  const metaFill = Math.max(0, Math.min(150, metaPctRaw));
-  const metaFillRounded = Number(metaFill.toFixed(2));
-  const metaClass = metaPctRaw < 50 ? "meta-progress--low" : (metaPctRaw < 100 ? "meta-progress--warn" : "meta-progress--ok");
-  const metaGoalLabel = formatBRLReadable(metaTotalBase);
-  const metaGoalFull = fmtBRL.format(Math.round(metaTotalBase));
-  const metaRealLabel = formatBRLReadable(metaRealBase);
-  const metaRealFull = fmtBRL.format(Math.round(metaRealBase));
-  const metaTipHTML = buildCardTooltipHTML({ metric: "valor", meta: metaTotalBase, realizado: metaRealBase });
-
   kpi.innerHTML = [
     buildCard("Indicadores", "ti ti-list-check", indicadoresAtingidos, indicadoresTotal, "int", visibleItemsHitCount),
     buildCard("Pontos", "ti ti-medal", pontosAtingidos, pontosTotal, "int", visiblePointsHit),
-    `
-    <div class="kpi-pill kpi-pill--meta">
-      <div class="kpi-strip__main">
-        <span class="kpi-icon"><i class="ti ti-target-arrow"></i></span>
-        <div class="kpi-strip__text">
-          <span class="kpi-strip__label" title="Meta geral">Meta geral</span>
-          <div class="kpi-strip__stats">
-            <span class="kpi-stat" title="Realizado: ${metaRealFull}">Realizado: <strong>${metaRealLabel}</strong></span>
-            <span class="kpi-stat" title="Meta: ${metaGoalFull}">Meta: <strong>${metaGoalLabel}</strong></span>
-          </div>
-        </div>
-        <button type="button" class="meta-progress__info" aria-label="Abrir detalhes da projeção">
-          <i class="ti ti-info-circle"></i>
-        </button>
-      </div>
-      <div class="meta-progress ${metaClass}" role="progressbar" aria-valuemin="0" aria-valuemax="150" aria-valuenow="${Math.round(Math.min(metaFill, 150))}" aria-valuetext="Atingimento da meta: ${metaPctLabel}">
-        <span class="meta-progress__goal" title="${metaGoalFull}">Meta: ${metaGoalLabel}</span>
-        <div class="meta-progress__track" style="--target:${metaFillRounded}%">
-          <span class="meta-progress__fill">
-            <span class="meta-progress__current" title="${metaRealFull}">${metaRealLabel} <span class="meta-progress__emoji" aria-hidden="true">🤑</span></span>
-          </span>
-        </div>
-        <strong class="meta-progress__pct" title="${metaPctLabel}">${metaPctLabel}</strong>
-      </div>
-      ${metaTipHTML}
-    </div>
-    `
+    buildCard("Variável", "ti ti-cash", varRealBase, varTotalBase, "brl", visibleVarAtingido, visibleVarMeta)
   ].join("");
 
   triggerBarAnimation(kpi.querySelectorAll('.hitbar'), shouldAnimateResumo);
-  const metaTrack = kpi.querySelector('.meta-progress__track');
-  const prevMetaFill = resumoAnim?.metaFill;
-  const animateMeta = shouldAnimateDelta(prevMetaFill, metaFillRounded, 0.25);
-  if (metaTrack) triggerBarAnimation(metaTrack, animateMeta);
-
-  if (resumoAnim) {
-    resumoAnim.kpiKey = nextResumoKey;
-    resumoAnim.metaFill = metaFillRounded;
-  }
-
-  const metaCard = kpi.querySelector('.kpi-pill--meta');
-  if (metaCard) bindMetaCardTooltip(metaCard);
+  if (resumoAnim) resumoAnim.kpiKey = nextResumoKey;
 }
 /* ===== Tooltip dos cards ===== */
 function buildCardTooltipHTML(item) {
@@ -4059,9 +4011,8 @@ function wireTipGlobalsOnce(){
   if(__tipGlobalsWired) return;
   __tipGlobalsWired = true;
   const close = () => closeAllTips();
-  const withinCard = (el) => el.closest?.(".prod-card") || el.closest?.(".kpi-pill");
-  document.addEventListener("click", (e)=>{ if(!withinCard(e.target)) close(); });
-  document.addEventListener("touchstart", (e)=>{ if(!withinCard(e.target)) close(); }, {passive:true});
+  document.addEventListener("click", (e)=>{ if(!e.target.closest(".prod-card")) close(); });
+  document.addEventListener("touchstart", (e)=>{ if(!e.target.closest(".prod-card")) close(); }, {passive:true});
   document.addEventListener("keydown", (e)=>{ if(e.key==="Escape") close(); });
   document.addEventListener("scroll", close, { capture:true, passive:true });
   window.addEventListener("resize", close);
@@ -4088,38 +4039,6 @@ function bindBadgeTooltip(card){
   card.addEventListener("mouseleave", close);
   badge.addEventListener("click",(e)=>{ e.stopPropagation(); if(tip.classList.contains("is-open")) close(); else open(e); });
   badge.addEventListener("touchstart",(e)=>{ e.stopPropagation(); if(tip.classList.contains("is-open")) close(); else open(e); }, {passive:true});
-
-  wireTipGlobalsOnce();
-}
-
-function bindMetaCardTooltip(card){
-  const tip = card.querySelector(".kpi-tip");
-  const trigger = card.querySelector(".meta-progress__info");
-  if (!tip || !trigger) return;
-
-  const open = () => {
-    closeAllTips();
-    tip.classList.add("is-open");
-    card.classList.add("is-tip-open");
-    positionTip(trigger, tip);
-  };
-  const close = () => {
-    tip.classList.remove("is-open");
-    card.classList.remove("is-tip-open");
-    tip.style.left = "";
-    tip.style.top = "";
-  };
-
-  trigger.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    if (tip.classList.contains("is-open")) close(); else open();
-  });
-
-  const supportsHover = () => window.matchMedia && window.matchMedia("(hover:hover)").matches;
-  trigger.addEventListener("mouseenter", () => { if (supportsHover()) open(); });
-  trigger.addEventListener("mouseleave", () => { if (supportsHover()) close(); });
-  card.addEventListener("mouseleave", () => { if (supportsHover()) close(); });
-  trigger.addEventListener("keydown", (ev) => { if (ev.key === "Escape") close(); });
 
   wireTipGlobalsOnce();
 }
@@ -4284,6 +4203,8 @@ function renderFamilias(sections, summary){
   host.style.gap = "0";
 
   const resumoAnim = state.animations?.resumo;
+  const prevVarRatios = resumoAnim?.varRatios instanceof Map ? resumoAnim.varRatios : new Map();
+  const nextVarRatios = new Map();
 
   const status = getStatusFilter();
   const secaoFilterId = $("#f-secao")?.value || "Todas";
@@ -4292,8 +4213,9 @@ function renderFamilias(sections, summary){
 
   let atingidosVisiveis = 0;
   let pontosAtingidosVisiveis = 0;
-  let metaVisiveis = 0;
-  let realizadoVisiveis = 0;
+  let varMetaVisiveis = 0;
+  let varRealVisiveis = 0;
+  let hasVisibleVar = false;
 
   const kpiHolder = document.createElement("div");
   kpiHolder.id = "kpi-summary";
@@ -4323,17 +4245,10 @@ function renderFamilias(sections, summary){
 
     const sectionTotalPoints = sec.items.reduce((acc,i)=> acc + (i.peso||0), 0);
     const sectionPointsHit   = sec.items.filter(i=> i.atingido).reduce((acc,i)=> acc + (i.peso||0), 0);
-    const sectionMetaTotal   = sec.items.reduce((acc,i)=> acc + (i.meta || 0), 0);
-    const sectionRealTotal   = sec.items.reduce((acc,i)=> acc + (i.realizado || 0), 0);
-
     const sectionPointsHitDisp = formatIntReadable(sectionPointsHit);
     const sectionPointsTotalDisp = formatIntReadable(sectionTotalPoints);
     const sectionPointsHitFull = fmtINT.format(Math.round(sectionPointsHit));
     const sectionPointsTotalFull = fmtINT.format(Math.round(sectionTotalPoints));
-    const sectionMetaDisp = formatBRLReadable(sectionMetaTotal);
-    const sectionRealDisp = formatBRLReadable(sectionRealTotal);
-    const sectionMetaFull = fmtBRL.format(Math.round(sectionMetaTotal));
-    const sectionRealFull = fmtBRL.format(Math.round(sectionRealTotal));
 
     const sectionEl = document.createElement("section");
     sectionEl.className = "fam-section";
@@ -4344,7 +4259,6 @@ function renderFamilias(sections, summary){
           <span>${sec.label}</span>
           <small class="fam-section__meta">
             <span class="fam-section__meta-item" title="Pontos: ${sectionPointsHitFull} / ${sectionPointsTotalFull}">Pontos: ${sectionPointsHitDisp} / ${sectionPointsTotalDisp}</span>
-            <span class="fam-section__meta-item" title="Meta: ${sectionRealFull} / ${sectionMetaFull}">Meta: ${sectionRealDisp} / ${sectionMetaDisp}</span>
           </small>
         </div>
       </header>
@@ -4353,8 +4267,11 @@ function renderFamilias(sections, summary){
 
     itemsFiltered.forEach(f=>{
       if (f.atingido){ atingidosVisiveis += 1; pontosAtingidosVisiveis += (f.peso||0); }
-      metaVisiveis += Number(f.meta) || 0;
-      realizadoVisiveis += Number(f.realizado) || 0;
+      const variavelMeta = Number(f.variavelMeta) || 0;
+      const variavelReal = Number(f.variavelReal) || 0;
+      if (variavelMeta || variavelReal) hasVisibleVar = true;
+      varMetaVisiveis += variavelMeta;
+      varRealVisiveis += variavelReal;
       const pct = Math.max(0, Math.min(100, f.ating*100)); /* clamp 0..100 */
       const badgeClass = pct < 50 ? "badge--low" : (pct < 100 ? "badge--warn" : "badge--ok");
       const badgeTxt   = pct >= 100 ? `${Math.round(pct)}%` : `${pct.toFixed(1)}%`;
@@ -4364,6 +4281,14 @@ function renderFamilias(sections, summary){
       const metaTxt      = formatByMetric(f.metric, f.meta);
       const realizadoFull = formatMetricFull(f.metric, f.realizado);
       const metaFull      = formatMetricFull(f.metric, f.meta);
+
+      const metaRatio = f.meta ? (f.realizado / f.meta) : 0;
+      const metaPct = Math.max(0, metaRatio * 100);
+      const metaPctLabel = `${metaPct.toFixed(1)}%`;
+      const metaFill = Math.max(0, Math.min(130, metaPct));
+      const metaFillRounded = Number(metaFill.toFixed(2));
+      const metaTrackClass = metaPct < 50 ? "var--low" : (metaPct < 100 ? "var--warn" : "var--ok");
+      const metaAccessible = `${metaPctLabel} (${realizadoFull} de ${metaFull})`;
 
       grid.insertAdjacentHTML("beforeend", `
         <article class="prod-card" tabindex="0" data-prod-id="${f.id}">
@@ -4384,20 +4309,48 @@ function renderFamilias(sections, summary){
             <div class="kv"><small>Meta</small><strong class="has-ellipsis" title="${metaFull}">${metaTxt}</strong></div>
           </div>
 
+          <div class="prod-card__var">
+            <div class="prod-card__var-head">
+              <small>Atingimento da meta</small>
+              <strong title="${metaPctLabel}">${metaPctLabel}</strong>
+            </div>
+            <div class="prod-card__var-body">
+              <span class="prod-card__var-goal" title="${metaFull}">Meta: ${metaTxt}</span>
+              <div class="prod-card__var-track ${metaTrackClass}" role="progressbar" aria-valuemin="0" aria-valuemax="150" aria-valuenow="${Math.round(Math.min(metaPct, 150))}" aria-valuetext="${metaAccessible}">
+                <span class="prod-card__var-fill" style="--target:${metaFillRounded}%">
+                  <span class="prod-card__var-label" title="${realizadoFull}">${realizadoTxt} <span class="prod-card__var-emoji" aria-hidden="true">🤑</span></span>
+                </span>
+              </div>
+            </div>
+          </div>
+
           <div class="prod-card__foot">Atualizado em ${f.ultimaAtualizacao}</div>
           ${buildCardTooltipHTML(f)}
         </article>
       `);
+
+      nextVarRatios.set(f.id, metaFillRounded);
+      const cardEl = grid.lastElementChild;
+      if (cardEl) {
+        const trackEl = cardEl.querySelector(".prod-card__var-track");
+        if (trackEl) {
+          const prevRatio = prevVarRatios.get(f.id);
+          const animateVar = shouldAnimateDelta(prevRatio, metaFillRounded, 0.25);
+          triggerBarAnimation(trackEl, animateVar);
+        }
+      }
     });
 
     host.appendChild(sectionEl);
   });
 
+  if (resumoAnim) resumoAnim.varRatios = nextVarRatios;
+
   renderResumoKPI(summary, {
     visibleItemsHitCount: atingidosVisiveis,
     visiblePointsHit: pontosAtingidosVisiveis,
-    visibleMetaReal: realizadoVisiveis,
-    visibleMetaTotal: metaVisiveis
+    visibleVarAtingido: hasVisibleVar ? varRealVisiveis : null,
+    visibleVarMeta: hasVisibleVar ? varMetaVisiveis : null
   });
 
   $$(".prod-card").forEach(card=>{
