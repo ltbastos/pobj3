@@ -609,7 +609,6 @@ select.input{
   box-shadow:none;
   pointer-events:none;
 }
-.prod-card__var-emoji{ font-size:12px; line-height:1; }
 .prod-card__var-value{ display:inline-block; }
 
 

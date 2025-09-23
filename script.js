@@ -4728,7 +4728,6 @@ function renderFamilias(sections, summary){
               <div class="prod-card__var-track ${pontosTrackClass}" data-ratio="${pontosFillRounded}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pontosFillRounded)}" aria-valuetext="${pontosAccessible}">
                 <span class="prod-card__var-fill" style="--target:${pontosFillRounded}%"></span>
                 <span class="prod-card__var-label" title="Atingido: ${pontosRealTxt} · ${pontosPctLabel}">
-                  <span class="prod-card__var-emoji" aria-hidden="true">🤑</span>
                   <span class="prod-card__var-value">${pontosPctLabel}</span>
                 </span>
               </div>
