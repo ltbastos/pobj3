@@ -3997,8 +3997,17 @@ function buildCardTooltipHTML(item) {
   const diasRestantes  = businessDaysRemainingFromToday(start, end);
   const diasDecorridos = Math.max(0, Math.min(diasTotais, diasTotais - diasRestantes));
 
-  let meta = item.meta, realizado = item.realizado;
+  let meta = toNumber(item.meta);
+  let realizado = toNumber(item.realizado);
   if (item.metric === "perc") meta = 100;
+
+  const fmt = (m, v) => {
+    if (!Number.isFinite(v)) v = 0;
+    if (m === "perc") return `${v.toFixed(1)}%`;
+    if (m === "qtd") return fmtINT.format(Math.round(v));
+    return fmtBRL.format(Math.round(v));
+  };
+
   const faltaTotal       = Math.max(0, meta - realizado);
   const necessarioPorDia = diasRestantes > 0 ? (faltaTotal / diasRestantes) : 0;
   const mediaDiaria      = diasDecorridos > 0 ? (realizado / diasDecorridos) : 0;
@@ -4006,8 +4015,6 @@ function buildCardTooltipHTML(item) {
 
   const necessarioPorDiaDisp = diasRestantes > 0 ? fmt(item.metric, necessarioPorDia) : "—";
   const mediaDiariaDisp      = diasDecorridos > 0 ? fmt(item.metric, mediaDiaria) : "—";
-
-  const fmt = (m,v)=> m==="perc" ? `${v.toFixed(1)}%` : (m==="qtd" ? fmtINT.format(Math.round(v)) : fmtBRL.format(Math.round(v)));
 
   return `
     <div class="kpi-tip" role="dialog" aria-label="Detalhes do indicador">
