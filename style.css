@@ -580,8 +580,7 @@ select.input{
 .hitbar--low  .hitbar__fill{ background:#fecaca; }
 .hitbar--warn .hitbar__fill{ background:#fed7aa; }
 .prod-card__var{ display:flex; flex-direction:column; gap:6px; }
-.prod-card__var-head{ display:flex; align-items:center; justify-content:space-between; font-size:12px; color:#4b5563; }
-.prod-card__var-head strong{ font-size:13px; color:#111827; font-weight:800; }
+.prod-card__var-head{ display:flex; align-items:center; justify-content:flex-start; gap:8px; font-size:12px; color:#4b5563; }
 .prod-card__var-body{ display:flex; align-items:center; gap:12px; }
 .prod-card__var-goal{ font-size:12px; font-weight:700; color:#475569; white-space:nowrap; min-width:max-content; }
 .prod-card__var-track{ position:relative; flex:1 1 auto; min-width:0; height:18px; border-radius:999px; border:1px solid #e5e7eb; background:#f8fafc; overflow:hidden; --bar-anim-duration:.85s; }
@@ -594,7 +593,10 @@ select.input{
   position:absolute;
   top:50%;
   left:0;
-  transform:translate(-100%, -50%);
+  transform:translate(-50%, -50%);
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
   font-size:11px;
   font-weight:700;
   color:#0f172a;
@@ -605,9 +607,10 @@ select.input{
   background:none;
   padding:0;
   box-shadow:none;
-  text-align:right;
   pointer-events:none;
 }
+.prod-card__var-emoji{ font-size:12px; line-height:1; }
+.prod-card__var-value{ display:inline-block; }
 
 
 @keyframes bar-fill-grow{
@@ -1059,8 +1062,8 @@ select.input{
 .rank-mini__row--empty .rank-mini__label{ color:#94a3b8; }
 
 /* heatmap */
-.hm{ display:flex; flex-direction:column; gap:6px; overflow:auto; padding-bottom:4px; --hm-first:220px; --hm-cell:132px; }
-.hm-row{ display:grid; gap:6px; align-items:stretch; width:max-content; grid-template-columns:minmax(var(--hm-first,220px), var(--hm-first,220px)) repeat(var(--hm-cols,1), minmax(var(--hm-cell,132px), var(--hm-cell,132px))); }
+.hm{ display:flex; flex-direction:column; gap:6px; overflow:auto; padding-bottom:4px; --hm-first:220px; --hm-cell:132px; width:100%; }
+.hm-row{ display:grid; gap:6px; align-items:stretch; width:100%; grid-template-columns:minmax(var(--hm-first,220px), 1.4fr) repeat(var(--hm-cols,1), minmax(var(--hm-cell,132px), 1fr)); }
 .hm-cell{
   display:flex; align-items:center; justify-content:center;
   background:#f8fafc; border:1px dashed #e5e7eb; border-radius:10px; padding:10px 12px; min-height:52px;

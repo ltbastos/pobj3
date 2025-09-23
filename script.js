@@ -73,6 +73,16 @@ let STATUS_INDICADORES_DATA = DEFAULT_STATUS_INDICADORES.map(item => ({ ...item 
 let STATUS_BY_KEY = new Map(DEFAULT_STATUS_INDICADORES.map(entry => [entry.key, { ...entry }]));
 
 let MESU_BY_AGENCIA = new Map();
+let MESU_FALLBACK_ROWS = [];
+let DIRETORIA_INDEX = new Map();
+let GERENCIA_INDEX = new Map();
+let AGENCIA_INDEX = new Map();
+let GGESTAO_INDEX = new Map();
+let GERENTE_INDEX = new Map();
+let GERENCIAS_BY_DIRETORIA = new Map();
+let AGENCIAS_BY_GERENCIA = new Map();
+let GGESTAO_BY_AGENCIA = new Map();
+let GERENTES_BY_AGENCIA = new Map();
 
 let RANKING_DIRECTORIAS = [];
 let RANKING_GERENCIAS = [];
@@ -401,21 +411,61 @@ function buildHierarchyFromMesu(rows){
   const gerMap = new Map();
   const segMap = new Map();
 
+  MESU_DATA = Array.isArray(rows) ? rows.map(row => ({ ...row })) : [];
+  MESU_FALLBACK_ROWS = [];
   MESU_BY_AGENCIA = new Map();
+  GERENCIAS_BY_DIRETORIA = new Map();
+  AGENCIAS_BY_GERENCIA = new Map();
+  GGESTAO_BY_AGENCIA = new Map();
+  GERENTES_BY_AGENCIA = new Map();
 
   rows.forEach(row => {
     if (row.segmentoNome){
       const key = row.segmentoId || row.segmentoNome;
-      if (!segMap.has(key)) segMap.set(key, { id: row.segmentoId || row.segmentoNome, nome: row.segmentoNome || row.segmentoId || "Segmento" });
+      if (!segMap.has(key)) {
+        segMap.set(key, { id: row.segmentoId || row.segmentoNome, nome: row.segmentoNome || row.segmentoId || "Segmento" });
+      }
     }
     if (row.diretoriaId){
-      if (!dirMap.has(row.diretoriaId)) dirMap.set(row.diretoriaId, { id: row.diretoriaId, nome: row.diretoriaNome || row.diretoriaId });
+      const dirEntry = dirMap.get(row.diretoriaId) || {
+        id: row.diretoriaId,
+        nome: row.diretoriaNome || row.diretoriaId,
+        segmento: row.segmentoId || ""
+      };
+      if (!dirEntry.nome && row.diretoriaNome) dirEntry.nome = row.diretoriaNome;
+      if (!dirEntry.segmento && row.segmentoId) dirEntry.segmento = row.segmentoId;
+      dirMap.set(row.diretoriaId, dirEntry);
     }
     if (row.regionalId){
-      if (!regMap.has(row.regionalId)) regMap.set(row.regionalId, { id: row.regionalId, nome: row.regionalNome || row.regionalId, diretoria: row.diretoriaId });
+      const regEntry = regMap.get(row.regionalId) || {
+        id: row.regionalId,
+        nome: row.regionalNome || row.regionalId,
+        diretoria: row.diretoriaId || "",
+        segmentoId: row.segmentoId || ""
+      };
+      if (!regEntry.nome && row.regionalNome) regEntry.nome = row.regionalNome;
+      if (!regEntry.diretoria && row.diretoriaId) regEntry.diretoria = row.diretoriaId;
+      if (!regEntry.segmentoId && row.segmentoId) regEntry.segmentoId = row.segmentoId;
+      regMap.set(row.regionalId, regEntry);
+      if (row.diretoriaId){
+        if (!GERENCIAS_BY_DIRETORIA.has(row.diretoriaId)) GERENCIAS_BY_DIRETORIA.set(row.diretoriaId, new Set());
+        GERENCIAS_BY_DIRETORIA.get(row.diretoriaId).add(row.regionalId);
+      }
     }
     if (row.agenciaId){
-      if (!agMap.has(row.agenciaId)) agMap.set(row.agenciaId, { id: row.agenciaId, nome: row.agenciaNome || row.agenciaId, gerencia: row.regionalId });
+      const agEntry = agMap.get(row.agenciaId) || {
+        id: row.agenciaId,
+        nome: row.agenciaNome || row.agenciaId,
+        gerencia: row.regionalId || "",
+        diretoria: row.diretoriaId || "",
+        segmento: row.segmentoId || ""
+      };
+      if (!agEntry.nome && row.agenciaNome) agEntry.nome = row.agenciaNome;
+      if (!agEntry.gerencia && row.regionalId) agEntry.gerencia = row.regionalId;
+      if (!agEntry.diretoria && row.diretoriaId) agEntry.diretoria = row.diretoriaId;
+      if (!agEntry.segmento && row.segmentoId) agEntry.segmento = row.segmentoId;
+      agMap.set(row.agenciaId, agEntry);
+
       if (!MESU_BY_AGENCIA.has(row.agenciaId)){
         MESU_BY_AGENCIA.set(row.agenciaId, {
           segmentoId: row.segmentoId,
@@ -429,27 +479,71 @@ function buildHierarchyFromMesu(rows){
           gerenteGestaoId: row.gerenteGestaoId,
           gerenteGestaoNome: row.gerenteGestaoNome,
           gerenteId: row.gerenteId,
-          gerenteNome: row.gerenteNome
+          gerenteNome: row.gerenteNome,
+          gerenteGestaoIds: new Set(),
+          gerenteIds: new Set()
         });
+      }
+      const agencyMeta = MESU_BY_AGENCIA.get(row.agenciaId);
+      if (row.gerenteGestaoId){
+        agencyMeta.gerenteGestaoId = agencyMeta.gerenteGestaoId || row.gerenteGestaoId;
+        agencyMeta.gerenteGestaoNome = agencyMeta.gerenteGestaoNome || row.gerenteGestaoNome;
+        agencyMeta.gerenteGestaoIds.add(row.gerenteGestaoId);
+      }
+      if (row.gerenteId){
+        agencyMeta.gerenteId = agencyMeta.gerenteId || row.gerenteId;
+        agencyMeta.gerenteNome = agencyMeta.gerenteNome || row.gerenteNome;
+        agencyMeta.gerenteIds.add(row.gerenteId);
+      }
+      if (row.segmentoId && !agencyMeta.segmentoId) agencyMeta.segmentoId = row.segmentoId;
+      if (row.segmentoNome && !agencyMeta.segmentoNome) agencyMeta.segmentoNome = row.segmentoNome;
+      if (row.diretoriaId && !agencyMeta.diretoriaId) agencyMeta.diretoriaId = row.diretoriaId;
+      if (row.diretoriaNome && !agencyMeta.diretoriaNome) agencyMeta.diretoriaNome = row.diretoriaNome;
+      if (row.regionalId && !agencyMeta.regionalId) agencyMeta.regionalId = row.regionalId;
+      if (row.regionalNome && !agencyMeta.regionalNome) agencyMeta.regionalNome = row.regionalNome;
+
+      if (row.regionalId){
+        if (!AGENCIAS_BY_GERENCIA.has(row.regionalId)) AGENCIAS_BY_GERENCIA.set(row.regionalId, new Set());
+        AGENCIAS_BY_GERENCIA.get(row.regionalId).add(row.agenciaId);
       }
     }
     if (row.gerenteGestaoId){
-      if (!ggMap.has(row.gerenteGestaoId)) ggMap.set(row.gerenteGestaoId, {
+      const ggEntry = ggMap.get(row.gerenteGestaoId) || {
         id: row.gerenteGestaoId,
         nome: row.gerenteGestaoNome || row.gerenteGestaoId,
-        agencia: row.agenciaId,
-        gerencia: row.regionalId,
-        diretoria: row.diretoriaId
-      });
+        agencia: row.agenciaId || "",
+        gerencia: row.regionalId || "",
+        diretoria: row.diretoriaId || ""
+      };
+      if (!ggEntry.nome && row.gerenteGestaoNome) ggEntry.nome = row.gerenteGestaoNome;
+      if (!ggEntry.agencia && row.agenciaId) ggEntry.agencia = row.agenciaId;
+      if (!ggEntry.gerencia && row.regionalId) ggEntry.gerencia = row.regionalId;
+      if (!ggEntry.diretoria && row.diretoriaId) ggEntry.diretoria = row.diretoriaId;
+      ggMap.set(row.gerenteGestaoId, ggEntry);
+
+      if (row.agenciaId){
+        if (!GGESTAO_BY_AGENCIA.has(row.agenciaId)) GGESTAO_BY_AGENCIA.set(row.agenciaId, new Set());
+        GGESTAO_BY_AGENCIA.get(row.agenciaId).add(row.gerenteGestaoId);
+      }
     }
     if (row.gerenteId){
-      if (!gerMap.has(row.gerenteId)) gerMap.set(row.gerenteId, {
+      const gerEntry = gerMap.get(row.gerenteId) || {
         id: row.gerenteId,
         nome: row.gerenteNome || row.gerenteId,
-        agencia: row.agenciaId,
-        gerencia: row.regionalId,
-        diretoria: row.diretoriaId
-      });
+        agencia: row.agenciaId || "",
+        gerencia: row.regionalId || "",
+        diretoria: row.diretoriaId || ""
+      };
+      if (!gerEntry.nome && row.gerenteNome) gerEntry.nome = row.gerenteNome;
+      if (!gerEntry.agencia && row.agenciaId) gerEntry.agencia = row.agenciaId;
+      if (!gerEntry.gerencia && row.regionalId) gerEntry.gerencia = row.regionalId;
+      if (!gerEntry.diretoria && row.diretoriaId) gerEntry.diretoria = row.diretoriaId;
+      gerMap.set(row.gerenteId, gerEntry);
+
+      if (row.agenciaId){
+        if (!GERENTES_BY_AGENCIA.has(row.agenciaId)) GERENTES_BY_AGENCIA.set(row.agenciaId, new Set());
+        GERENTES_BY_AGENCIA.get(row.agenciaId).add(row.gerenteId);
+      }
     }
   });
 
@@ -460,6 +554,17 @@ function buildHierarchyFromMesu(rows){
   RANKING_GERENTES = Array.from(gerMap.values());
   SEGMENTOS_DATA = Array.from(segMap.values());
 
+  MESU_BY_AGENCIA.forEach(meta => {
+    if (meta.gerenteGestaoIds instanceof Set) {
+      meta.gerenteGestaoLista = Array.from(meta.gerenteGestaoIds);
+      delete meta.gerenteGestaoIds;
+    }
+    if (meta.gerenteIds instanceof Set) {
+      meta.gerenteLista = Array.from(meta.gerenteIds);
+      delete meta.gerenteIds;
+    }
+  });
+
   const localeCompare = (a, b) => String(a).localeCompare(String(b), "pt-BR", { sensitivity: "base" });
 
   RANKING_DIRECTORIAS.sort((a,b) => localeCompare(a.nome, b.nome));
@@ -468,6 +573,12 @@ function buildHierarchyFromMesu(rows){
   GERENTES_GESTAO.sort((a,b) => localeCompare(a.nome, b.nome));
   RANKING_GERENTES.sort((a,b) => localeCompare(a.nome, b.nome));
   SEGMENTOS_DATA.sort((a,b) => localeCompare(a.nome, b.nome));
+
+  DIRETORIA_INDEX = new Map(RANKING_DIRECTORIAS.map(dir => [dir.id, dir]));
+  GERENCIA_INDEX = new Map(RANKING_GERENCIAS.map(gr => [gr.id, gr]));
+  AGENCIA_INDEX = new Map(RANKING_AGENCIAS.map(ag => [ag.id, ag]));
+  GGESTAO_INDEX = new Map(GERENTES_GESTAO.map(gg => [gg.id, gg]));
+  GERENTE_INDEX = new Map(RANKING_GERENTES.map(ger => [ger.id, ger]));
 
   if (!CURRENT_USER_CONTEXT.diretoria && rows.length){
     const first = rows[0];
@@ -2306,10 +2417,12 @@ function positionVarTrackLabel(trackEl){
 
   const labelWidth = label.offsetWidth;
   const tip = (safeRatio / 100) * trackWidth;
-  const maxLeft = trackWidth - padding;
-  const minLeft = Math.min(maxLeft, labelWidth + padding);
-  let left = Math.min(tip, maxLeft);
+  const half = labelWidth / 2;
+  const minLeft = padding + half;
+  const maxLeft = Math.max(minLeft, trackWidth - padding - half);
+  let left = tip;
   if (left < minLeft) left = minLeft;
+  if (left > maxLeft) left = maxLeft;
 
   label.style.left = `${left}px`;
 }
@@ -2481,6 +2594,8 @@ async function clearFilters() {
   if (secaoSelect) secaoSelect.dispatchEvent(new Event("change"));
   const familiaSelect = $("#f-familia");
   if (familiaSelect) familiaSelect.dispatchEvent(new Event("change"));
+
+  refreshHierarchyCombos();
 
   // limpa busca (contrato) e estado
   state.tableSearchTerm = "";
@@ -2901,6 +3016,227 @@ function renderAppliedFilters() {
   }
 
   items.forEach(ch => bar.appendChild(ch));
+}
+
+const HIERARCHY_FIELDS_DEF = [
+  { key: "segmento",  select: "#f-segmento",  defaultValue: "Todos", defaultLabel: "Todos",  idKey: "segmentoId",    labelKey: "segmentoNome",    fallback: () => SEGMENTOS_DATA },
+  { key: "diretoria", select: "#f-diretoria", defaultValue: "Todas", defaultLabel: "Todas", idKey: "diretoriaId",   labelKey: "diretoriaNome",   fallback: () => RANKING_DIRECTORIAS },
+  { key: "gerencia",  select: "#f-gerencia",  defaultValue: "Todas", defaultLabel: "Todas", idKey: "regionalId",    labelKey: "regionalNome",    fallback: () => RANKING_GERENCIAS },
+  { key: "agencia",   select: "#f-agencia",   defaultValue: "Todas", defaultLabel: "Todas", idKey: "agenciaId",     labelKey: "agenciaNome",     fallback: () => RANKING_AGENCIAS },
+  { key: "ggestao",   select: "#f-ggestao",   defaultValue: "Todos", defaultLabel: "Todos", idKey: "gerenteGestaoId", labelKey: "gerenteGestaoNome", fallback: () => GERENTES_GESTAO },
+  { key: "gerente",   select: "#f-gerente",   defaultValue: "Todos", defaultLabel: "Todos", idKey: "gerenteId",      labelKey: "gerenteNome",      fallback: () => RANKING_GERENTES }
+];
+const HIERARCHY_FIELD_MAP = new Map(HIERARCHY_FIELDS_DEF.map(field => [field.key, field]));
+
+function hierarchyDefaultSelection(){
+  const defaults = {};
+  HIERARCHY_FIELDS_DEF.forEach(field => { defaults[field.key] = field.defaultValue; });
+  return defaults;
+}
+
+function getHierarchyRows(){
+  if (Array.isArray(MESU_DATA) && MESU_DATA.length) return MESU_DATA;
+  if (MESU_FALLBACK_ROWS.length) return MESU_FALLBACK_ROWS;
+
+  const rows = [];
+  const dirMap = new Map(RANKING_DIRECTORIAS.map(dir => [dir.id, dir]));
+  const gerMap = new Map(RANKING_GERENCIAS.map(ger => [ger.id, ger]));
+  const segMap = new Map(SEGMENTOS_DATA.map(seg => [seg.id || seg.nome, seg]));
+
+  if (RANKING_AGENCIAS.length){
+    RANKING_AGENCIAS.forEach(ag => {
+      const gerMeta = gerMap.get(ag.gerencia) || {};
+      const dirMeta = dirMap.get(gerMeta.diretoria) || {};
+      const segKey = dirMeta.segmento || gerMeta.segmentoId || ag.segmento || ag.segmentoId || "";
+      const segMeta = segMap.get(segKey) || {};
+      const ggMeta = GERENTES_GESTAO.find(gg => gg.agencia === ag.id) || {};
+      const gerenteMeta = RANKING_GERENTES.find(ge => ge.agencia === ag.id) || {};
+      rows.push({
+        segmentoId: segMeta.id || segMeta.nome || segKey || "",
+        segmentoNome: segMeta.nome || segMeta.id || segKey || "",
+        diretoriaId: dirMeta.id || dirMeta.nome || "",
+        diretoriaNome: dirMeta.nome || dirMeta.id || dirMeta.segmento || "",
+        regionalId: gerMeta.id || gerMeta.nome || "",
+        regionalNome: gerMeta.nome || gerMeta.id || "",
+        agenciaId: ag.id,
+        agenciaNome: ag.nome || ag.id,
+        gerenteGestaoId: ggMeta.id || "",
+        gerenteGestaoNome: ggMeta.nome || ggMeta.id || "",
+        gerenteId: gerenteMeta.id || "",
+        gerenteNome: gerenteMeta.nome || gerenteMeta.id || "",
+      });
+    });
+  }
+
+  if (!rows.length){
+    rows.push({
+      segmentoId: "",
+      segmentoNome: "",
+      diretoriaId: "",
+      diretoriaNome: "",
+      regionalId: "",
+      regionalNome: "",
+      agenciaId: "",
+      agenciaNome: "",
+      gerenteGestaoId: "",
+      gerenteGestaoNome: "",
+      gerenteId: "",
+      gerenteNome: "",
+    });
+  }
+
+  MESU_FALLBACK_ROWS = rows;
+  return rows;
+}
+
+function getHierarchySelectionFromDOM(){
+  const values = hierarchyDefaultSelection();
+  HIERARCHY_FIELDS_DEF.forEach(field => {
+    const select = $(field.select);
+    if (!select) return;
+    const value = sanitizeText(select.value);
+    values[field.key] = value || field.defaultValue;
+  });
+  return values;
+}
+
+function hierarchyRowMatchesField(row, field, value){
+  if (!field) return true;
+  const def = HIERARCHY_FIELD_MAP.get(field);
+  if (!def) return true;
+  const normalizedValue = sanitizeText(value);
+  if (!normalizedValue || normalizedValue === def.defaultValue) return true;
+  const rowId = sanitizeText(row[def.idKey]);
+  const rowLabel = sanitizeText(row[def.labelKey]);
+  return normalizedValue === rowId || normalizedValue === rowLabel;
+}
+
+function filterHierarchyRowsForField(targetField, selection, rows){
+  return rows.filter(row => HIERARCHY_FIELDS_DEF.every(field => {
+    if (field.key === targetField) return true;
+    return hierarchyRowMatchesField(row, field.key, selection[field.key]);
+  }));
+}
+
+function buildHierarchyOptions(fieldKey, selection, rows){
+  const def = HIERARCHY_FIELD_MAP.get(fieldKey);
+  if (!def) return [];
+  const filtered = filterHierarchyRowsForField(fieldKey, selection, rows);
+  const seen = new Set();
+  const options = [];
+
+  const pushOption = (value, label) => {
+    const safeValue = sanitizeText(value);
+    if (!safeValue || seen.has(safeValue)) return;
+    const safeLabel = sanitizeText(label) || safeValue;
+    options.push({ value: safeValue, label: safeLabel });
+    seen.add(safeValue);
+  };
+
+  filtered.forEach(row => {
+    const value = row[def.idKey] || row[def.labelKey];
+    const label = row[def.labelKey] || row[def.idKey];
+    pushOption(value, label);
+  });
+
+  if (!options.length && typeof def.fallback === "function") {
+    const fallback = def.fallback() || [];
+    fallback.forEach(item => {
+      const value = item?.id ?? item?.value ?? item?.nome ?? item?.name;
+      const label = item?.nome ?? item?.name ?? item?.label ?? item?.id ?? item?.value;
+      pushOption(value, label);
+    });
+  }
+
+  options.sort((a,b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+  return [{ value: def.defaultValue, label: def.defaultLabel }].concat(options);
+}
+
+function setSelectOptions(select, options, desiredValue, defaultValue){
+  const current = sanitizeText(desiredValue);
+  select.innerHTML = "";
+  options.forEach(opt => {
+    const option = document.createElement("option");
+    option.value = opt.value;
+    option.textContent = opt.label;
+    select.appendChild(option);
+  });
+  const next = options.some(opt => opt.value === current) ? current : defaultValue;
+  select.value = next;
+  return next;
+}
+
+function refreshHierarchyCombos(opts = {}){
+  const rows = getHierarchyRows();
+  const baseSelection = { ...hierarchyDefaultSelection(), ...getHierarchySelectionFromDOM(), ...(opts.selection || {}) };
+  const result = { ...baseSelection };
+  HIERARCHY_FIELDS_DEF.forEach(field => {
+    const select = $(field.select);
+    if (!select) return;
+    const options = buildHierarchyOptions(field.key, result, rows);
+    const chosen = setSelectOptions(select, options, result[field.key], field.defaultValue);
+    result[field.key] = chosen;
+  });
+  return result;
+}
+
+function adjustHierarchySelection(selection, changedField){
+  const def = HIERARCHY_FIELD_MAP.get(changedField);
+  if (!def) return selection;
+  const value = sanitizeText(selection[changedField]);
+  const effective = value || def.defaultValue;
+  selection[changedField] = effective;
+
+  const setIf = (key, next) => {
+    if (!next) return;
+    const meta = HIERARCHY_FIELD_MAP.get(key);
+    const normalized = sanitizeText(next);
+    if (!meta) return;
+    selection[key] = normalized || meta.defaultValue;
+  };
+
+  if (changedField === "agencia" && effective !== def.defaultValue){
+    const meta = AGENCIA_INDEX.get(effective) || MESU_BY_AGENCIA.get(effective) || {};
+    setIf("gerencia", meta.gerencia || meta.regionalId || meta.regional);
+    setIf("diretoria", meta.diretoria || meta.diretoriaId);
+    setIf("segmento", meta.segmento || meta.segmentoId);
+  }
+
+  if (changedField === "gerencia" && effective !== def.defaultValue){
+    const meta = GERENCIA_INDEX.get(effective) || {};
+    setIf("diretoria", meta.diretoria);
+    setIf("segmento", meta.segmentoId);
+  }
+
+  if (changedField === "diretoria" && effective !== def.defaultValue){
+    const meta = DIRETORIA_INDEX.get(effective) || {};
+    setIf("segmento", meta.segmento);
+  }
+
+  if (changedField === "ggestao" && effective !== def.defaultValue){
+    const meta = GGESTAO_INDEX.get(effective) || {};
+    setIf("agencia", meta.agencia);
+    setIf("gerencia", meta.gerencia);
+    setIf("diretoria", meta.diretoria);
+    const agMeta = meta.agencia ? (AGENCIA_INDEX.get(meta.agencia) || MESU_BY_AGENCIA.get(meta.agencia) || {}) : {};
+    setIf("segmento", agMeta.segmento || agMeta.segmentoId);
+  }
+
+  if (changedField === "gerente" && effective !== def.defaultValue){
+    const meta = GERENTE_INDEX.get(effective) || {};
+    setIf("agencia", meta.agencia);
+    setIf("gerencia", meta.gerencia);
+    setIf("diretoria", meta.diretoria);
+    const agMeta = meta.agencia ? (AGENCIA_INDEX.get(meta.agencia) || MESU_BY_AGENCIA.get(meta.agencia) || {}) : {};
+    setIf("segmento", agMeta.segmento || agMeta.segmentoId);
+  }
+
+  return selection;
+}
+
+function handleHierarchySelectionChange(changedField){
+  const selection = adjustHierarchySelection(getHierarchySelectionFromDOM(), changedField);
+  refreshHierarchyCombos({ selection });
 }
 
 /* ===== Filtros superiores ===== */
@@ -3461,61 +3797,21 @@ function initCombos() {
     return list;
   };
 
-  // visíveis
-  const segOptions = [{ value: "Todos", label: "Todos" }].concat(
-    dedupeOptions(
-      SEGMENTOS_DATA,
-      seg => seg?.nome || seg?.id,
-      seg => seg?.nome || seg?.id
-    )
-  );
-  fill("#f-segmento", segOptions);
+  refreshHierarchyCombos();
 
-  const dirOptions = [{ value: "Todas", label: "Todas" }].concat(
-    dedupeOptions(
-      RANKING_DIRECTORIAS,
-      dir => dir?.id,
-      dir => dir?.nome || dir?.id
-    )
-  );
-  fill("#f-diretoria", dirOptions);
-
-  const gerOptions = [{ value: "Todas", label: "Todas" }].concat(
-    dedupeOptions(
-      RANKING_GERENCIAS,
-      gr => gr?.id,
-      gr => gr?.nome || gr?.id
-    )
-  );
-  fill("#f-gerencia", gerOptions);
-
-  // avançado
-  const agOptions = [{ value: "Todas", label: "Todas" }].concat(
-    dedupeOptions(
-      RANKING_AGENCIAS,
-      ag => ag?.id,
-      ag => ag?.nome || ag?.id
-    )
-  );
-  fill("#f-agencia", agOptions);
-
-  const ggOptions = [{ value: "Todos", label: "Todos" }].concat(
-    dedupeOptions(
-      GERENTES_GESTAO,
-      gg => gg?.id,
-      gg => gg?.nome || gg?.id
-    )
-  );
-  fill("#f-ggestao", ggOptions);
-
-  const gerenteOptions = [{ value: "Todos", label: "Todos" }].concat(
-    dedupeOptions(
-      RANKING_GERENTES,
-      ger => ger?.id,
-      ger => ger?.nome || ger?.id
-    )
-  );
-  fill("#f-gerente", gerenteOptions);
+  [
+    { key: "segmento",  selector: "#f-segmento" },
+    { key: "diretoria", selector: "#f-diretoria" },
+    { key: "gerencia",  selector: "#f-gerencia" },
+    { key: "agencia",   selector: "#f-agencia" },
+    { key: "ggestao",   selector: "#f-ggestao" },
+    { key: "gerente",   selector: "#f-gerente" },
+  ].forEach(({ key, selector }) => {
+    const el = $(selector);
+    if (!el || el.dataset.hierBound) return;
+    el.dataset.hierBound = "1";
+    el.addEventListener("change", () => handleHierarchySelectionChange(key));
+  });
 
   const secaoOptions = [{ value: "Todas", label: "Todas" }].concat(
     CARD_SECTIONS_DEF.map(sec => ({ value: sec.id, label: sec.label }))
@@ -4426,13 +4722,15 @@ function renderFamilias(sections, summary){
           <div class="prod-card__var">
             <div class="prod-card__var-head">
               <small>Atingimento de pontos</small>
-              <strong title="Atingido: ${pontosRealTxt} · Meta: ${pontosMetaTxt}">${pontosPctLabel}</strong>
             </div>
             <div class="prod-card__var-body">
               <span class="prod-card__var-goal" title="${pontosMetaTxt}">${pontosMetaTxt}</span>
               <div class="prod-card__var-track ${pontosTrackClass}" data-ratio="${pontosFillRounded}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pontosFillRounded)}" aria-valuetext="${pontosAccessible}">
                 <span class="prod-card__var-fill" style="--target:${pontosFillRounded}%"></span>
-                <span class="prod-card__var-label" title="Atingido: ${pontosRealTxt} · ${pontosPctLabel}">${pontosPctLabel}</span>
+                <span class="prod-card__var-label" title="Atingido: ${pontosRealTxt} · ${pontosPctLabel}">
+                  <span class="prod-card__var-emoji" aria-hidden="true">🤑</span>
+                  <span class="prod-card__var-value">${pontosPctLabel}</span>
+                </span>
               </div>
             </div>
           </div>
