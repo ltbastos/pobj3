@@ -3,147 +3,151 @@
 <head>
   <!--
     =====================================================================
-    Painel de Acompanhamento POBJ (versão simplificada)
+    POBJ • Painel Didático (HTML)
     ---------------------------------------------------------------------
-    • Estrutura pensada para ser lida e mantida por pessoas com pouca
-      experiência em desenvolvimento web.
-    • Todo o HTML está organizado em blocos com comentários explicativos.
-    • O arquivo script.js contém os dados fictícios e toda a lógica de
-      filtros, cartões de resumo e atualização da tabela.
-    • As cores e espaçamentos estão concentrados em style.css para facilitar
-      ajustes visuais futuros.
+    • Este arquivo descreve SOMENTE a estrutura da página.
+    • O visual está em style.css e o comportamento em script.js.
+    • Sempre que adicionar um novo campo na tela, deixe um comentário
+      explicando o motivo. Isso ajuda quando você voltar aqui no futuro.
     =====================================================================
   -->
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Painel POBJ • Visão Resumida</title>
+  <title>Painel POBJ • Monitoramento Simplificado</title>
   <link rel="icon" type="image/png" href="img/pobj.png" sizes="32x32" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
+    rel="stylesheet"
+  />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- ===================================================================
-       TOPO DA PÁGINA
-       -------------------------------------------------------------------
-       Contém o título do painel e um pequeno resumo para orientar o usuário.
-       É a primeira área que pode ser personalizada com o logotipo da área
-       responsável.
-       =================================================================== -->
-  <header class="topo">
-    <div class="topo__marca" aria-hidden="true">POBJ</div>
-    <div class="topo__texto">
-      <h1>Painel de Desempenho POBJ</h1>
-      <p>Visão rápida para acompanhar metas, resultados e status das equipes.</p>
+  <!-- ================================================================ -->
+  <!-- CABEÇALHO PRINCIPAL: identifica o painel e dá contexto imediato. -->
+  <!-- Se precisar colocar o logo da área, substitua o texto "POBJ".    -->
+  <!-- ================================================================ -->
+  <header class="cabecalho" role="banner">
+    <div class="cabecalho__marca" aria-hidden="true">POBJ</div>
+    <div class="cabecalho__texto">
+      <h1>Painel de Acompanhamento do POBJ</h1>
+      <p>
+        Esta visão resume como as agências estão performando. Leia os
+        comentários espalhados pelo HTML antes de alterar algo.
+      </p>
     </div>
   </header>
 
-  <!-- ===================================================================
-       CONTEÚDO PRINCIPAL
-       -------------------------------------------------------------------
-       Agrupa filtros, cartões de indicadores e a tabela de detalhamento.
-       Cada seção possui um título claro para facilitar a navegação.
-       =================================================================== -->
-  <main class="conteudo">
-    <!-- =============================================================== -->
-    <!-- CARTÃO DE FILTROS                                               -->
-    <!-- =============================================================== -->
-    <section class="card card--filtros" aria-labelledby="titulo-filtros">
-      <div class="card__cabecalho">
-        <div>
-          <h2 id="titulo-filtros">Filtrar informações</h2>
-          <p class="texto-suave">
-            Use os campos abaixo para refinar os dados exibidos. Todos os campos são opcionais.
+  <!-- ================================================================ -->
+  <!-- CONTEÚDO PRINCIPAL: tudo que o usuário interage está aqui.       -->
+  <!-- As seções estão em blocos independentes para facilitar manutenções. -->
+  <!-- ================================================================ -->
+  <main class="principal">
+    <!-- -------------------------------------------------------------- -->
+    <!-- BLOCO DE FILTROS                                                -->
+    <!-- -------------------------------------------------------------- -->
+    <section class="bloco bloco--filtros" aria-labelledby="titulo-filtros">
+      <header class="bloco__cabecalho">
+        <div class="bloco__intro">
+          <h2 id="titulo-filtros">Filtros rápidos</h2>
+          <p class="texto-ajuda">
+            Use os campos abaixo para limitar a visão. Nenhum campo é obrigatório,
+            mas quanto mais dados você informar, mais focado fica o resultado.
           </p>
         </div>
-        <button id="botao-limpar" class="botao botao--secundario" type="button">
+        <button id="botao-limpar" class="botao botao--limpar" type="button">
           Limpar filtros
         </button>
-      </div>
+      </header>
 
       <!--
-        O formulário foi separado em grupos para deixar evidente o que
-        deve ser preenchido. Os atributos id são utilizados no script.js.
+        FORMULÁRIO: os IDs são usados pelo JavaScript.
+        Sempre mantenha um label claro por campo para garantir acessibilidade.
       -->
       <form class="filtros" id="form-filtros">
-        <div class="filtros__grupo">
+        <div class="grupo-campo">
           <label for="filtro-diretoria">Diretoria</label>
           <select id="filtro-diretoria" class="campo" data-placeholder="Todas as diretorias">
             <option value="">Todas as diretorias</option>
           </select>
         </div>
-        <div class="filtros__grupo">
+
+        <div class="grupo-campo">
           <label for="filtro-regional">Regional</label>
           <select id="filtro-regional" class="campo" data-placeholder="Todas as regionais">
             <option value="">Todas as regionais</option>
           </select>
         </div>
-        <div class="filtros__grupo">
+
+        <div class="grupo-campo">
           <label for="filtro-gerente">Gerente</label>
           <select id="filtro-gerente" class="campo" data-placeholder="Todos os gerentes">
             <option value="">Todos os gerentes</option>
           </select>
         </div>
-        <div class="filtros__grupo">
+
+        <div class="grupo-campo">
           <label for="filtro-status">Status da meta</label>
           <select id="filtro-status" class="campo" data-placeholder="Todos os status">
             <option value="">Todos os status</option>
           </select>
         </div>
-        <div class="filtros__grupo filtros__grupo--pesquisa">
+
+        <div class="grupo-campo grupo-campo--pesquisa">
           <label for="filtro-pesquisa">Busca rápida</label>
           <input
             id="filtro-pesquisa"
             class="campo"
             type="search"
-            placeholder="Digite nome da agência ou do gerente"
+            placeholder="Nome da agência ou do gerente"
           />
         </div>
-        <div class="filtros__acoes">
-          <button class="botao botao--primario" type="submit">
-            Aplicar filtros
-          </button>
+
+        <div class="botoes-form">
+          <button class="botao botao--principal" type="submit">Aplicar filtros</button>
         </div>
       </form>
     </section>
 
-    <!-- =============================================================== -->
-    <!-- CARDS DE RESUMO                                                 -->
-    <!-- =============================================================== -->
-    <section class="card" aria-labelledby="titulo-cartoes">
-      <header class="card__cabecalho card__cabecalho--simples">
-        <h2 id="titulo-cartoes">Resumo dos resultados</h2>
-        <p class="texto-suave">Indicadores automáticos baseados nos filtros atuais.</p>
+    <!-- -------------------------------------------------------------- -->
+    <!-- BLOCO DE CARDS: resumo automático do que está filtrado.        -->
+    <!-- -------------------------------------------------------------- -->
+    <section class="bloco" aria-labelledby="titulo-resumo">
+      <header class="bloco__cabecalho bloco__cabecalho--simples">
+        <div class="bloco__intro">
+          <h2 id="titulo-resumo">Resumo dos indicadores</h2>
+          <p class="texto-ajuda">
+            Estes cartões mudam conforme os filtros. Sempre confira o texto
+            menor em cada card para entender o que o número representa.
+          </p>
+        </div>
       </header>
-      <div class="cards-resumo" id="area-cartoes">
-        <!-- Os cartões são inseridos dinamicamente via JavaScript -->
+      <div class="painel-cartoes" id="area-cartoes">
+        <!-- Os cards são montados pelo script.js -->
       </div>
     </section>
 
-    <!-- =============================================================== -->
-    <!-- TABELA DE DETALHES                                              -->
-    <!-- =============================================================== -->
-    <section class="card" aria-labelledby="titulo-tabela">
-      <header class="card__cabecalho card__cabecalho--simples">
-        <div>
+    <!-- -------------------------------------------------------------- -->
+    <!-- BLOCO DA TABELA: detalha cada agência respeitando os filtros.  -->
+    <!-- -------------------------------------------------------------- -->
+    <section class="bloco" aria-labelledby="titulo-tabela">
+      <header class="bloco__cabecalho bloco__cabecalho--simples">
+        <div class="bloco__intro">
           <h2 id="titulo-tabela">Detalhamento por agência</h2>
-          <p class="texto-suave">
-            Clique nos títulos das colunas para entender o que cada informação representa. Os dados são fictícios.
+          <p class="texto-ajuda">
+            Colunas e ordem podem ser alteradas livremente. Se criar uma nova coluna,
+            comente no HTML e ajuste a função <code>montarLinha</code> em script.js.
           </p>
         </div>
-        <span class="texto-suave" id="contador-registros"></span>
+        <span class="texto-ajuda" id="contador-registros"></span>
       </header>
 
-      <!--
-        A nova coluna "Status da Meta" facilita acompanhar quem está acima
-        ou abaixo da meta. Os cabeçalhos possuem uma descrição para orientar
-        usuários com leitores de tela.
-      -->
       <div class="tabela-container">
         <table class="tabela" aria-describedby="titulo-tabela">
           <thead>
             <tr>
+              <!-- Cabeçalhos claros ajudam quem imprime ou exporta -->
               <th scope="col">Diretoria</th>
               <th scope="col">Regional</th>
               <th scope="col">Agência</th>
@@ -151,41 +155,54 @@
               <th scope="col">Meta (R$)</th>
               <th scope="col">Realizado (R$)</th>
               <th scope="col">Atingimento</th>
-              <th scope="col">Status da Meta</th>
+              <th scope="col">Status da meta</th>
             </tr>
           </thead>
           <tbody id="corpo-tabela">
-            <!-- As linhas são desenhadas pelo script.js -->
+            <!-- As linhas são desenhadas automaticamente em script.js -->
           </tbody>
         </table>
       </div>
 
-      <p class="texto-suave tabela-legenda">
-        Nota: os valores apresentados são meramente ilustrativos. Utilize-os como modelo ao conectar sua base de dados real.
+      <p class="texto-ajuda tabela-legenda">
+        Lembre-se: estes números são fictícios. Troque pela sua base real quando necessário.
       </p>
     </section>
 
-    <!-- =============================================================== -->
-    <!-- DICAS PARA MANUTENÇÃO                                          -->
-    <!-- =============================================================== -->
-    <section class="card" aria-labelledby="titulo-dicas">
-      <header class="card__cabecalho card__cabecalho--simples">
-        <h2 id="titulo-dicas">Guia rápido para manutenção</h2>
+    <!-- -------------------------------------------------------------- -->
+    <!-- BLOCO DE DICAS: lembretes para quem vai manter o projeto.      -->
+    <!-- -------------------------------------------------------------- -->
+    <section class="bloco" aria-labelledby="titulo-dicas">
+      <header class="bloco__cabecalho bloco__cabecalho--simples">
+        <h2 id="titulo-dicas">Guia rápido para manutenção futura</h2>
       </header>
       <ul class="lista-dicas">
-        <li>Para alterar cores ou fontes edite o arquivo <strong>style.css</strong>.</li>
-        <li>Os dados e filtros estão no arquivo <strong>script.js</strong>, dentro da função <code>obterDados()</code>.</li>
-        <li>Deseja incluir novas colunas? Adicione o cabeçalho no HTML e depois atualize a função <code>montarLinha()</code> no JavaScript.</li>
-        <li>As seções são independentes, então é seguro remover um bloco inteiro sem quebrar o restante.</li>
+        <li>
+          Para alterar cores ou tamanhos, ajuste o bloco de variáveis no início
+          do arquivo <strong>style.css</strong>.
+        </li>
+        <li>
+          Os dados de exemplo e toda a lógica dos filtros estão em <strong>script.js</strong>,
+          dentro das funções <code>prepararRegistrosBase</code> e <code>aplicarFiltros</code>.
+        </li>
+        <li>
+          Se precisar acrescentar um filtro, crie o campo aqui no formulário e depois
+          use o mesmo ID para buscar o valor dentro do JavaScript.
+        </li>
+        <li>
+          A tabela aceita qualquer quantidade de colunas. Basta repetir a estrutura
+          &lt;th&gt; no cabeçalho e incluir a célula correspondente em <code>montarLinha</code>.
+        </li>
       </ul>
     </section>
   </main>
 
-  <!-- Rodapé simples para crédito ou versão da aplicação -->
+  <!-- Rodapé discreto para colocar versão do painel ou créditos internos. -->
   <footer class="rodape">
-    <small>Painel didático • Atualizado em 2024</small>
+    <small>Painel POBJ • Exemplo comentado – atualizado em 2024</small>
   </footer>
 
+  <!-- O JavaScript só é carregado no final para agilizar a abertura da página. -->
   <script src="script.js"></script>
 </body>
 </html>

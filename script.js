@@ -1,23 +1,25 @@
 /* =====================================================================
-   script.js • lógica simples, documentada e amigável para iniciantes
+   script.js • Passo a passo totalmente comentado
    ---------------------------------------------------------------------
-   COMO ESTE ARQUIVO ESTÁ ORGANIZADO
-   1. Dados de exemplo utilizados no painel (section "DADOS FICTÍCIOS").
-   2. Constantes com textos e funções auxiliares (section "SUPORTES").
-   3. Funções responsáveis por preencher filtros, cartões e tabela.
-   4. Inicialização da página logo após o carregamento do DOM.
+   COMO LER ESTE ARQUIVO
+   1) Dados e configurações fixas (valores de exemplo e textos).
+   2) Funções utilitárias para formatar números e preparar status.
+   3) Funções que atualizam cada parte da interface (filtros, cards, tabela).
+   4) Um bloco final que inicia tudo quando a página termina de carregar.
 
-   Atenção: os dados são fictícios e foram criados apenas para demonstrar
-   o funcionamento dos componentes. Para usar dados reais basta substituir
-   a função `obterDados()` por uma requisição a um arquivo CSV ou API.
+   Sempre que adaptar algo, deixe o seu comentário com a data e o motivo.
+   Isso evita que você (ou outra pessoa) precise adivinhar intenções depois.
    ===================================================================== */
 
 // ---------------------------------------------------------------------
-// DADOS FICTÍCIOS
+// 1) DADOS DE EXEMPLO E CONFIGURAÇÕES FIXAS
 // ---------------------------------------------------------------------
-// Cada objeto representa uma agência. Os nomes das propriedades são
-// intuitivos para facilitar a manutenção.
-const DADOS_BASE = [
+
+/**
+ * Cada objeto representa uma agência monitorada.
+ * Troque pelos seus dados reais mantendo os mesmos nomes de propriedades.
+ */
+const REGISTROS_EXEMPLO = [
   { diretoria: "Sul", regional: "Curitiba", agencia: "Agência Batel", gerente: "Ana Souza", meta: 520000, realizado: 548000 },
   { diretoria: "Sul", regional: "Curitiba", agencia: "Agência Cabral", gerente: "Bruno Andrade", meta: 460000, realizado: 389000 },
   { diretoria: "Sul", regional: "Porto Alegre", agencia: "Agência Moinhos", gerente: "Carla Menezes", meta: 480000, realizado: 512500 },
@@ -29,80 +31,97 @@ const DADOS_BASE = [
   { diretoria: "Sudeste", regional: "São Paulo", agencia: "Agência Paulista", gerente: "Ícaro Figueiredo", meta: 720000, realizado: 754300 },
   { diretoria: "Sudeste", regional: "São Paulo", agencia: "Agência Faria Lima", gerente: "Juliana Campos", meta: 680000, realizado: 612450 },
   { diretoria: "Sudeste", regional: "Rio de Janeiro", agencia: "Agência Barra", gerente: "Karina Prado", meta: 540000, realizado: 522800 },
-  { diretoria: "Sudeste", regional: "Rio de Janeiro", agencia: "Agência Centro Rio", gerente: "Lucas Azevedo", meta: 505000, realizado: 456000 }
+  { diretoria: "Sudeste", regional: "Rio de Janeiro", agencia: "Agência Centro Rio", gerente: "Lucas Azevedo", meta: 505000, realizado: 456000 },
 ];
 
-// ---------------------------------------------------------------------
-// SUPORTES: textos, formatações e utilidades gerais
-// ---------------------------------------------------------------------
-const DEFINICOES_STATUS = {
-  atingida: {
-    rotulo: "Meta atingida",
-    descricao: "Atingimento igual ou acima de 100%",
-  },
-  atencao: {
-    rotulo: "Em atenção",
-    descricao: "Atingimento entre 85% e 99%",
-  },
-  critica: {
-    rotulo: "Crítica",
-    descricao: "Atingimento abaixo de 85%",
-  },
+/**
+ * Dicionário com os textos exibidos na coluna "Status da meta".
+ * Se alterar as faixas de atingimento, mude a função `identificarStatus` abaixo.
+ */
+const STATUS_META = {
+  atingida: { rotulo: "Meta atingida", descricao: "Atingimento igual ou acima de 100%" },
+  atencao: { rotulo: "Em atenção", descricao: "Atingimento entre 85% e 99%" },
+  critica: { rotulo: "Crítica", descricao: "Atingimento abaixo de 85%" },
 };
 
-const ORDEM_STATUS = ["atingida", "atencao", "critica"];
+/**
+ * Ordem em que os status aparecem nos filtros.
+ * Mantemos em uma constante para não depender da ordem do objeto acima.
+ */
+const ORDEM_STATUS_META = ["atingida", "atencao", "critica"];
 
-const formatoMoeda = new Intl.NumberFormat("pt-BR", {
+// ---------------------------------------------------------------------
+// 2) FUNÇÕES DE APOIO (FORMATAÇÃO E PREPARAÇÃO DOS DADOS)
+// ---------------------------------------------------------------------
+
+// Objetos Intl para reaproveitar formatações sem recriar a cada chamada.
+const formatadorMoeda = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL",
   maximumFractionDigits: 0,
 });
 
-const formatoPercentual = new Intl.NumberFormat("pt-BR", {
+const formatadorPercentual = new Intl.NumberFormat("pt-BR", {
   style: "percent",
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 });
 
-const formatoInteiro = new Intl.NumberFormat("pt-BR", {
-  maximumFractionDigits: 0,
-});
+const formatadorInteiro = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
 
+/** Formata um número para moeda brasileira. */
+function formatarMoeda(valor) {
+  return formatadorMoeda.format(valor);
+}
+
+/** Formata número decimal (0 a 1) para percentual legível. */
+function formatarPercentual(valor) {
+  return formatadorPercentual.format(valor);
+}
+
+/** Formata números inteiros (ex.: quantidade de registros). */
+function formatarInteiro(valor) {
+  return formatadorInteiro.format(valor);
+}
+
+/** Remove acentos e coloca texto em minúsculo para facilitar buscas. */
 function normalizarTexto(texto) {
-  return texto
+  return (texto || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 }
 
-function classificarStatus(atingimento) {
+/** Define status textual com base no atingimento numérico. */
+function identificarStatus(atingimento) {
   if (atingimento >= 1) return "atingida";
   if (atingimento >= 0.85) return "atencao";
   return "critica";
 }
 
-function obterDados() {
-  // A função cria uma cópia para evitar alterações indesejadas
-  return DADOS_BASE.map((item) => {
-    const atingimento = item.realizado / item.meta;
+/**
+ * Cria uma cópia da base de exemplo adicionando campos calculados.
+ * - atingimento: realizado / meta
+ * - status: chave usada pelos filtros e pela tabela
+ */
+function prepararRegistrosBase() {
+  return REGISTROS_EXEMPLO.map((registro) => {
+    const atingimento = registro.meta > 0 ? registro.realizado / registro.meta : 0;
     return {
-      ...item,
+      ...registro,
       atingimento,
-      status: classificarStatus(atingimento),
+      status: identificarStatus(atingimento),
     };
   });
 }
 
 // ---------------------------------------------------------------------
-// FUNÇÕES DE INTERFACE
+// 3) FUNÇÕES QUE CUIDAM DA INTERFACE
 // ---------------------------------------------------------------------
-function prepararInterface() {
-  const estado = {
-    dadosOriginais: obterDados(),
-    dadosFiltrados: [],
-  };
 
-  const elementos = {
+/** Captura apenas uma vez os elementos usados diversas vezes. */
+function obterElementosPrincipais() {
+  return {
     formulario: document.getElementById("form-filtros"),
     campoDiretoria: document.getElementById("filtro-diretoria"),
     campoRegional: document.getElementById("filtro-regional"),
@@ -114,24 +133,30 @@ function prepararInterface() {
     corpoTabela: document.getElementById("corpo-tabela"),
     contadorRegistros: document.getElementById("contador-registros"),
   };
-
-  preencherFiltrosIniciais(estado, elementos);
-  configurarEventos(estado, elementos);
-  aplicarFiltros(estado, elementos);
 }
 
-function preencherFiltrosIniciais(estado, elementos) {
-  const { dadosOriginais } = estado;
-  popularSelect(elementos.campoDiretoria, extrairUnicos(dadosOriginais, "diretoria"));
-  popularSelect(elementos.campoRegional, extrairUnicos(dadosOriginais, "regional"));
-  popularSelect(elementos.campoGerente, extrairUnicos(dadosOriginais, "gerente"));
+/**
+ * Preenche os selects com os valores únicos encontrados na base.
+ * O parâmetro `estado` guarda a base original e os dados filtrados.
+ */
+function prepararFiltrosIniciais(estado, elementos) {
+  const { registrosOriginais } = estado;
+
+  popularSelect(elementos.campoDiretoria, extrairValoresUnicos(registrosOriginais, "diretoria"));
+  popularSelect(elementos.campoRegional, extrairValoresUnicos(registrosOriginais, "regional"));
+  popularSelect(elementos.campoGerente, extrairValoresUnicos(registrosOriginais, "gerente"));
   popularSelectStatus(elementos.campoStatus);
 }
 
+/**
+ * Atualiza o conteúdo de um campo select mantendo uma opção neutra.
+ * Use `manterValor = true` quando o usuário já tiver escolhido algo.
+ */
 function popularSelect(select, valores, manterValor = false) {
   const placeholder = select.dataset.placeholder || "Todas as opções";
   const valorAnterior = manterValor ? select.value : "";
   const opcoesOrdenadas = [...valores].sort((a, b) => a.localeCompare(b, "pt-BR"));
+
   select.innerHTML = `<option value="">${placeholder}</option>`;
   opcoesOrdenadas.forEach((valor) => {
     const option = document.createElement("option");
@@ -139,81 +164,106 @@ function popularSelect(select, valores, manterValor = false) {
     option.textContent = valor;
     select.appendChild(option);
   });
+
   if (manterValor && valorAnterior && opcoesOrdenadas.includes(valorAnterior)) {
     select.value = valorAnterior;
   }
 }
 
+/** Campo de status usa textos amigáveis definidos em STATUS_META. */
 function popularSelectStatus(select) {
   const placeholder = select.dataset.placeholder || "Todos os status";
   select.innerHTML = `<option value="">${placeholder}</option>`;
-  ORDEM_STATUS.forEach((chave) => {
+
+  ORDEM_STATUS_META.forEach((chave) => {
     const option = document.createElement("option");
     option.value = chave;
-    option.textContent = DEFINICOES_STATUS[chave].rotulo;
+    option.textContent = STATUS_META[chave].rotulo;
     select.appendChild(option);
   });
 }
 
-function configurarEventos(estado, elementos) {
-  const { formulario, botaoLimpar, campoDiretoria, campoRegional, campoGerente, campoStatus, campoBusca } = elementos;
+/** Conecta botões e selects com suas ações. */
+function registrarEventos(estado, elementos) {
+  const {
+    formulario,
+    botaoLimpar,
+    campoDiretoria,
+    campoRegional,
+    campoGerente,
+    campoStatus,
+  } = elementos;
 
+  // Quando clicar em "Aplicar filtros", evita recarregar a página.
   formulario.addEventListener("submit", (evento) => {
     evento.preventDefault();
     aplicarFiltros(estado, elementos);
   });
 
+  // Botão que reseta tudo e volta para a visão completa.
   botaoLimpar.addEventListener("click", () => {
     formulario.reset();
     [campoDiretoria, campoRegional, campoGerente, campoStatus].forEach((select) => {
       if (select) select.selectedIndex = 0;
     });
-    if (campoBusca) campoBusca.value = "";
+    if (elementos.campoBusca) elementos.campoBusca.value = "";
     aplicarFiltros(estado, elementos);
-    atualizarOpcoesDependentes(estado, elementos);
+    atualizarFiltrosDependentes(estado, elementos);
   });
 
+  // Quando muda a diretoria, atualizamos regionais e gerentes disponíveis.
   campoDiretoria.addEventListener("change", () => {
-    atualizarOpcoesDependentes(estado, elementos);
+    atualizarFiltrosDependentes(estado, elementos);
   });
 
+  // Quando muda a regional, ajustamos apenas os gerentes daquela região.
   campoRegional.addEventListener("change", () => {
-    atualizarOpcoesDependentes(estado, elementos, { atualizarRegional: false });
+    atualizarFiltrosDependentes(estado, elementos, { atualizarRegional: false });
   });
 }
 
-function atualizarOpcoesDependentes(estado, elementos, opcoes = { atualizarRegional: true }) {
+/**
+ * Ajusta os selects "Regional" e "Gerente" com base no que foi escolhido.
+ * Evita que apareçam opções sem relação com a diretoria selecionada.
+ */
+function atualizarFiltrosDependentes(estado, elementos, opcoes = { atualizarRegional: true }) {
   const { campoDiretoria, campoRegional, campoGerente } = elementos;
-  const { dadosOriginais } = estado;
+  const { registrosOriginais } = estado;
+
   const diretoriaSelecionada = campoDiretoria.value;
   const regionalSelecionada = campoRegional.value;
 
   if (opcoes.atualizarRegional !== false) {
     const baseRegional = diretoriaSelecionada
-      ? dadosOriginais.filter((item) => item.diretoria === diretoriaSelecionada)
-      : dadosOriginais;
-    popularSelect(campoRegional, extrairUnicos(baseRegional, "regional"), true);
+      ? registrosOriginais.filter((registro) => registro.diretoria === diretoriaSelecionada)
+      : registrosOriginais;
+
+    popularSelect(campoRegional, extrairValoresUnicos(baseRegional, "regional"), true);
   }
 
   const baseGerente = (() => {
     if (diretoriaSelecionada && regionalSelecionada) {
-      return dadosOriginais.filter(
-        (item) => item.diretoria === diretoriaSelecionada && item.regional === regionalSelecionada,
+      return registrosOriginais.filter(
+        (registro) => registro.diretoria === diretoriaSelecionada && registro.regional === regionalSelecionada,
       );
     }
     if (diretoriaSelecionada) {
-      return dadosOriginais.filter((item) => item.diretoria === diretoriaSelecionada);
+      return registrosOriginais.filter((registro) => registro.diretoria === diretoriaSelecionada);
     }
     if (regionalSelecionada) {
-      return dadosOriginais.filter((item) => item.regional === regionalSelecionada);
+      return registrosOriginais.filter((registro) => registro.regional === regionalSelecionada);
     }
-    return dadosOriginais;
+    return registrosOriginais;
   })();
-  popularSelect(campoGerente, extrairUnicos(baseGerente, "gerente"), true);
+
+  popularSelect(campoGerente, extrairValoresUnicos(baseGerente, "gerente"), true);
 }
 
+/**
+ * Filtra os registros conforme o que o usuário informou no formulário
+ * e atualiza cards, tabela e contador em sequência.
+ */
 function aplicarFiltros(estado, elementos) {
-  const { dadosOriginais } = estado;
   const {
     campoDiretoria,
     campoRegional,
@@ -225,133 +275,181 @@ function aplicarFiltros(estado, elementos) {
     contadorRegistros,
   } = elementos;
 
-  const termoBusca = normalizarTexto(campoBusca.value.trim());
+  const termoBuscaBruto = campoBusca ? campoBusca.value.trim() : "";
+  const termoBusca = normalizarTexto(termoBuscaBruto);
   const diretoria = campoDiretoria.value;
   const regional = campoRegional.value;
   const gerente = campoGerente.value;
   const status = campoStatus.value;
 
-  const filtrados = dadosOriginais.filter((item) => {
-    if (diretoria && item.diretoria !== diretoria) return false;
-    if (regional && item.regional !== regional) return false;
-    if (gerente && item.gerente !== gerente) return false;
-    if (status && item.status !== status) return false;
+  const filtrados = estado.registrosOriginais.filter((registro) => {
+    if (diretoria && registro.diretoria !== diretoria) return false;
+    if (regional && registro.regional !== regional) return false;
+    if (gerente && registro.gerente !== gerente) return false;
+    if (status && registro.status !== status) return false;
 
     if (termoBusca) {
-      const conjunto = `${item.agencia} ${item.gerente}`;
+      const conjunto = `${registro.agencia} ${registro.gerente}`;
       if (!normalizarTexto(conjunto).includes(termoBusca)) return false;
     }
+
     return true;
   });
 
-  estado.dadosFiltrados = filtrados;
+  estado.registrosFiltrados = filtrados;
+
   atualizarCartoes(filtrados, areaCartoes);
   atualizarTabela(filtrados, corpoTabela);
   atualizarContador(filtrados, contadorRegistros);
 }
 
-function atualizarCartoes(dados, container) {
-  if (!dados.length) {
-    container.innerHTML = `<p class="texto-suave">Nenhum registro encontrado. Ajuste os filtros para visualizar resultados.</p>`;
+/**
+ * Preenche o container de cards com indicadores resumidos.
+ * Caso não haja registros filtrados, mostra uma mensagem amigável.
+ */
+function atualizarCartoes(registros, container) {
+  if (!registros.length) {
+    container.innerHTML = `
+      <p class="texto-ajuda">Nenhum registro encontrado. Ajuste os filtros para visualizar resultados.</p>
+    `;
     return;
   }
 
-  const totalAgencias = dados.length;
-  const totalMeta = dados.reduce((soma, item) => soma + item.meta, 0);
-  const totalRealizado = dados.reduce((soma, item) => soma + item.realizado, 0);
-  const mediaAtingimento = dados.reduce((soma, item) => soma + item.atingimento, 0) / totalAgencias;
-  const atingidas = dados.filter((item) => item.status === "atingida").length;
+  const resumo = calcularResumo(registros);
 
   const cartoes = [
     {
-      id: "card-agencias",
+      id: "card-total-agencias",
       titulo: "Unidades monitoradas",
-      valor: formatoInteiro.format(totalAgencias),
-      rodape: "Quantidade de agências exibidas na tabela",
+      valor: formatarInteiro(resumo.totalAgencias),
+      rodape: "Quantidade de linhas atualmente exibidas na tabela",
     },
     {
       id: "card-meta",
       titulo: "Meta acumulada",
-      valor: formatoMoeda.format(totalMeta),
-      rodape: "Somatório das metas do período",
+      valor: formatarMoeda(resumo.metaTotal),
+      rodape: "Somatório das metas das agências filtradas",
     },
     {
       id: "card-realizado",
       titulo: "Realizado acumulado",
-      valor: formatoMoeda.format(totalRealizado),
-      rodape: "Total alcançado pelas agências filtradas",
+      valor: formatarMoeda(resumo.realizadoTotal),
+      rodape: "Resultado alcançado considerando apenas os filtros ativos",
     },
     {
       id: "card-atingimento",
       titulo: "Atingimento médio",
-      valor: formatoPercentual.format(mediaAtingimento),
-      rodape: "Média simples do atingimento das agências",
+      valor: formatarPercentual(resumo.atingimentoMedio),
+      rodape: "Média simples do atingimento percentual",
     },
     {
       id: "card-atingidas",
       titulo: "Metas atingidas",
-      valor: `${formatoInteiro.format(atingidas)} agências`,
-      rodape: "Total de agências com desempenho acima ou igual a 100%",
+      valor: `${formatarInteiro(resumo.quantidadeAtingidas)} agências`,
+      rodape: "Total de agências com status 'Meta atingida'",
     },
   ];
 
   container.innerHTML = cartoes
     .map(
       (cartao) => `
-        <article class="card-resumo" id="${cartao.id}">
-          <span class="card-resumo__titulo">${cartao.titulo}</span>
-          <strong class="card-resumo__valor">${cartao.valor}</strong>
-          <span class="card-resumo__rodape">${cartao.rodape}</span>
+        <article class="painel-cartoes__item" id="${cartao.id}">
+          <span class="painel-cartoes__titulo">${cartao.titulo}</span>
+          <strong class="painel-cartoes__valor">${cartao.valor}</strong>
+          <span class="painel-cartoes__rodape">${cartao.rodape}</span>
         </article>
       `,
     )
     .join("");
 }
 
-function atualizarTabela(dados, corpoTabela) {
-  if (!dados.length) {
+/** Calcula totais necessários para montar os cards. */
+function calcularResumo(registros) {
+  const totalAgencias = registros.length;
+  const metaTotal = registros.reduce((acumulado, registro) => acumulado + registro.meta, 0);
+  const realizadoTotal = registros.reduce((acumulado, registro) => acumulado + registro.realizado, 0);
+  const atingimentoMedio = registros.reduce((acumulado, registro) => acumulado + registro.atingimento, 0) / totalAgencias;
+  const quantidadeAtingidas = registros.filter((registro) => registro.status === "atingida").length;
+
+  return { totalAgencias, metaTotal, realizadoTotal, atingimentoMedio, quantidadeAtingidas };
+}
+
+/** Desenha o corpo da tabela com base nos registros filtrados. */
+function atualizarTabela(registros, corpoTabela) {
+  if (!registros.length) {
     corpoTabela.innerHTML = `
       <tr>
-        <td colspan="8" class="texto-suave">Nenhum dado para exibir. Verifique os filtros selecionados.</td>
-      </tr>`;
+        <td colspan="8" class="texto-ajuda">Nenhum dado para exibir. Verifique os filtros.</td>
+      </tr>
+    `;
     return;
   }
 
-  corpoTabela.innerHTML = dados.map(montarLinhaTabela).join("");
+  corpoTabela.innerHTML = registros.map(montarLinha).join("");
 }
 
-function montarLinhaTabela(item) {
-  const definicaoStatus = DEFINICOES_STATUS[item.status];
+/**
+ * Recebe um registro (linha) e devolve o HTML correspondente para a tabela.
+ * Se adicionar novas colunas, lembre de incluir aqui também.
+ */
+function montarLinha(registro) {
+  const infoStatus = STATUS_META[registro.status];
+
   return `
     <tr>
-      <td>${item.diretoria}</td>
-      <td>${item.regional}</td>
-      <td>${item.agencia}</td>
-      <td>${item.gerente}</td>
-      <td>${formatoMoeda.format(item.meta)}</td>
-      <td>${formatoMoeda.format(item.realizado)}</td>
-      <td>${formatoPercentual.format(item.atingimento)}</td>
-      <td data-status="${item.status}" title="${definicaoStatus.descricao}">${definicaoStatus.rotulo}</td>
+      <td>${registro.diretoria}</td>
+      <td>${registro.regional}</td>
+      <td>${registro.agencia}</td>
+      <td>${registro.gerente}</td>
+      <td>${formatarMoeda(registro.meta)}</td>
+      <td>${formatarMoeda(registro.realizado)}</td>
+      <td>${formatarPercentual(registro.atingimento)}</td>
+      <td data-status="${registro.status}" title="${infoStatus.descricao}">${infoStatus.rotulo}</td>
     </tr>
   `;
 }
 
-function atualizarContador(dados, elemento) {
-  if (!dados.length) {
+/** Atualiza o texto do contador localizado no topo da tabela. */
+function atualizarContador(registros, elemento) {
+  if (!registros.length) {
     elemento.textContent = "Nenhum registro encontrado";
     return;
   }
-  const texto = dados.length === 1 ? "1 registro exibido" : `${dados.length} registros exibidos`;
+
+  const texto = registros.length === 1
+    ? "1 registro exibido"
+    : `${registros.length} registros exibidos`;
+
   elemento.textContent = texto;
 }
 
-function extrairUnicos(lista, chave) {
+/** Retorna valores únicos de um campo específico (ex.: diretorias). */
+function extrairValoresUnicos(registros, chave) {
   const valores = new Set();
-  lista.forEach((item) => valores.add(item[chave]));
+  registros.forEach((registro) => valores.add(registro[chave]));
   return Array.from(valores);
 }
 
 // ---------------------------------------------------------------------
-// INICIALIZAÇÃO
+// 4) INICIALIZAÇÃO GERAL
 // ---------------------------------------------------------------------
-document.addEventListener("DOMContentLoaded", prepararInterface);
+
+/**
+ * Este é o ponto de entrada do painel.
+ * A função é chamada quando o DOM está pronto para ser manipulado.
+ */
+function iniciarPainel() {
+  const estado = {
+    registrosOriginais: prepararRegistrosBase(),
+    registrosFiltrados: [],
+  };
+
+  const elementos = obterElementosPrincipais();
+
+  prepararFiltrosIniciais(estado, elementos);
+  registrarEventos(estado, elementos);
+  aplicarFiltros(estado, elementos);
+}
+
+// Aguarda o carregamento do HTML para iniciar a lógica.
+document.addEventListener("DOMContentLoaded", iniciarPainel);
