@@ -181,6 +181,20 @@ function pegarPrimeiroPreenchido(...values) {
   }
   return "";
 }
+// Aqui eu garanto que todos os objetos usem o novo padrão id_indicador/ds_indicador e mantenham compatibilidade com produtoId.
+function aplicarIndicadorAliases(target = {}, idBruto = "", nomeBruto = "") {
+  const idTexto = limparTexto(idBruto || "");
+  const nomeTexto = limparTexto(nomeBruto || "");
+  const indicadorId = idTexto || nomeTexto;
+  const indicadorNome = nomeTexto || indicadorId;
+  target.id_indicador = indicadorId;
+  target.ds_indicador = indicadorNome;
+  target.indicadorId = indicadorId;
+  target.indicadorNome = indicadorNome;
+  target.produtoId = indicadorId;
+  target.produtoNome = indicadorNome;
+  return target;
+}
 
 // Aqui eu converto o texto do status para um formato previsível (sem acento e em minúsculas) para montar os filtros.
 function normalizarChaveStatus(value) {
@@ -628,16 +642,15 @@ function normalizarLinhasProdutos(rows){
     const secaoNome = lerCelula(raw, ["secao", "Seção", "Nome secao", "Nome seção"]) || secaoId;
     const familiaNome = lerCelula(raw, ["Familia de produtos", "Família de produtos", "Familia", "família", "familia"]);
     const familiaId = lerCelula(raw, ["Id familia", "ID familia", "Familia Id", "id familia"]) || familiaNome;
-    const produtoNome = lerCelula(raw, ["Produto", "produto", "Produto Nome"]);
-    const produtoId = lerCelula(raw, ["Id produto", "ID produto", "Produto Id", "id produto"]) || produtoNome;
-    return {
+    const produtoNome = lerCelula(raw, ["ds_indicador", "Produto", "produto", "Produto Nome"]);
+    const produtoId = lerCelula(raw, ["id_indicador", "Id produto", "ID produto", "Produto Id", "id produto"]) || produtoNome;
+    const base = {
       secaoId,
       secaoNome,
       familiaNome,
       familiaId,
-      produtoNome,
-      produtoId
     };
+    return aplicarIndicadorAliases(base, produtoId, produtoNome);
   }).filter(row => row.familiaId && row.produtoId);
 }
 
@@ -765,9 +778,9 @@ function normalizarLinhasFatoRealizados(rows){
     const gerenteNome = lerCelula(raw, ["Gerente Nome", "Gerente"]) || gerente;
     const familiaId = lerCelula(raw, ["Familia ID", "Familia", "Família ID"]) || "";
     const familiaNome = lerCelula(raw, ["Familia Nome", "Família", "Familia"]) || familiaId;
-    const produtoId = lerCelula(raw, ["Produto ID", "Produto", "Id Produto"]);
+    const produtoId = lerCelula(raw, ["id_indicador", "Produto ID", "Produto", "Id Produto"]);
     if (!produtoId) return null;
-    const produtoNome = lerCelula(raw, ["Produto Nome", "Produto"]) || produtoId;
+    const produtoNome = lerCelula(raw, ["ds_indicador", "Produto Nome", "Produto"]) || produtoId;
     const subproduto = lerCelula(raw, ["Subproduto", "Sub produto", "Sub-Produto"]);
     const carteira = lerCelula(raw, ["Carteira"]);
     const canalVenda = lerCelula(raw, ["Canal Venda", "Canal"]);
@@ -786,7 +799,7 @@ function normalizarLinhasFatoRealizados(rows){
     const quantidade = toNumber(lerCelula(raw, ["Quantidade", "Qtd"]));
     const variavelReal = toNumber(lerCelula(raw, ["Variavel Real", "Variável Real"]));
 
-    return {
+    const base = {
       registroId,
       segmento,
       segmentoId,
@@ -804,9 +817,6 @@ function normalizarLinhasFatoRealizados(rows){
       gerenteNome,
       familiaId,
       familiaNome,
-      produtoId,
-      produtoNome,
-      prodOrSub: subproduto || produtoNome || produtoId,
       subproduto,
       carteira,
       canalVenda,
@@ -820,6 +830,9 @@ function normalizarLinhasFatoRealizados(rows){
       qtd: quantidade,
       variavelReal,
     };
+    aplicarIndicadorAliases(base, produtoId, produtoNome);
+    base.prodOrSub = subproduto || base.produtoNome || base.produtoId;
+    return base;
   }).filter(Boolean);
 }
 
@@ -846,8 +859,8 @@ function normalizarLinhasFatoMetas(rows){
     const gerenteNome = lerCelula(raw, ["Gerente Nome", "Gerente"]) || gerente;
     const familiaId = lerCelula(raw, ["Familia ID", "Familia", "Família ID"]);
     const familiaNome = lerCelula(raw, ["Familia Nome", "Família Nome", "Familia"]) || familiaId;
-    const produtoId = lerCelula(raw, ["Produto ID", "Produto", "Id Produto"]);
-    const produtoNome = lerCelula(raw, ["Produto Nome", "Produto"]) || produtoId;
+    const produtoId = lerCelula(raw, ["id_indicador", "Produto ID", "Produto", "Id Produto"]);
+    const produtoNome = lerCelula(raw, ["ds_indicador", "Produto Nome", "Produto"]) || produtoId;
     const subproduto = lerCelula(raw, ["Subproduto", "Sub produto", "Sub-Produto"]);
     const carteira = lerCelula(raw, ["Carteira"]);
     const canalVenda = lerCelula(raw, ["Canal Venda", "Canal"]);
@@ -865,7 +878,7 @@ function normalizarLinhasFatoMetas(rows){
     if (!competencia && data) {
       competencia = `${data.slice(0, 7)}-01`;
     }
-    return {
+    const base = {
       registroId,
       segmento,
       segmentoId,
@@ -883,9 +896,6 @@ function normalizarLinhasFatoMetas(rows){
       gerenteNome,
       familiaId,
       familiaNome,
-      produtoId,
-      produtoNome,
-      prodOrSub: subproduto || produtoNome || produtoId,
       subproduto,
       carteira,
       canalVenda,
@@ -899,6 +909,9 @@ function normalizarLinhasFatoMetas(rows){
       variavelMeta,
       peso,
     };
+    aplicarIndicadorAliases(base, produtoId, produtoNome);
+    base.prodOrSub = subproduto || base.produtoNome || base.produtoId;
+    return base;
   }).filter(Boolean);
 }
 
@@ -907,8 +920,8 @@ function normalizarLinhasFatoVariavel(rows){
   return rows.map(raw => {
     const registroId = lerCelula(raw, ["Registro ID", "ID", "registro"]);
     if (!registroId) return null;
-    const produtoId = lerCelula(raw, ["Produto ID", "Produto", "Id Produto"]);
-    const produtoNome = lerCelula(raw, ["Produto Nome", "Produto"]) || produtoId;
+    const produtoId = lerCelula(raw, ["id_indicador", "Produto ID", "Produto", "Id Produto"]);
+    const produtoNome = lerCelula(raw, ["ds_indicador", "Produto Nome", "Produto"]) || produtoId;
     const familiaId = lerCelula(raw, ["Familia ID", "Familia", "Família ID"]);
     const familiaNome = lerCelula(raw, ["Familia Nome", "Família Nome", "Familia"]) || familiaId;
     const variavelMeta = toNumber(lerCelula(raw, ["Variavel Meta", "Variável Meta"]));
@@ -921,10 +934,8 @@ function normalizarLinhasFatoVariavel(rows){
     if (!competencia && data) {
       competencia = `${data.slice(0, 7)}-01`;
     }
-    return {
+    const base = {
       registroId,
-      produtoId,
-      produtoNome,
       familiaId,
       familiaNome,
       data,
@@ -932,6 +943,8 @@ function normalizarLinhasFatoVariavel(rows){
       variavelMeta,
       variavelReal,
     };
+    aplicarIndicadorAliases(base, produtoId, produtoNome);
+    return base;
   }).filter(Boolean);
 }
 
@@ -954,9 +967,9 @@ function normalizarLinhasFatoCampanhas(rows){
     const segmento = lerCelula(raw, ["Segmento"]);
     const familiaId = lerCelula(raw, ["Familia ID", "Família ID", "Familia"]);
     const familiaNome = lerCelula(raw, ["Familia Nome", "Família Nome"]) || familiaId;
-    const produtoId = lerCelula(raw, ["Produto ID", "Produto"]);
+    const produtoId = lerCelula(raw, ["id_indicador", "Produto ID", "Produto"]);
     if (!produtoId) return null;
-    const produtoNome = lerCelula(raw, ["Produto Nome", "Produto"]) || produtoId;
+    const produtoNome = lerCelula(raw, ["ds_indicador", "Produto Nome", "Produto"]) || produtoId;
     const subproduto = lerCelula(raw, ["Subproduto", "Sub produto"]);
     const carteira = lerCelula(raw, ["Carteira"]);
     const linhas = toNumber(lerCelula(raw, ["Linhas"]));
@@ -972,7 +985,7 @@ function normalizarLinhasFatoCampanhas(rows){
       competencia = `${data.slice(0, 7)}-01`;
     }
 
-    return {
+    const base = {
       id,
       sprintId,
       diretoria,
@@ -989,8 +1002,6 @@ function normalizarLinhasFatoCampanhas(rows){
       segmento,
       familiaId,
       familiaNome,
-      produtoId,
-      produtoNome,
       subproduto,
       carteira,
       linhas,
@@ -1000,6 +1011,8 @@ function normalizarLinhasFatoCampanhas(rows){
       data,
       competencia,
     };
+    aplicarIndicadorAliases(base, produtoId, produtoNome);
+    return base;
   }).filter(Boolean);
 }
 
@@ -1315,7 +1328,7 @@ const TABLE_VIEWS = [
   { id:"gerente",   label:"Gerente",            key:"gerente" },
   { id:"secao",    label:"Seção",             key:"secao" },
   { id:"familia",   label:"Família",            key:"familia" },
-  { id:"prodsub",   label:"Produto",            key:"prodOrSub" },
+  { id:"prodsub",   label:"Indicador",          key:"prodOrSub" },
   { id:"contrato",  label:"Contratos",          key:"contrato" },
 ];
 
@@ -1431,6 +1444,7 @@ const DEFAULT_CAMPAIGN_UNIT_DATA = [
   { id: "sc-litoral", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 04", regional: "Regional Curitiba", gerenteGestao: "GG 02", agenciaCodigo: "Ag 1003", agencia: "Agência 1003 • Curitiba Batel", segmento: "MEI", produtoId: "bradesco_expresso", subproduto: "Resgate", gerente: "Gerente 5", gerenteNome: "Carla Menezes", carteira: "Carteira Litoral", linhas: 95.4, cash: 90.1, conquista: 92.8, atividade: true, data: "2025-09-07" },
   { id: "sc-vale", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 04", regional: "Regional Curitiba", gerenteGestao: "GG 02", agenciaCodigo: "Ag 1003", agencia: "Agência 1003 • Curitiba Batel", segmento: "MEI", produtoId: "rec_credito", subproduto: "À vista", gerente: "Gerente 5", gerenteNome: "Carla Menezes", carteira: "Carteira Vale", linhas: 120.2, cash: 115.6, conquista: 110.4, atividade: true, data: "2025-09-17" }
 ];
+DEFAULT_CAMPAIGN_UNIT_DATA.forEach(unit => aplicarIndicadorAliases(unit, unit.produtoId, unit.produtoNome || unit.produtoId));
 
 const CAMPAIGN_UNIT_DATA = [];
 
@@ -1468,7 +1482,7 @@ CAMPAIGN_UNIT_DATA.forEach(unit => {
     if (!unit.secaoNome) unit.secaoNome = meta.sectionLabel || meta.sectionId;
     if (!unit.familiaNome) unit.familiaNome = meta.sectionLabel || meta.sectionId;
   }
-  if (!unit.produtoNome) unit.produtoNome = meta?.name || unit.produto || unit.produtoId || "Produto";
+  if (!unit.produtoNome) unit.produtoNome = meta?.name || unit.produto || unit.produtoId || "Indicador";
   if (!unit.gerenteGestaoNome) {
     const numeric = (unit.gerenteGestao || "").replace(/[^0-9]/g, "");
     unit.gerenteGestaoNome = numeric ? `Gerente geral ${numeric}` : "Gerente geral";
@@ -1624,7 +1638,7 @@ const CAMPAIGN_LEVEL_META = {
   agencia:       { groupField: "agenciaCodigo", displayField: "agencia", singular: "Agência", plural: "agências" },
   gerenteGestao: { groupField: "gerenteGestao", displayField: "gerenteGestaoNome", singular: "Gerente geral", plural: "gerentes gerais" },
   gerente:       { groupField: "gerente", displayField: "gerenteNome", singular: "Gerente", plural: "gerentes" },
-  produto:       { groupField: "produtoId", displayField: "produtoNome", singular: "Produto", plural: "produtos" },
+  produto:       { groupField: "produtoId", displayField: "produtoNome", singular: "Indicador", plural: "indicadores" },
   carteira:      { groupField: "carteira", displayField: "carteira", singular: "Carteira", plural: "carteiras" }
 };
 
@@ -1804,6 +1818,53 @@ function getDefaultPeriodRange(){
     end: todayISO(now),
   };
 }
+// Aqui eu descubro os limites (início e fim) do mês referente a uma data ISO qualquer.
+function getMonthBoundsForISO(baseISO){
+  const fallbackToday = todayISO();
+  const iso = baseISO || fallbackToday;
+  const ref = dateUTCFromISO(iso);
+  if (!(ref instanceof Date) || Number.isNaN(ref?.getTime?.())) {
+    const todayRef = dateUTCFromISO(fallbackToday);
+    const startFallback = `${todayRef.getUTCFullYear()}-${String(todayRef.getUTCMonth()+1).padStart(2,"0")}-01`;
+    const endFallbackDate = new Date(Date.UTC(todayRef.getUTCFullYear(), todayRef.getUTCMonth()+1, 0));
+    return { start:startFallback, end: isoFromUTCDate(endFallbackDate) };
+  }
+  const start = `${ref.getUTCFullYear()}-${String(ref.getUTCMonth()+1).padStart(2,"0")}-01`;
+  const endDate = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth()+1, 0));
+  const end = isoFromUTCDate(endDate);
+  return { start, end };
+}
+// Aqui eu calculo um panorama rápido de dias úteis do mês corrente usando o calendário completo.
+function getCurrentMonthBusinessSnapshot(){
+  const today = todayISO();
+  const { start: monthStart, end: monthEnd } = getMonthBoundsForISO(today);
+  const monthKey = today.slice(0,7);
+  let total = 0;
+  let elapsed = 0;
+  if (Array.isArray(DIM_CALENDARIO) && DIM_CALENDARIO.length) {
+    const entries = DIM_CALENDARIO.filter(entry => {
+      const data = entry.data || entry.dt || "";
+      return typeof data === "string" && data.startsWith(monthKey);
+    });
+    const businessEntries = entries.filter(entry => {
+      const utilFlag = entry.ehDiaUtil ?? entry.util ?? entry.diaUtil ?? "";
+      const value = typeof utilFlag === "string" ? utilFlag.trim() : utilFlag;
+      if (value === true || value === 1 || value === "1") return true;
+      if (typeof value === "string" && value.toLowerCase() === "sim") return true;
+      return false;
+    });
+    total = businessEntries.length;
+    const todayFiltered = businessEntries.filter(entry => (entry.data || entry.dt || "") <= today);
+    elapsed = todayFiltered.length;
+  }
+  if (!total) {
+    total = businessDaysBetweenInclusive(monthStart, monthEnd);
+    const cappedToday = today < monthStart ? monthStart : (today > monthEnd ? monthEnd : today);
+    elapsed = businessDaysBetweenInclusive(monthStart, cappedToday);
+  }
+  const remaining = Math.max(0, total - elapsed);
+  return { total, elapsed, remaining, monthStart, monthEnd };
+}
 // Aqui eu descubro rapidamente quantos meses devo voltar em cada visão acumulada.
 function getAccumulatedViewMonths(view){
   const match = ACCUMULATED_VIEW_OPTIONS.find(opt => opt.value === view);
@@ -1823,7 +1884,12 @@ function computeAccumulatedPeriod(view = state.accumulatedView || "mensal", refe
     endISO = isoFromUTCDate(endDate);
   }
   const monthsBack = getAccumulatedViewMonths(view);
-  const startDate = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth() - monthsBack, 1));
+  let startDate;
+  if (view === "anual") {
+    startDate = new Date(Date.UTC(endDate.getUTCFullYear(), 0, 1));
+  } else {
+    startDate = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth() - monthsBack, 1));
+  }
   const startISO = isoFromUTCDate(startDate);
   const endIsoFinal = isoFromUTCDate(endDate);
   return { start: startISO, end: endIsoFinal };
@@ -2144,6 +2210,120 @@ function makeRandomForMetric(metric){
   return { meta, realizado, variavelMeta };
 }
 
+// Aqui eu gero linhas extras sintéticas para que qualquer filtro mostre cenários completos.
+function expandFactRowsForCoverage(rows = []){
+  if (!Array.isArray(rows) || !rows.length) return rows;
+  const existing = new Map();
+  rows.forEach(row => { if (row?.registroId) existing.set(row.registroId, true); });
+  const expanded = [...rows];
+  const sampleByProduct = new Map();
+  rows.forEach(row => {
+    const prodId = row?.produtoId || row?.produto || row?.id_indicador;
+    if (!prodId) return;
+    if (!sampleByProduct.has(prodId)) sampleByProduct.set(prodId, row);
+  });
+  if (!sampleByProduct.size) return rows;
+
+  const datasetCap = AVAILABLE_DATE_MAX || rows.reduce((acc, row) => {
+    const data = row?.data || row?.competencia || "";
+    if (!data) return acc;
+    return (!acc || data > acc) ? data : acc;
+  }, "") || todayISO();
+  const capDate = dateUTCFromISO(datasetCap);
+  const monthKeys = [];
+  for (let i = 0; i < 9; i += 1) {
+    const cursor = new Date(Date.UTC(capDate.getUTCFullYear(), capDate.getUTCMonth() - i, 1));
+    const key = `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, "0")}`;
+    if (!monthKeys.includes(key)) monthKeys.push(key);
+  }
+  const ratios = [0.62, 0.83, 0.98, 1.12];
+
+  sampleByProduct.forEach(sample => {
+    const prodId = sample.produtoId || sample.produto || sample.id_indicador;
+    const prodNome = sample.produtoNome || sample.produto || sample.ds_indicador || prodId;
+    const peso = Number(sample.peso) || 1;
+    const qtdBase = Math.max(1, Math.round(sample.qtd || sample.quantidade || 12));
+    const variavelMetaBase = Math.max(80, Math.round(sample.variavelMeta || sample.meta || 120_000));
+    const baseMeta = Math.max(1_000, Math.round(sample.meta || sample.meta_mens || sample.meta_acum || sample.realizado || 10_000));
+    const carteira = sample.carteira || `Carteira ${prodNome}`;
+    const canal = sample.canalVenda || "Agência física";
+    const tipoVenda = sample.tipoVenda || "Venda consultiva";
+    const modalidade = sample.modalidadePagamento || "À vista";
+    monthKeys.forEach((monthKey, monthIndex) => {
+      const [anoStr, mesStr] = monthKey.split("-");
+      const ano = Number(anoStr);
+      const mes = Number(mesStr);
+      const lastDay = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+      ratios.forEach((ratio, ratioIndex) => {
+        const registroId = `SYN-${prodId}-${monthKey.replace(/-/g, "")}-${monthIndex}${ratioIndex}`;
+        if (existing.has(registroId)) return;
+        const day = Math.min(lastDay, 5 + (ratioIndex * 6));
+        const dataISO = `${monthKey}-${String(day).padStart(2, "0")}`;
+        const competencia = `${monthKey}-01`;
+        const metaMens = Math.max(500, Math.round(baseMeta * (0.9 + (monthIndex * 0.03))));
+        const realizadoMens = Math.max(0, Math.round(metaMens * ratio));
+        const metaAcum = Math.max(metaMens, Math.round(metaMens * (monthIndex + 1)));
+        const realizadoAcum = Math.max(realizadoMens, Math.round(metaAcum * Math.min(1.25, ratio + 0.08)));
+        const variavelMeta = Math.max(60, Math.round(variavelMetaBase * (0.85 + (ratioIndex * 0.08))));
+        const variavelReal = Math.max(40, Math.round(variavelMeta * Math.min(1.2, ratio + 0.1)));
+        const qtd = Math.max(1, Math.round(qtdBase * (0.7 + (ratioIndex * 0.2))));
+        const ating = metaMens ? (realizadoMens / metaMens) : ratio;
+        const pontos = Math.round(Math.max(0, ating) * peso);
+
+        const clone = {
+          registroId,
+          segmento: sample.segmento,
+          segmentoId: sample.segmentoId,
+          diretoria: sample.diretoria,
+          diretoriaNome: sample.diretoriaNome,
+          gerenciaRegional: sample.gerenciaRegional,
+          gerenciaNome: sample.gerenciaNome,
+          regional: sample.regional,
+          agencia: sample.agencia,
+          agenciaNome: sample.agenciaNome,
+          agenciaCodigo: sample.agenciaCodigo,
+          gerenteGestao: sample.gerenteGestao,
+          gerenteGestaoNome: sample.gerenteGestaoNome,
+          gerente: sample.gerente,
+          gerenteNome: sample.gerenteNome,
+          secaoId: sample.secaoId,
+          secao: sample.secao,
+          secaoNome: sample.secaoNome,
+          familiaId: sample.familiaId,
+          familia: sample.familia,
+          familiaNome: sample.familiaNome,
+          carteira,
+          canalVenda: canal,
+          tipoVenda,
+          modalidadePagamento: modalidade,
+          prodOrSub: sample.prodOrSub || prodNome,
+          subproduto: sample.subproduto || prodNome,
+          data: dataISO,
+          competencia,
+          realizado: realizadoMens,
+          real_mens: realizadoMens,
+          real_acum: realizadoAcum,
+          meta: metaMens,
+          meta_mens: metaMens,
+          meta_acum: metaAcum,
+          qtd,
+          peso,
+          pontos,
+          variavelMeta,
+          variavelReal,
+          ating,
+          atingVariavel: variavelMeta ? (variavelReal / variavelMeta) : 0,
+        };
+        aplicarIndicadorAliases(clone, prodId, prodNome);
+        expanded.push(clone);
+        existing.set(registroId, true);
+      });
+    });
+  });
+
+  return expanded;
+}
+
 /* ===== Aqui eu centralizo o carregamento de dados (API ou CSV local) ===== */
 // Aqui eu faço uma chamada GET simples contra a API com tratamento básico de erro.
 async function apiGet(path, params){
@@ -2194,7 +2374,7 @@ async function getData(){
     const metasMap = new Map(FACT_METAS.map(entry => [entry.registroId, entry]));
     const variavelMap = new Map(FACT_VARIAVEL.map(entry => [entry.registroId, entry]));
 
-    const factRows = FACT_REALIZADOS.map(row => {
+    let factRows = FACT_REALIZADOS.map(row => {
       const meta = metasMap.get(row.registroId) || {};
       const variavel = variavelMap.get(row.registroId) || {};
       const produtoMeta = PRODUCT_INDEX.get(row.produtoId) || {};
@@ -2231,7 +2411,7 @@ async function getData(){
       }
       const calendario = calendarioByDate.get(dataISO) || calendarioByCompetencia.get(competencia);
       const ating = metaMens ? (realizadoMens / metaMens) : 0;
-      const pontos = peso * Math.max(0, Math.min(1.25, ating));
+      const pontos = Math.round(Math.max(0, ating) * peso);
 
       const base = {
         registroId: row.registroId,
@@ -2255,9 +2435,6 @@ async function getData(){
         familiaId: resolvedFamiliaId,
         familia: resolvedFamiliaNome,
         familiaNome: resolvedFamiliaNome,
-        produtoId: row.produtoId,
-        produto: row.produtoNome || row.produtoId,
-        produtoNome: row.produtoNome || row.produtoId,
         prodOrSub: row.prodOrSub || row.subproduto || row.produtoNome || row.produtoId,
         subproduto: row.subproduto || "",
         carteira: row.carteira,
@@ -2281,6 +2458,8 @@ async function getData(){
         atingVariavel: variavelMeta ? variavelReal / variavelMeta : 0,
       };
 
+      aplicarIndicadorAliases(base, row.produtoId, row.produtoNome || row.produtoId);
+
       if (calendario) {
         base.ano = calendario.ano;
         base.mes = calendario.mes;
@@ -2292,6 +2471,26 @@ async function getData(){
 
       return base;
     });
+
+    factRows = expandFactRowsForCoverage(factRows);
+    if (FACT_VARIAVEL.length) {
+      const variavelIds = new Set(FACT_VARIAVEL.map(row => row?.registroId || row?.registroid));
+      const novosVariavel = factRows.filter(row => row?.registroId && !variavelIds.has(row.registroId)).map(row => ({
+        registroId: row.registroId,
+        produtoId: row.produtoId,
+        produtoNome: row.produtoNome,
+        familiaId: row.familiaId,
+        familiaNome: row.familiaNome,
+        variavelMeta: row.variavelMeta,
+        variavelReal: row.variavelReal,
+        data: row.data,
+        competencia: row.competencia,
+      }));
+      if (novosVariavel.length) {
+        novosVariavel.forEach(item => aplicarIndicadorAliases(item, item.produtoId, item.produtoNome));
+        FACT_VARIAVEL.push(...novosVariavel);
+      }
+    }
 
     const baseByRegistro = new Map(factRows.map(row => [row.registroId, row]));
     const variavelFacts = (FACT_VARIAVEL.length ? FACT_VARIAVEL : factRows).map(source => {
@@ -2352,6 +2551,8 @@ async function getData(){
         pontos: base.pontos,
         ating,
       };
+
+      aplicarIndicadorAliases(item, base.produtoId, base.produtoNome);
 
       if (calendario) {
         item.ano = calendario.ano;
@@ -2484,7 +2685,7 @@ async function getData(){
         const ating = metaMens ? (realMens / metaMens) : 0;
         const variavelReal = Math.max(0, Math.round((variavelMeta || 0) * Math.max(0.6, Math.min(1.25, ating))));
         const peso = prod.peso || 1;
-        const pontos = peso * Math.max(0, Math.min(1.25, ating));
+        const pontos = Math.round(Math.max(0, ating) * peso);
         const qtd = prod.metric === "qtd"
           ? Math.max(1, Math.round(realMens))
           : Math.round(80 + Math.random() * 2200);
@@ -3937,7 +4138,7 @@ function renderAppliedFilters() {
       || PRODUCT_INDEX.get(vals.produtoId)?.name
       || PRODUTOS_DATA.find(p => p.produtoId === vals.produtoId)?.produtoNome
       || vals.produtoId;
-    push("Produto", prodLabel, () => $("#f-produto").selectedIndex = 0);
+    push("Indicador", prodLabel, () => $("#f-produto").selectedIndex = 0);
   }
   if (vals.status && vals.status !== "todos") {
     const statusEntry = getStatusEntry(vals.status);
@@ -5328,10 +5529,7 @@ function renderResumoKPI(summary, context = {}) {
 }
 /* ===== Aqui eu cuido do tooltip dos cards para explicar cada indicador ===== */
 function buildCardTooltipHTML(item) {
-  const start = state.period.start, end = state.period.end;
-  const diasTotais     = businessDaysBetweenInclusive(start, end);
-  const diasDecorridos = businessDaysElapsedUntilToday(start, end);
-  const diasRestantes  = Math.max(0, diasTotais - diasDecorridos);
+  const { total: diasTotais, elapsed: diasDecorridos, remaining: diasRestantes } = getCurrentMonthBusinessSnapshot();
 
   let meta = toNumber(item.meta);
   let realizado = toNumber(item.realizado);
@@ -5482,6 +5680,7 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
         pontos: 0,
         ultimaAtualizacao: ""
       };
+      aplicarIndicadorAliases(agg, agg.id, agg.nome);
       aggregated.set(productId, agg);
     } else {
       if (!agg.familiaId && familiaId) {
@@ -5527,7 +5726,7 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
       const pontosBrutos = Number.isFinite(agg.pontos) ? agg.pontos : 0;
       const pontosCumpridos = Math.max(0, Math.min(pontosMeta, pontosBrutos));
       const ultimaISO = agg.ultimaAtualizacao || period.end || period.start || todayISO();
-      return {
+      const cardBase = {
         id: agg.id,
         nome: agg.nome,
         icon: agg.icon,
@@ -5549,6 +5748,9 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
         pontosBrutos,
         ultimaAtualizacao: formatBRDate(ultimaISO)
       };
+      aplicarIndicadorAliases(cardBase, agg.id, agg.nome);
+      cardBase.prodOrSub = agg.produtoNome || agg.nome || agg.id;
+      return cardBase;
     }).filter(Boolean);
     if (items.length) {
       sections.push({ id: sec.id, label: sec.label, items });
@@ -5999,7 +6201,7 @@ function levelLabel(start){
     agencia:  {sing:"Agência", plural:"Agências", short:"Agências"},
     gGestao:  {sing:"Ger. de Gestão", plural:"Ger. de Gestão", short:"GG"},
     gerente:  {sing:"Gerente", plural:"Gerentes", short:"Gerentes"},
-    prodsub:  {sing:"Produto/Subproduto", plural:"Produtos", short:"Produtos"}
+    prodsub:  {sing:"Indicador/Subproduto", plural:"Indicadores", short:"Indicadores"}
   }[start];
 }
 
