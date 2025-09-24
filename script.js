@@ -1356,6 +1356,14 @@ const CARD_SECTIONS_DEF = [
 const SECTION_IDS = new Set(CARD_SECTIONS_DEF.map(sec => sec.id));
 const SECTION_BY_ID = new Map(CARD_SECTIONS_DEF.map(sec => [sec.id, sec]));
 
+// Aqui eu deixo prontas as opções de visão acumulada para mudar o período sem ter que mexer no calendário manualmente.
+const ACCUMULATED_VIEW_OPTIONS = [
+  { value: "mensal",      label: "Mensal",      monthsBack: 0 },
+  { value: "trimestral",  label: "Trimestral",  monthsBack: 2 },
+  { value: "semestral",   label: "Semestral",   monthsBack: 5 },
+  { value: "anual",       label: "Anual",       monthsBack: 11 },
+];
+
 // Aqui eu busco o nome bonitinho da seção pelo id.
 function getSectionLabel(id) {
   if (!id) return "";
@@ -1795,6 +1803,45 @@ function getDefaultPeriodRange(){
     start: firstDayOfMonthISO(now),
     end: todayISO(now),
   };
+}
+// Aqui eu descubro rapidamente quantos meses devo voltar em cada visão acumulada.
+function getAccumulatedViewMonths(view){
+  const match = ACCUMULATED_VIEW_OPTIONS.find(opt => opt.value === view);
+  return match ? match.monthsBack : 0;
+}
+// Aqui eu calculo o período inicial/final com base na visão acumulada escolhida.
+function computeAccumulatedPeriod(view = state.accumulatedView || "mensal", referenceEndISO = ""){
+  const today = todayISO();
+  const datasetMax = AVAILABLE_DATE_MAX || "";
+  const cap = datasetMax && datasetMax < today ? datasetMax : today;
+  let endISO = referenceEndISO || state.period?.end || cap;
+  if (!endISO) endISO = cap;
+  if (endISO > cap) endISO = cap;
+  let endDate = dateUTCFromISO(endISO);
+  if (!(endDate instanceof Date) || Number.isNaN(endDate?.getTime?.())) {
+    endDate = dateUTCFromISO(cap);
+    endISO = isoFromUTCDate(endDate);
+  }
+  const monthsBack = getAccumulatedViewMonths(view);
+  const startDate = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth() - monthsBack, 1));
+  const startISO = isoFromUTCDate(startDate);
+  const endIsoFinal = isoFromUTCDate(endDate);
+  return { start: startISO, end: endIsoFinal };
+}
+// Aqui eu aplico a visão acumulada escolhida direto no estado e atualizo o rótulo do período.
+function syncPeriodFromAccumulatedView(view = state.accumulatedView || "mensal", referenceEndISO = ""){
+  const period = computeAccumulatedPeriod(view, referenceEndISO);
+  state.period.start = period.start;
+  state.period.end = period.end;
+  updatePeriodLabels();
+  return period;
+}
+// Aqui eu atualizo os textos "De xx/xx/xxxx até yy/yy/yyyy" sempre que o período mudar.
+function updatePeriodLabels(){
+  const startEl = document.getElementById("lbl-periodo-inicio");
+  const endEl = document.getElementById("lbl-periodo-fim");
+  if (startEl) startEl.textContent = formatBRDate(state.period.start);
+  if (endEl) endEl.textContent = formatBRDate(state.period.end);
 }
 // Aqui eu calculo o período que alimenta os gráficos mensais da visão executiva.
 function getExecutiveMonthlyPeriod(){
@@ -2393,6 +2440,7 @@ const state = {
   tableRendered:false,
   isAnimating:false,
   period: getDefaultPeriodRange(),
+  accumulatedView:"mensal",
   datePopover:null,
   compact:false,
   contractIndex:[],
@@ -2606,6 +2654,9 @@ function openDatePopover(anchor){
     if(!s || !e || new Date(s) > new Date(e)){ alert("Período inválido."); return; }
     state.period.start = s;
     state.period.end   = e;
+    state.accumulatedView = "mensal";
+    const visaoSelect = document.getElementById("f-visao");
+    if (visaoSelect) visaoSelect.value = "mensal";
     document.getElementById("lbl-periodo-inicio").textContent = formatBRDate(s);
     document.getElementById("lbl-periodo-fim").textContent    = formatBRDate(e);
     closeDatePopover();
@@ -2639,7 +2690,7 @@ async function clearFilters() {
   [
     "#f-segmento","#f-diretoria","#f-gerencia","#f-gerente",
     "#f-agencia","#f-ggestao","#f-secao","#f-familia","#f-produto",
-    "#f-status-kpi"
+    "#f-status-kpi","#f-visao"
   ].forEach(sel => {
     const el = $(sel);
     if (!el) return;
@@ -2649,6 +2700,9 @@ async function clearFilters() {
 
   // valores padrão explícitos
   const st = $("#f-status-kpi"); if (st) st.value = "todos";
+  const visaoSelect = $("#f-visao");
+  if (visaoSelect) visaoSelect.value = "mensal";
+  state.accumulatedView = "mensal";
   const secaoSelect = $("#f-secao");
   if (secaoSelect) secaoSelect.dispatchEvent(new Event("change"));
   const familiaSelect = $("#f-familia");
@@ -2662,10 +2716,7 @@ async function clearFilters() {
   refreshContractSuggestions("");
   const defaultPeriod = getDefaultPeriodRange();
   state.period = defaultPeriod;
-  const lblInicio = $("#lbl-periodo-inicio");
-  const lblFim = $("#lbl-periodo-fim");
-  if (lblInicio) lblInicio.textContent = formatBRDate(state.period.start);
-  if (lblFim) lblFim.textContent = formatBRDate(state.period.end);
+  syncPeriodFromAccumulatedView(state.accumulatedView, defaultPeriod.end);
   if (state.tableView === "contrato") {
     state.tableView = "diretoria";
     state.lastNonContractView = "diretoria";
@@ -3073,6 +3124,16 @@ function renderAppliedFilters() {
       || obterRotuloStatus(vals.status);
     push("Status", statusLabel, () => $("#f-status-kpi").selectedIndex = 0);
   }
+  if (vals.visao && vals.visao !== "mensal") {
+    const visaoEntry = ACCUMULATED_VIEW_OPTIONS.find(opt => opt.value === vals.visao);
+    const visaoLabel = visaoEntry?.label || $("#f-visao")?.selectedOptions?.[0]?.text || vals.visao;
+    push("Visão", visaoLabel, () => {
+      const sel = $("#f-visao");
+      if (sel) sel.value = "mensal";
+      state.accumulatedView = "mensal";
+      syncPeriodFromAccumulatedView("mensal");
+    });
+  }
 
   items.forEach(ch => bar.appendChild(ch));
 }
@@ -3329,6 +3390,7 @@ function getFilterValues() {
     status:    statusKey || "todos",
     statusCodigo,
     statusId,
+    visao:     val("#f-visao") || state.accumulatedView || "mensal",
   };
 }
 
@@ -3938,6 +4000,23 @@ function initCombos() {
   }
 
   updateStatusFilterOptions();
+
+  const visaoSelect = $("#f-visao");
+  if (visaoSelect) {
+    const current = visaoSelect.value || state.accumulatedView || "mensal";
+    visaoSelect.innerHTML = "";
+    ACCUMULATED_VIEW_OPTIONS.forEach(opt => {
+      const option = document.createElement("option");
+      option.value = opt.value;
+      option.textContent = opt.label;
+      visaoSelect.appendChild(option);
+    });
+    visaoSelect.value = ACCUMULATED_VIEW_OPTIONS.some(opt => opt.value === current)
+      ? current
+      : "mensal";
+    state.accumulatedView = visaoSelect.value || "mensal";
+    syncPeriodFromAccumulatedView(state.accumulatedView);
+  }
 }
 function bindEvents() {
   $("#btn-consultar")?.addEventListener("click", async () => {
@@ -3988,6 +4067,23 @@ function bindEvents() {
       }, "Atualizando filtros…");
     });
   });
+
+  const visaoSelect = $("#f-visao");
+  if (visaoSelect && !visaoSelect.dataset.bound) {
+    visaoSelect.dataset.bound = "1";
+    visaoSelect.addEventListener("change", async () => {
+      const nextView = visaoSelect.value || "mensal";
+      state.accumulatedView = nextView;
+      syncPeriodFromAccumulatedView(nextView);
+      await withSpinner(async () => {
+        autoSnapViewToFilters();
+        applyFiltersAndRender();
+        renderAppliedFilters();
+        renderCampanhasView();
+        if (state.activeView === "ranking") renderRanking();
+      }, "Atualizando visão acumulada…");
+    });
+  }
 
   const searchInput = $("#busca");
   if (searchInput) {
@@ -4067,11 +4163,12 @@ function reorderFiltersUI() {
   const gFam = groupOf("#f-familia");
   const gProd= groupOf("#f-produto");
   const gStatus = groupOf("#f-status-kpi");
+  const gVisao = groupOf("#f-visao");
 
   const actions = area.querySelector(".filters__actions") || area.lastElementChild;
 
   [gSeg,gDR,gGR].filter(Boolean).forEach(el => area.insertBefore(el, actions));
-  [gAg,gGG,gGer,gSec,gFam,gProd,gStatus].filter(Boolean).forEach(el => adv?.appendChild(el));
+  [gAg,gGG,gGer,gSec,gFam,gProd,gStatus,gVisao].filter(Boolean).forEach(el => adv?.appendChild(el));
 
   const gStart = $("#f-inicio")?.closest(".filters__group"); if (gStart) gStart.remove();
 }
@@ -4339,10 +4436,21 @@ function renderResumoKPI(summary, context = {}) {
   const nextResumoKey = keyParts.join('|');
   const shouldAnimateResumo = resumoAnim?.kpiKey !== nextResumoKey;
 
-  const formatDisplay = (type, value) => type === "brl" ? formatBRLReadable(value) : formatIntReadable(value);
+  const formatDisplay = (type, value) => {
+    if (type === "brl") return formatBRLReadable(value);
+    if (type === "pts") return formatPoints(value);
+    return formatIntReadable(value);
+  };
   const formatFull = (type, value) => {
+    if (type === "brl") {
+      const n = Math.round(toNumber(value));
+      return fmtBRL.format(n);
+    }
+    if (type === "pts") {
+      return formatPoints(value, { withUnit: true });
+    }
     const n = Math.round(toNumber(value));
-    return type === "brl" ? fmtBRL.format(n) : fmtINT.format(n);
+    return fmtINT.format(n);
   };
   const buildTitle = (label, type, globalValue, visibleValue) => {
     let title = `${label}: ${formatFull(type, globalValue)}`;
@@ -4389,7 +4497,7 @@ function renderResumoKPI(summary, context = {}) {
 
   kpi.innerHTML = [
     buildCard("Indicadores", "ti ti-list-check", indicadoresAtingidos, indicadoresTotal, "int", visibleItemsHitCount),
-    buildCard("Pontos", "ti ti-medal", pontosAtingidos, pontosTotal, "int", visiblePointsHit),
+    buildCard("Pontos", "ti ti-medal", pontosAtingidos, pontosTotal, "pts", visiblePointsHit),
     buildCard("Variável", "ti ti-cash", varRealBase, varTotalBase, "brl", visibleVarAtingido, visibleVarMeta)
   ].join("");
 
@@ -4418,9 +4526,11 @@ function buildCardTooltipHTML(item) {
   const necessarioPorDia = diasRestantes > 0 ? (faltaTotal / diasRestantes) : 0;
   const mediaDiaria      = diasDecorridos > 0 ? (realizado / diasDecorridos) : 0;
   const forecast         = mediaDiaria * (diasTotais || 0);
+  const referenciaHoje   = diasTotais > 0 ? (meta / diasTotais) * diasDecorridos : 0;
 
   const necessarioPorDiaDisp = diasRestantes > 0 ? fmt(item.metric, necessarioPorDia) : "—";
   const mediaDiariaDisp      = diasDecorridos > 0 ? fmt(item.metric, mediaDiaria) : "—";
+  const referenciaHojeDisp   = diasDecorridos > 0 ? fmt(item.metric, referenciaHoje) : "—";
 
   return `
     <div class="kpi-tip" role="dialog" aria-label="Detalhes do indicador">
@@ -4429,6 +4539,7 @@ function buildCardTooltipHTML(item) {
       <div class="row"><span>Dias úteis trabalhados</span><span>${fmtINT.format(diasDecorridos)}</span></div>
       <div class="row"><span>Dias úteis que faltam</span><span>${fmtINT.format(diasRestantes)}</span></div>
       <div class="row"><span>Falta para a meta</span><span>${fmt(item.metric, faltaTotal)}</span></div>
+      <div class="row"><span>Referência para hoje</span><span>${referenciaHojeDisp}</span></div>
       <div class="row"><span>Meta diária necessária</span><span>${necessarioPorDiaDisp}</span></div>
       <div class="row"><span>Média diária atual</span><span>${mediaDiariaDisp}</span></div>
       <div class="row"><span>Forecast (ritmo atual)</span><span>${fmt(item.metric, forecast)}</span></div>
@@ -4592,6 +4703,9 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
       if (agg.secaoId && agg.secaoId !== sec.id) return null;
       const ating = agg.metaTotal ? (agg.realizadoTotal / agg.metaTotal) : 0;
       const variavelAting = agg.variavelMeta ? (agg.variavelReal / agg.variavelMeta) : ating;
+      const pontosMeta = Number(item.peso) || 0;
+      const pontosBrutos = Number.isFinite(agg.pontos) ? agg.pontos : 0;
+      const pontosCumpridos = Math.max(0, Math.min(pontosMeta, pontosBrutos));
       const ultimaISO = agg.ultimaAtualizacao || period.end || period.start || todayISO();
       return {
         id: agg.id,
@@ -4610,7 +4724,9 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
         ating,
         atingVariavel: variavelAting,
         atingido: ating >= 1,
-        pontos: agg.pontos,
+        pontos: pontosCumpridos,
+        pontosMeta,
+        pontosBrutos,
         ultimaAtualizacao: formatBRDate(ultimaISO)
       };
     }).filter(Boolean);
@@ -4622,8 +4738,8 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
   const allItems = sections.flatMap(sec => sec.items);
   const indicadoresTotal = allItems.length;
   const indicadoresAtingidos = allItems.filter(item => item.atingido).length;
-  const pontosPossiveis = allItems.reduce((acc, item) => acc + (item.peso || 0), 0);
-  const pontosAtingidos = allItems.filter(item => item.atingido).reduce((acc, item) => acc + (item.peso || 0), 0);
+  const pontosPossiveis = allItems.reduce((acc, item) => acc + (item.pontosMeta ?? item.peso ?? 0), 0);
+  const pontosAtingidos = allItems.reduce((acc, item) => acc + (item.pontos ?? 0), 0);
   const metaTotal = allItems.reduce((acc, item) => acc + (item.meta || 0), 0);
   const realizadoTotal = allItems.reduce((acc, item) => acc + (item.realizado || 0), 0);
   const varPossivel = allItems.reduce((acc, item) => acc + (item.variavelMeta || 0), 0);
@@ -4708,12 +4824,12 @@ function renderFamilias(sections, summary){
     });
     if (!itemsFiltered.length) return;
 
-    const sectionTotalPoints = sec.items.reduce((acc,i)=> acc + (i.peso||0), 0);
-    const sectionPointsHit   = sec.items.filter(i=> i.atingido).reduce((acc,i)=> acc + (i.peso||0), 0);
-    const sectionPointsHitDisp = formatIntReadable(sectionPointsHit);
-    const sectionPointsTotalDisp = formatIntReadable(sectionTotalPoints);
-    const sectionPointsHitFull = fmtINT.format(Math.round(sectionPointsHit));
-    const sectionPointsTotalFull = fmtINT.format(Math.round(sectionTotalPoints));
+    const sectionTotalPoints = itemsFiltered.reduce((acc,i)=> acc + (i.pontosMeta ?? i.peso ?? 0), 0);
+    const sectionPointsHit   = itemsFiltered.reduce((acc,i)=> acc + Math.max(0, Number(i.pontos ?? 0)), 0);
+    const sectionPointsHitDisp = formatPoints(sectionPointsHit);
+    const sectionPointsTotalDisp = formatPoints(sectionTotalPoints);
+    const sectionPointsHitFull = formatPoints(sectionPointsHit, { withUnit: true });
+    const sectionPointsTotalFull = formatPoints(sectionTotalPoints, { withUnit: true });
 
     const sectionEl = document.createElement("section");
     sectionEl.className = "fam-section";
@@ -4731,7 +4847,10 @@ function renderFamilias(sections, summary){
     const grid = sectionEl.querySelector(".fam-section__grid");
 
     itemsFiltered.forEach(f=>{
-      if (f.atingido){ atingidosVisiveis += 1; pontosAtingidosVisiveis += (f.peso||0); }
+      if (f.atingido){ atingidosVisiveis += 1; }
+      const pontosMetaItem = Number(f.pontosMeta ?? f.peso) || 0;
+      const pontosRealItem = Math.max(0, Number(f.pontos ?? 0));
+      pontosAtingidosVisiveis += Math.min(pontosRealItem, pontosMetaItem);
       const variavelMeta = Number(f.variavelMeta) || 0;
       const variavelReal = Number(f.variavelReal) || 0;
       if (variavelMeta || variavelReal) hasVisibleVar = true;
@@ -4747,8 +4866,8 @@ function renderFamilias(sections, summary){
       const realizadoFull = formatMetricFull(f.metric, f.realizado);
       const metaFull      = formatMetricFull(f.metric, f.meta);
 
-      const pontosMeta = Number(f.peso) || 0;
-      const pontosReal = Number(f.pontos) || 0;
+      const pontosMeta = pontosMetaItem;
+      const pontosReal = pontosRealItem;
       const pontosRatio = pontosMeta ? (pontosReal / pontosMeta) : 0;
       const pontosPct = Math.max(0, pontosRatio * 100);
       const pontosPctLabel = `${pontosPct.toFixed(1)}%`;
@@ -4768,8 +4887,8 @@ function renderFamilias(sections, summary){
           </div>
 
           <div class="prod-card__meta">
-            <span class="pill">Pontos: ${fmtINT.format(f.peso)}/${fmtINT.format(sectionTotalPoints)}</span>
-            <span class="pill">Peso: ${fmtINT.format(f.peso)}</span>
+            <span class="pill">Pontos: ${formatPoints(pontosReal)} / ${formatPoints(pontosMeta)}</span>
+            <span class="pill">Peso: ${formatPoints(pontosMeta)}</span>
             <span class="pill">${f.metric === "valor" ? "Valor" : f.metric === "qtd" ? "Quantidade" : "Percentual"}</span>
           </div>
 
@@ -6879,6 +6998,7 @@ function renderTreeTable() {
   nodes.forEach(n=>renderNode(n,null,[]));
 }
 function applyFiltersAndRender(){
+  updatePeriodLabels();
   updateDashboardCards();
   if(state.tableRendered) renderTreeTable();
   if (state.activeView === "campanhas") renderCampanhasView();
@@ -6998,6 +7118,7 @@ async function refresh(){
           </button>
         </div>`;
       document.getElementById("btn-alterar-data")?.addEventListener("click", (e)=> openDatePopover(e.currentTarget));
+      updatePeriodLabels();
     }
 
     updateDashboardCards();

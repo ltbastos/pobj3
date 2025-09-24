@@ -1464,6 +1464,11 @@ select.input{
   .chart-wrap{ height:220px; }
   .exec-panel{ padding:14px; }
 }
+@media (max-width:560px){
+  .container{ max-width:100%; width:100%; padding:0 12px; }
+  .fam-section__grid{ grid-template-columns:minmax(0,1fr); }
+  .prod-card{ width:100%; min-width:0; }
+}
 @media (max-width:768px){
   .sidebar{ display:none !important; }
   .sidebar-backdrop{ display:none !important; }
