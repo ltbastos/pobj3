@@ -5344,27 +5344,25 @@ function buildCardTooltipHTML(item) {
     return fmtBRL.format(Math.round(v));
   };
 
-  const faltaTotal       = Math.max(0, meta - realizado);
-  const necessarioPorDia = diasRestantes > 0 ? (faltaTotal / diasRestantes) : 0;
-  const mediaDiaria      = diasDecorridos > 0 ? (realizado / diasDecorridos) : 0;
-  const forecast         = mediaDiaria * (diasTotais || 0);
-  const referenciaHoje   = diasTotais > 0 ? (meta / diasTotais) * diasDecorridos : 0;
+  const faltaTotal         = Math.max(0, meta - realizado);
+  const necessarioPorDia   = diasRestantes > 0 ? (faltaTotal / diasRestantes) : 0;
+  const mediaDiariaAtual   = diasDecorridos > 0 ? (realizado / diasDecorridos) : 0;
+  const projecaoRitmoAtual = mediaDiariaAtual * (diasTotais || 0);
+  const referenciaHoje     = diasTotais > 0 ? (meta / diasTotais) * diasDecorridos : 0;
 
   const necessarioPorDiaDisp = diasRestantes > 0 ? fmt(item.metric, necessarioPorDia) : "—";
-  const mediaDiariaDisp      = diasDecorridos > 0 ? fmt(item.metric, mediaDiaria) : "—";
   const referenciaHojeDisp   = diasDecorridos > 0 ? fmt(item.metric, referenciaHoje) : "—";
 
   return `
     <div class="kpi-tip" role="dialog" aria-label="Detalhes do indicador">
       <h5>Projeção e metas</h5>
-      <div class="row"><span>Dias úteis no período</span><span>${fmtINT.format(diasTotais)}</span></div>
+      <div class="row"><span>Quantidade de dias úteis no mês</span><span>${fmtINT.format(diasTotais)}</span></div>
       <div class="row"><span>Dias úteis trabalhados</span><span>${fmtINT.format(diasDecorridos)}</span></div>
       <div class="row"><span>Dias úteis que faltam</span><span>${fmtINT.format(diasRestantes)}</span></div>
       <div class="row"><span>Falta para a meta</span><span>${fmt(item.metric, faltaTotal)}</span></div>
       <div class="row"><span>Referência para hoje</span><span>${referenciaHojeDisp}</span></div>
       <div class="row"><span>Meta diária necessária</span><span>${necessarioPorDiaDisp}</span></div>
-      <div class="row"><span>Média diária atual</span><span>${mediaDiariaDisp}</span></div>
-      <div class="row"><span>Forecast (ritmo atual)</span><span>${fmt(item.metric, forecast)}</span></div>
+      <div class="row"><span>Projeção (ritmo atual)</span><span>${fmt(item.metric, projecaoRitmoAtual)}</span></div>
     </div>
   `;
 }
