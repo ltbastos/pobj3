@@ -7571,7 +7571,7 @@ function renderTreeTable() {
     const cancelGroup = groups.find(g => g.dataCancelamento || g.motivoCancelamento);
     let alertHtml = "";
     if (cancelGroup) {
-      const dateText = cancelGroup.dataCancelamento ? `Cancelado em ${fmtDate(cancelGroup.dataCancelamento)}` : "";
+      const dateText = cancelGroup.dataCancelamento ? `Cancelado em ${formatBRDate(cancelGroup.dataCancelamento)}` : "";
       const reasonText = cancelGroup.motivoCancelamento ? cancelGroup.motivoCancelamento : "";
       const descriptionParts = [];
       if (dateText) descriptionParts.push(escapeHTML(dateText));
