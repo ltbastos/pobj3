@@ -1865,6 +1865,98 @@ function formatBRDate(iso){ if(!iso) return ""; const [y,m,day]=iso.split("-"); 
 function dateUTCFromISO(iso){ const [y,m,d]=iso.split("-").map(Number); return new Date(Date.UTC(y,m-1,d)); }
 // Aqui eu faço o caminho inverso: Date UTC para string ISO.
 function isoFromUTCDate(d){ return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`; }
+// Aqui eu preparo a estrutura das colunas disponíveis na visão de Detalhes e os helpers de persistência.
+const DETAIL_COLUMNS = [
+  { id: "canal",       label: "Canal da venda",         render: (group = {}) => escapeHTML(group.canal || "—") },
+  { id: "tipo",        label: "Tipo da venda",          render: (group = {}) => escapeHTML(group.tipo || "—") },
+  { id: "gerente",     label: "Gerente",                render: (group = {}) => escapeHTML(group.gerente || "—") },
+  { id: "modalidade",  label: "Condição de pagamento",  render: (group = {}) => escapeHTML(group.modalidade || "—") },
+  { id: "vencimento",  label: "Data de vencimento",     render: (group = {}) => renderDetailDateCell(group.dataVencimento) },
+  { id: "cancelamento",label: "Data de cancelamento",   render: (group = {}) => renderDetailDateCell(group.dataCancelamento) },
+  { id: "motivo",      label: "Motivo do cancelamento", render: (group = {}) => escapeHTML(group.motivoCancelamento || "—") },
+];
+const DETAIL_DEFAULT_VIEW = {
+  id: "default",
+  name: "Visão padrão",
+  columns: DETAIL_COLUMNS.map(col => col.id),
+};
+const DETAIL_MAX_CUSTOM_VIEWS = 5;
+const DETAIL_VIEW_STORAGE_KEY = "pobj3:detailViews";
+const DETAIL_VIEW_ACTIVE_KEY = "pobj3:detailActiveView";
+const DETAIL_VIEW_CUSTOM_KEY = "pobj3:detailCustomView";
+const DETAIL_CUSTOM_DEFAULT_LABEL = "Visão atual";
+
+function renderDetailDateCell(iso){
+  if (!iso) return "—";
+  const label = formatBRDate(iso);
+  if (!label) return "—";
+  const safe = escapeHTML(label);
+  return `<span class="detail-date" title="${safe}">${safe}</span>`;
+}
+function getDetailColumnMeta(id){
+  return DETAIL_COLUMNS.find(col => col.id === id) || null;
+}
+function sanitizeDetailColumns(columns = []){
+  const valid = [];
+  columns.forEach(id => {
+    const meta = getDetailColumnMeta(id);
+    if (!meta) return;
+    if (!valid.includes(meta.id)) valid.push(meta.id);
+  });
+  return valid.length ? valid : [...DETAIL_DEFAULT_VIEW.columns];
+}
+function detailColumnsEqual(a = [], b = []){
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+function normalizeDetailViewPayload(payload){
+  if (!payload || typeof payload !== "object") return null;
+  const rawId = typeof payload.id === "string" ? payload.id.trim() : payload.id;
+  const id = rawId || null;
+  if (!id) return null;
+  const name = limparTexto(payload.name || "");
+  const columns = sanitizeDetailColumns(Array.isArray(payload.columns) ? payload.columns : []);
+  return { id, name: name || "Visão personalizada", columns };
+}
+function readLocalStorageItem(key){
+  try{
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    return window.localStorage.getItem(key);
+  }catch(err){
+    console.warn("Não consegui ler preferências de coluna:", err);
+    return null;
+  }
+}
+function writeLocalStorageItem(key, value){
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try{
+    if (value == null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, value);
+  }catch(err){
+    console.warn("Não consegui salvar preferências de coluna:", err);
+  }
+}
+function readLocalStorageJSON(key){
+  const raw = readLocalStorageItem(key);
+  if (!raw) return null;
+  try{
+    return JSON.parse(raw);
+  }catch(err){
+    console.warn("JSON inválido para", key, err);
+    return null;
+  }
+}
+function writeLocalStorageJSON(key, value){
+  if (value == null) writeLocalStorageItem(key, null);
+  else writeLocalStorageItem(key, JSON.stringify(value));
+}
+function generateDetailViewId(){
+  return `view-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;
+}
 // Aqui eu conto quantos dias úteis existem entre duas datas (inclusive).
 function businessDaysBetweenInclusive(startISO,endISO){
   if(!startISO || !endISO) return 0;
@@ -1942,9 +2034,8 @@ function formatBRLReadable(value){
 }
 
 function formatPoints(value, { withUnit = false } = {}) {
-  const n = toNumber(value);
-  const nearInteger = Math.abs(n - Math.round(n)) < 0.05;
-  const formatted = nearInteger ? fmtINT.format(Math.round(n)) : fmtONE.format(n);
+  const n = Math.round(toNumber(value));
+  const formatted = fmtINT.format(n);
   return withUnit ? `${formatted} pts` : formatted;
 }
 
@@ -2461,6 +2552,15 @@ const state = {
     individualPreset:{},
   },
 
+  details:{
+    activeViewId: DETAIL_DEFAULT_VIEW.id,
+    activeColumns: [...DETAIL_DEFAULT_VIEW.columns],
+    savedViews: [],
+    customView: null,
+    designerDraft: null,
+    designerMessage: "",
+  },
+
   animations:{
     resumo:{
       kpiKey:null,
@@ -2473,6 +2573,175 @@ const state = {
     },
   }
 };
+
+hydrateDetailViewsFromStorage();
+
+function hydrateDetailViewsFromStorage(){
+  const savedRaw = readLocalStorageJSON(DETAIL_VIEW_STORAGE_KEY);
+  const savedList = Array.isArray(savedRaw)
+    ? savedRaw.map(normalizeDetailViewPayload).filter(Boolean)
+    : [];
+  state.details.savedViews = savedList.slice(0, DETAIL_MAX_CUSTOM_VIEWS);
+
+  const customRaw = readLocalStorageJSON(DETAIL_VIEW_CUSTOM_KEY);
+  if (customRaw && Array.isArray(customRaw.columns)) {
+    const label = limparTexto(customRaw.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL;
+    state.details.customView = {
+      name: label,
+      columns: sanitizeDetailColumns(customRaw.columns),
+    };
+  } else {
+    state.details.customView = null;
+  }
+
+  const activeId = readLocalStorageItem(DETAIL_VIEW_ACTIVE_KEY) || DETAIL_DEFAULT_VIEW.id;
+  const candidate = detailViewById(activeId);
+  if (candidate) {
+    state.details.activeViewId = candidate.id;
+    state.details.activeColumns = sanitizeDetailColumns(candidate.columns);
+    if (candidate.id === "__custom__") {
+      state.details.customView = {
+        name: candidate.name || DETAIL_CUSTOM_DEFAULT_LABEL,
+        columns: [...state.details.activeColumns],
+      };
+    }
+  } else {
+    state.details.activeViewId = DETAIL_DEFAULT_VIEW.id;
+    state.details.activeColumns = [...DETAIL_DEFAULT_VIEW.columns];
+  }
+  persistDetailState();
+}
+
+function getAllDetailViews(){
+  const saved = Array.isArray(state.details.savedViews) ? state.details.savedViews : [];
+  const base = [DETAIL_DEFAULT_VIEW, ...saved.map(view => ({
+    id: view.id,
+    name: limparTexto(view.name || "") || "Visão personalizada",
+    columns: sanitizeDetailColumns(view.columns),
+  }))];
+  const custom = state.details.customView;
+  if (custom && Array.isArray(custom.columns) && custom.columns.length) {
+    base.push({
+      id: "__custom__",
+      name: limparTexto(custom.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL,
+      columns: sanitizeDetailColumns(custom.columns),
+    });
+  }
+  return base;
+}
+
+function getActiveDetailColumns(){
+  const ids = sanitizeDetailColumns(state.details.activeColumns || DETAIL_DEFAULT_VIEW.columns);
+  return ids.map(id => getDetailColumnMeta(id)).filter(Boolean);
+}
+
+function detailViewById(viewId){
+  if (!viewId) return null;
+  if (viewId === DETAIL_DEFAULT_VIEW.id) return { ...DETAIL_DEFAULT_VIEW };
+  if (viewId === "__custom__") {
+    const custom = state.details.customView;
+    if (custom && Array.isArray(custom.columns) && custom.columns.length) {
+      return {
+        id: "__custom__",
+        name: limparTexto(custom.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL,
+        columns: sanitizeDetailColumns(custom.columns),
+      };
+    }
+    return null;
+  }
+  const saved = Array.isArray(state.details.savedViews) ? state.details.savedViews : [];
+  const match = saved.find(v => v.id === viewId);
+  return match ? {
+    id: match.id,
+    name: limparTexto(match.name || "") || "Visão personalizada",
+    columns: sanitizeDetailColumns(match.columns),
+  } : null;
+}
+
+function persistDetailViews(){
+  const payload = (Array.isArray(state.details.savedViews) ? state.details.savedViews : []).map(view => ({
+    id: view.id,
+    name: limparTexto(view.name || "") || "Visão personalizada",
+    columns: sanitizeDetailColumns(view.columns),
+  }));
+  writeLocalStorageJSON(DETAIL_VIEW_STORAGE_KEY, payload.length ? payload : null);
+}
+
+function persistActiveDetailState(){
+  writeLocalStorageItem(DETAIL_VIEW_ACTIVE_KEY, state.details.activeViewId || DETAIL_DEFAULT_VIEW.id);
+  if (state.details.customView && Array.isArray(state.details.customView.columns) && state.details.customView.columns.length) {
+    writeLocalStorageJSON(DETAIL_VIEW_CUSTOM_KEY, {
+      name: limparTexto(state.details.customView.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL,
+      columns: sanitizeDetailColumns(state.details.customView.columns),
+    });
+  } else {
+    writeLocalStorageItem(DETAIL_VIEW_CUSTOM_KEY, null);
+  }
+}
+
+function persistDetailState(){
+  persistDetailViews();
+  persistActiveDetailState();
+}
+
+function updateActiveDetailConfiguration(viewId, columns, options = {}){
+  const sanitized = sanitizeDetailColumns(columns);
+  const label = limparTexto(options.label || "");
+  if (viewId === "__custom__") {
+    const name = label || state.details.customView?.name || DETAIL_CUSTOM_DEFAULT_LABEL;
+    state.details.customView = {
+      name,
+      columns: [...sanitized],
+    };
+  }
+  state.details.activeViewId = viewId;
+  state.details.activeColumns = [...sanitized];
+  persistDetailState();
+  return [...sanitized];
+}
+
+function updateSavedDetailView(viewId, columns){
+  if (!viewId) return null;
+  const saved = Array.isArray(state.details.savedViews) ? state.details.savedViews : [];
+  const idx = saved.findIndex(v => v.id === viewId);
+  if (idx < 0) return null;
+  const next = {
+    id: saved[idx].id,
+    name: saved[idx].name,
+    columns: sanitizeDetailColumns(columns),
+  };
+  saved[idx] = next;
+  persistDetailViews();
+  return next;
+}
+
+function createDetailView(columns, name){
+  const saved = Array.isArray(state.details.savedViews) ? state.details.savedViews : [];
+  if (saved.length >= DETAIL_MAX_CUSTOM_VIEWS) return null;
+  const sanitized = sanitizeDetailColumns(columns);
+  const label = limparTexto(name || "") || `Visão ${saved.length + 1}`;
+  const view = { id: generateDetailViewId(), name: label, columns: sanitized };
+  saved.push(view);
+  state.details.savedViews = saved;
+  persistDetailViews();
+  return view;
+}
+
+function deleteDetailView(viewId){
+  if (!viewId || viewId === DETAIL_DEFAULT_VIEW.id) return false;
+  const saved = Array.isArray(state.details.savedViews) ? state.details.savedViews : [];
+  const idx = saved.findIndex(v => v.id === viewId);
+  if (idx < 0) return false;
+  saved.splice(idx, 1);
+  state.details.savedViews = saved;
+  persistDetailViews();
+  if (state.details.activeViewId === viewId) {
+    updateActiveDetailConfiguration(DETAIL_DEFAULT_VIEW.id, DETAIL_DEFAULT_VIEW.columns);
+  } else {
+    persistActiveDetailState();
+  }
+  return true;
+}
 
 function prefersReducedMotion(){
   if (typeof window === "undefined" || !window.matchMedia) return false;
@@ -3004,7 +3273,18 @@ function ensureChipBarAndToolbar() {
   holder.innerHTML = `
     <div id="applied-bar" class="applied-bar"></div>
     <div id="chipbar" class="chipbar"></div>
-    <div id="tt-toolbar" class="table-toolbar"></div>`;
+    <div id="tt-toolbar" class="table-toolbar"></div>
+    <div id="detail-view-bar" class="detail-view-bar">
+      <div class="detail-view-bar__left">
+        <span class="detail-view-bar__label">Visões da tabela</span>
+        <div id="detail-view-chips" class="detail-view-chips"></div>
+      </div>
+      <div class="detail-view-bar__right">
+        <button type="button" id="btn-manage-detail-columns" class="btn btn--ghost btn--sm detail-view-manage">
+          <i class="ti ti-columns"></i> Personalizar colunas
+        </button>
+      </div>
+    </div>`;
   const header = card.querySelector(".card__header") || card;
   header.insertAdjacentElement("afterend", holder);
 
@@ -3040,11 +3320,485 @@ function ensureChipBarAndToolbar() {
     $("#table-section")?.classList.toggle("is-compact", state.compact);
   });
 
+  const detailChips = document.getElementById("detail-view-chips");
+  if (detailChips && !detailChips.dataset.bound) {
+    detailChips.dataset.bound = "1";
+    detailChips.addEventListener("click", handleDetailViewChipClick);
+  }
+
+  const manageBtn = document.getElementById("btn-manage-detail-columns");
+  if (manageBtn && !manageBtn.dataset.bound) {
+    manageBtn.dataset.bound = "1";
+    manageBtn.addEventListener("click", () => openDetailDesigner());
+  }
+
+  renderDetailViewBar();
+  initDetailDesigner();
+
   const headerSearch = $("#busca");
   if (headerSearch) headerSearch.placeholder = "Contrato (Ex.: CT-AAAA-999999)";
   $$('#table-section input[placeholder*="Contrato" i]').forEach(el => { if (el !== headerSearch) el.remove(); });
 
   renderAppliedFilters();
+}
+
+function renderDetailViewBar(){
+  const chipsHolder = document.getElementById("detail-view-chips");
+  if (!chipsHolder) return;
+  const views = getAllDetailViews();
+  if (!views.length) {
+    chipsHolder.innerHTML = `<span class="detail-view-empty">Sem visões disponíveis</span>`;
+    return;
+  }
+  const activeId = state.details.activeViewId || DETAIL_DEFAULT_VIEW.id;
+  chipsHolder.innerHTML = views.map(view => {
+    const isActive = view.id === activeId;
+    const safeId = escapeHTML(view.id);
+    const safeName = escapeHTML(view.name || "Visão");
+    return `<button type="button" class="detail-chip${isActive ? " is-active" : ""}" data-view-id="${safeId}"><span>${safeName}</span></button>`;
+  }).join("");
+}
+
+function handleDetailViewChipClick(ev){
+  const chip = ev.target.closest(".detail-chip");
+  if (!chip) return;
+  const viewId = chip.dataset.viewId;
+  if (!viewId || viewId === state.details.activeViewId) return;
+  const view = detailViewById(viewId);
+  if (!view) return;
+  updateActiveDetailConfiguration(view.id, view.columns, { label: view.name });
+  if (state.tableRendered) renderTreeTable();
+  else renderDetailViewBar();
+}
+
+let detailDesignerInitialized = false;
+let detailDesignerDragState = null;
+let detailDesignerFeedbackTimer = null;
+
+function initDetailDesigner(){
+  if (detailDesignerInitialized) return;
+  const host = document.getElementById("detail-designer");
+  if (!host) return;
+  detailDesignerInitialized = true;
+
+  host.addEventListener("click", (ev) => {
+    if (ev.target.closest("[data-designer-close]")) {
+      ev.preventDefault();
+      closeDetailDesigner();
+    }
+  });
+
+  host.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") closeDetailDesigner();
+  });
+
+  host.querySelectorAll(".detail-designer__items").forEach(list => {
+    list.addEventListener("click", handleDetailDesignerListClick);
+    list.addEventListener("dragover", handleDetailDesignerDragOver);
+    list.addEventListener("drop", handleDetailDesignerDrop);
+    list.addEventListener("dragleave", handleDetailDesignerDragLeave);
+  });
+
+  const viewsContainer = document.getElementById("detail-designer-views");
+  if (viewsContainer) viewsContainer.addEventListener("click", handleDetailDesignerViewClick);
+
+  document.getElementById("detail-apply-columns")?.addEventListener("click", handleDetailDesignerApply);
+  document.getElementById("detail-save-view")?.addEventListener("click", handleDetailDesignerSave);
+  document.getElementById("detail-view-name")?.addEventListener("input", () => updateDetailDesignerControls());
+}
+
+function openDetailDesigner(){
+  const host = document.getElementById("detail-designer");
+  if (!host) return;
+  const current = detailViewById(state.details.activeViewId) || DETAIL_DEFAULT_VIEW;
+  const baseColumns = sanitizeDetailColumns(current.columns);
+  state.details.designerDraft = {
+    viewId: current.id,
+    name: current.name,
+    columns: [...baseColumns],
+    original: [...baseColumns],
+    modified: false,
+  };
+  state.details.designerMessage = "";
+
+  const nameInput = document.getElementById("detail-view-name");
+  if (nameInput) nameInput.value = "";
+
+  renderDetailDesigner();
+  host.hidden = false;
+  host.setAttribute("aria-hidden", "false");
+  host.classList.add("is-open");
+  document.body.classList.add("has-modal-open");
+  const panel = host.querySelector(".detail-designer__panel");
+  if (panel) {
+    if (!panel.hasAttribute("tabindex")) panel.setAttribute("tabindex", "-1");
+    panel.focus({ preventScroll: true });
+  }
+}
+
+function closeDetailDesigner(){
+  const host = document.getElementById("detail-designer");
+  if (!host) return;
+  host.classList.remove("is-open");
+  host.setAttribute("aria-hidden", "true");
+  host.hidden = true;
+  document.body.classList.remove("has-modal-open");
+  state.details.designerDraft = null;
+  state.details.designerMessage = "";
+  if (detailDesignerFeedbackTimer) {
+    clearTimeout(detailDesignerFeedbackTimer);
+    detailDesignerFeedbackTimer = null;
+  }
+  const nameInput = document.getElementById("detail-view-name");
+  if (nameInput) nameInput.value = "";
+}
+
+function renderDetailDesigner(){
+  const host = document.getElementById("detail-designer");
+  const draft = state.details.designerDraft;
+  if (!host || !draft) return;
+
+  const selectedWrap = host.querySelector('[data-items="selected"]');
+  const availableWrap = host.querySelector('[data-items="available"]');
+  if (!selectedWrap || !availableWrap) return;
+
+  const selectedIds = sanitizeDetailColumns(draft.columns);
+  if (!detailColumnsEqual(selectedIds, draft.columns)) draft.columns = [...selectedIds];
+  draft.modified = !detailColumnsEqual(selectedIds, draft.original || []);
+
+  const available = DETAIL_COLUMNS.filter(col => !selectedIds.includes(col.id));
+  const canRemove = selectedIds.length > 1;
+
+  selectedWrap.innerHTML = selectedIds.length
+    ? selectedIds.map(id => {
+        const meta = getDetailColumnMeta(id);
+        if (!meta) return "";
+        const safeId = escapeHTML(meta.id);
+        const safeLabel = escapeHTML(meta.label);
+        const disabledAttr = canRemove ? "" : " disabled";
+        const disabledClass = canRemove ? "" : " is-disabled";
+        return `
+          <div class="detail-item" data-col="${safeId}" draggable="true">
+            <span class="detail-item__handle" aria-hidden="true"><i class="ti ti-grip-vertical"></i></span>
+            <span class="detail-item__label">${safeLabel}</span>
+            <button type="button" class="detail-item__remove${disabledClass}" data-action="remove" aria-label="Remover ${safeLabel}"${disabledAttr}><i class="ti ti-x"></i></button>
+          </div>`;
+      }).join("")
+    : `<p class="detail-designer__empty">Escolha ao menos uma coluna.</p>`;
+
+  availableWrap.innerHTML = available.length
+    ? available.map(meta => {
+        const safeId = escapeHTML(meta.id);
+        const safeLabel = escapeHTML(meta.label);
+        return `
+          <div class="detail-item detail-item--available" data-col="${safeId}" draggable="true">
+            <span class="detail-item__handle" aria-hidden="true"><i class="ti ti-grip-vertical"></i></span>
+            <span class="detail-item__label">${safeLabel}</span>
+            <button type="button" class="detail-item__add" data-action="add" aria-label="Adicionar ${safeLabel}"><i class="ti ti-plus"></i></button>
+          </div>`;
+      }).join("")
+    : `<p class="detail-designer__empty">Todas as colunas já estão na tabela.</p>`;
+
+  selectedWrap.querySelectorAll(".detail-item").forEach(item => {
+    item.addEventListener("dragstart", handleDetailDesignerDragStart);
+    item.addEventListener("dragend", handleDetailDesignerDragEnd);
+  });
+  availableWrap.querySelectorAll(".detail-item").forEach(item => {
+    item.addEventListener("dragstart", handleDetailDesignerDragStart);
+    item.addEventListener("dragend", handleDetailDesignerDragEnd);
+  });
+
+  renderDetailDesignerViews();
+  updateDetailDesignerControls();
+  updateDetailDesignerFeedback();
+}
+
+function renderDetailDesignerViews(){
+  const container = document.getElementById("detail-designer-views");
+  const draft = state.details.designerDraft;
+  if (!container || !draft) return;
+  const views = getAllDetailViews();
+  if (!views.length) {
+    container.innerHTML = `<span class="detail-view-empty">Nenhuma visão salva.</span>`;
+    return;
+  }
+  const currentId = draft.viewId;
+  container.innerHTML = views.map(view => {
+    const safeId = escapeHTML(view.id);
+    const safeName = escapeHTML(view.name || "Visão");
+    const isActive = view.id === currentId;
+    const deletable = view.id !== DETAIL_DEFAULT_VIEW.id && view.id !== "__custom__";
+    const deleteBtn = deletable
+      ? `<button type="button" class="detail-chip__remove" data-action="delete" data-view-id="${safeId}" aria-label="Excluir ${safeName}"><i class="ti ti-trash"></i></button>`
+      : "";
+    return `
+      <div class="detail-chip detail-chip--designer${isActive ? " is-active" : ""}" data-view-id="${safeId}">
+        <button type="button" class="detail-chip__action" data-action="load" data-view-id="${safeId}">${safeName}</button>
+        ${deleteBtn}
+      </div>`;
+  }).join("");
+}
+
+function updateDetailDesignerControls(){
+  const draft = state.details.designerDraft;
+  const saveBtn = document.getElementById("detail-save-view");
+  const nameInput = document.getElementById("detail-view-name");
+  const applyBtn = document.getElementById("detail-apply-columns");
+  const hint = document.getElementById("detail-save-hint");
+  if (!draft) {
+    if (saveBtn) saveBtn.disabled = true;
+    if (applyBtn) applyBtn.disabled = true;
+    return;
+  }
+  const selectedIds = sanitizeDetailColumns(draft.columns);
+  if (applyBtn) applyBtn.disabled = !selectedIds.length;
+  const limitReached = (state.details.savedViews || []).length >= DETAIL_MAX_CUSTOM_VIEWS;
+  if (saveBtn && nameInput && hint) {
+    const name = limparTexto(nameInput.value || "");
+    if (limitReached) {
+      saveBtn.disabled = true;
+      hint.textContent = `Você já salvou ${DETAIL_MAX_CUSTOM_VIEWS} visões. Apague uma para liberar espaço.`;
+    } else {
+      saveBtn.disabled = name.length < 3 || !selectedIds.length;
+      hint.textContent = `Você pode guardar até ${DETAIL_MAX_CUSTOM_VIEWS} visões personalizadas.`;
+    }
+  }
+}
+
+function updateDetailDesignerFeedback(){
+  const feedback = document.getElementById("detail-designer-feedback");
+  if (!feedback) return;
+  if (detailDesignerFeedbackTimer) {
+    clearTimeout(detailDesignerFeedbackTimer);
+    detailDesignerFeedbackTimer = null;
+  }
+  const message = state.details.designerMessage || "";
+  if (message) {
+    feedback.textContent = message;
+    feedback.hidden = false;
+    detailDesignerFeedbackTimer = setTimeout(() => {
+      state.details.designerMessage = "";
+      feedback.hidden = true;
+      feedback.textContent = "";
+      detailDesignerFeedbackTimer = null;
+    }, 3200);
+  } else {
+    feedback.textContent = "";
+    feedback.hidden = true;
+  }
+}
+
+function handleDetailDesignerListClick(ev){
+  const actionBtn = ev.target.closest("[data-action]");
+  if (!actionBtn) return;
+  const item = actionBtn.closest(".detail-item");
+  const colId = item?.dataset.col;
+  if (!colId) return;
+  ev.preventDefault();
+  if (actionBtn.dataset.action === "remove") {
+    removeColumnFromDesigner(colId);
+  } else if (actionBtn.dataset.action === "add") {
+    insertColumnIntoDesigner(colId);
+  }
+}
+
+function handleDetailDesignerViewClick(ev){
+  const button = ev.target.closest("[data-action][data-view-id]");
+  if (!button) return;
+  const action = button.dataset.action;
+  const viewId = button.dataset.viewId;
+  if (!viewId) return;
+  ev.preventDefault();
+  if (action === "load") {
+    const view = detailViewById(viewId);
+    if (!view) return;
+    const cols = sanitizeDetailColumns(view.columns);
+    state.details.designerDraft = {
+      viewId: view.id,
+      name: view.name,
+      columns: [...cols],
+      original: [...cols],
+      modified: false,
+    };
+    state.details.designerMessage = "";
+    const nameInput = document.getElementById("detail-view-name");
+    if (nameInput) nameInput.value = "";
+    renderDetailDesigner();
+  } else if (action === "delete") {
+    if (!deleteDetailView(viewId)) return;
+    state.details.designerMessage = "Visão removida.";
+    renderDetailViewBar();
+    if (state.tableRendered) renderTreeTable();
+    const fallback = detailViewById(state.details.activeViewId) || DETAIL_DEFAULT_VIEW;
+    const cols = sanitizeDetailColumns(fallback.columns);
+    state.details.designerDraft = {
+      viewId: fallback.id,
+      name: fallback.name,
+      columns: [...cols],
+      original: [...cols],
+      modified: false,
+    };
+    renderDetailDesigner();
+  }
+}
+
+function handleDetailDesignerApply(){
+  const draft = state.details.designerDraft;
+  if (!draft) { closeDetailDesigner(); return; }
+  const columns = sanitizeDetailColumns(draft.columns);
+  if (!columns.length) {
+    state.details.designerMessage = "Escolha ao menos uma coluna para aplicar.";
+    updateDetailDesignerFeedback();
+    return;
+  }
+
+  let targetId = draft.viewId;
+  if (!targetId || targetId === DETAIL_DEFAULT_VIEW.id) targetId = "__custom__";
+  if (targetId !== "__custom__" && draft.modified) {
+    updateSavedDetailView(targetId, columns);
+    draft.original = [...columns];
+    draft.modified = false;
+  }
+
+  let label;
+  if (targetId === "__custom__") {
+    label = draft.viewId === "__custom__"
+      ? (draft.name || state.details.customView?.name || DETAIL_CUSTOM_DEFAULT_LABEL)
+      : DETAIL_CUSTOM_DEFAULT_LABEL;
+  } else {
+    const viewMeta = detailViewById(targetId) || detailViewById(draft.viewId);
+    label = viewMeta?.name || draft.name || DETAIL_CUSTOM_DEFAULT_LABEL;
+  }
+
+  updateActiveDetailConfiguration(targetId, columns, { label });
+  renderDetailViewBar();
+  if (state.tableRendered) renderTreeTable();
+  closeDetailDesigner();
+}
+
+function handleDetailDesignerSave(){
+  const draft = state.details.designerDraft;
+  if (!draft) return;
+  const nameInput = document.getElementById("detail-view-name");
+  if (!nameInput) return;
+  const name = limparTexto(nameInput.value || "");
+  const columns = sanitizeDetailColumns(draft.columns);
+  if (!columns.length) {
+    state.details.designerMessage = "Adicione ao menos uma coluna antes de salvar.";
+    updateDetailDesignerFeedback();
+    return;
+  }
+  if (name.length < 3) {
+    state.details.designerMessage = "Use um nome com pelo menos 3 caracteres.";
+    updateDetailDesignerFeedback();
+    return;
+  }
+  if ((state.details.savedViews || []).length >= DETAIL_MAX_CUSTOM_VIEWS) {
+    state.details.designerMessage = "Limite de visões atingido. Remova uma visão antes de salvar outra.";
+    updateDetailDesignerFeedback();
+    return;
+  }
+
+  const view = createDetailView(columns, name);
+  if (!view) {
+    state.details.designerMessage = "Não foi possível salvar a visão.";
+    updateDetailDesignerFeedback();
+    return;
+  }
+
+  nameInput.value = "";
+  state.details.designerDraft = {
+    viewId: view.id,
+    name: view.name,
+    columns: [...view.columns],
+    original: [...view.columns],
+    modified: false,
+  };
+  state.details.designerMessage = "Visão salva com sucesso.";
+  updateActiveDetailConfiguration(view.id, view.columns, { label: view.name });
+  renderDetailViewBar();
+  if (state.tableRendered) renderTreeTable();
+  renderDetailDesigner();
+}
+
+function insertColumnIntoDesigner(colId, beforeId = null){
+  const draft = state.details.designerDraft;
+  if (!draft) return;
+  const sanitized = sanitizeDetailColumns(draft.columns);
+  let next = sanitized.filter(id => id !== colId);
+  if (beforeId && next.includes(beforeId)) {
+    next.splice(next.indexOf(beforeId), 0, colId);
+  } else if (!next.includes(colId)) {
+    next.push(colId);
+  }
+  draft.columns = [...next];
+  draft.modified = !detailColumnsEqual(draft.columns, draft.original || []);
+  state.details.designerMessage = "";
+  renderDetailDesigner();
+}
+
+function removeColumnFromDesigner(colId){
+  const draft = state.details.designerDraft;
+  if (!draft) return;
+  const sanitized = sanitizeDetailColumns(draft.columns);
+  if (sanitized.length <= 1) {
+    state.details.designerMessage = "Mantenha pelo menos uma coluna visível.";
+    updateDetailDesignerFeedback();
+    return;
+  }
+  const next = sanitized.filter(id => id !== colId);
+  draft.columns = [...next];
+  draft.modified = !detailColumnsEqual(draft.columns, draft.original || []);
+  state.details.designerMessage = "";
+  renderDetailDesigner();
+}
+
+function handleDetailDesignerDragStart(ev){
+  const item = ev.currentTarget;
+  const colId = item?.dataset.col;
+  if (!colId) return;
+  detailDesignerDragState = {
+    colId,
+    from: item.closest('[data-items]')?.dataset.items || "",
+  };
+  if (ev.dataTransfer) {
+    ev.dataTransfer.effectAllowed = "move";
+    ev.dataTransfer.setData("text/plain", colId);
+  }
+  item.classList.add("is-dragging");
+}
+
+function handleDetailDesignerDragEnd(ev){
+  ev.currentTarget?.classList?.remove("is-dragging");
+  detailDesignerDragState = null;
+}
+
+function handleDetailDesignerDragOver(ev){
+  ev.preventDefault();
+  const container = ev.currentTarget.closest('[data-items]');
+  if (container) container.classList.add("is-drag-over");
+}
+
+function handleDetailDesignerDragLeave(ev){
+  const container = ev.currentTarget.closest('[data-items]');
+  if (container) container.classList.remove("is-drag-over");
+}
+
+function handleDetailDesignerDrop(ev){
+  ev.preventDefault();
+  const container = ev.currentTarget.closest('[data-items]');
+  if (!container) return;
+  container.classList.remove("is-drag-over");
+  const colId = (ev.dataTransfer && ev.dataTransfer.getData("text/plain")) || detailDesignerDragState?.colId;
+  if (!colId) return;
+  const beforeItem = ev.target.closest(".detail-item");
+  const beforeId = beforeItem?.dataset.col || null;
+  if (container.dataset.items === "selected") {
+    if (beforeId === colId) return;
+    insertColumnIntoDesigner(colId, beforeId);
+  } else {
+    removeColumnFromDesigner(colId);
+  }
 }
 function setActiveChip(viewId) {
   $$("#chipbar .chip").forEach(c => c.classList.toggle("is-active", c.dataset.view === viewId));
@@ -5953,7 +6707,7 @@ function detectPresetMatch(values, presets){
 }
 
 function formatCampPoints(value){
-  return `${fmtONE.format(toNumber(value))} pts`;
+  return `${fmtINT.format(Math.round(toNumber(value)))} pts`;
 }
 
 function formatCampPercent(value){
@@ -6007,7 +6761,7 @@ function computeCampaignScore(config, values){
   const shortfall = Math.max(0, minTotal - totalPoints);
   const progressPct = minTotal ? Math.max(0, Math.min(1, totalPoints / minTotal)) : 0;
   const progressLabel = shortfall > 0
-    ? `${fmtONE.format(shortfall)} pts para elegibilidade`
+    ? `${fmtINT.format(Math.round(shortfall))} pts para elegibilidade`
     : (hasAllStretch ? "Acima do stretch" : "Meta mínima atingida");
 
   return { rows, totalPoints, finalStatus, finalClass, progressPct, progressLabel, shortfall, hasAllMin, hasAllStretch, minThreshold: min, superThreshold: stretch, cap, eligibilityMinimum: minTotal };
@@ -6758,6 +7512,7 @@ function renderRanking(){
 /* ===== Aqui eu renderizo a tabela em árvore usada no detalhamento ===== */
 function renderTreeTable() {
   ensureChipBarAndToolbar();
+  renderDetailViewBar();
 
   const def = TABLE_VIEWS.find(v=> v.id === state.tableView) || TABLE_VIEWS[0];
   const rowsFiltered = filterRows(state._rankingRaw);
@@ -6806,23 +7561,11 @@ function renderTreeTable() {
   const buildDetailTableHTML = (node = null) => {
     const groups = Array.isArray(node?.detailGroups) ? node.detailGroups : [];
     if (!groups.length) return "";
-    const fmtDate = iso => (iso ? formatBRDate(iso) : "—");
-    const rows = groups.map(g => {
-      const canal = escapeHTML(g.canal || "—");
-      const tipo = escapeHTML(g.tipo || "—");
-      const gerente = escapeHTML(g.gerente || "—");
-      const modalidade = escapeHTML(g.modalidade || "—");
-      const motivo = escapeHTML(g.motivoCancelamento || "—");
-      return `
-      <tr>
-        <td>${canal}</td>
-        <td>${tipo}</td>
-        <td>${gerente}</td>
-        <td>${modalidade}</td>
-        <td>${fmtDate(g.dataVencimento)}</td>
-        <td>${fmtDate(g.dataCancelamento)}</td>
-        <td>${motivo}</td>
-      </tr>`;
+    const columns = getActiveDetailColumns();
+    if (!columns.length) return "";
+    const rows = groups.map(group => {
+      const cells = columns.map(col => `<td>${col.render(group)}</td>`).join("");
+      return `<tr>${cells}</tr>`;
     }).join("");
 
     const cancelGroup = groups.find(g => g.dataCancelamento || g.motivoCancelamento);
@@ -6842,15 +7585,7 @@ function renderTreeTable() {
         ${alertHtml}
         <table class="detail-table">
           <thead>
-            <tr>
-              <th>Canal da venda</th>
-              <th>Tipo da venda</th>
-              <th>Gerente</th>
-              <th>Condição de pagamento</th>
-              <th>Data de vencimento</th>
-              <th>Data de cancelamento</th>
-              <th>Motivo do cancelamento</th>
-            </tr>
+            <tr>${columns.map(col => `<th>${escapeHTML(col.label)}</th>`).join("")}</tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
