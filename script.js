@@ -94,6 +94,17 @@ let GERENCIAS_BY_DIRETORIA = new Map();
 let AGENCIAS_BY_GERENCIA = new Map();
 let GGESTAO_BY_AGENCIA = new Map();
 let GERENTES_BY_AGENCIA = new Map();
+let DIRETORIA_LABEL_INDEX = new Map();
+let GERENCIA_LABEL_INDEX = new Map();
+let AGENCIA_LABEL_INDEX = new Map();
+let GGESTAO_LABEL_INDEX = new Map();
+let GERENTE_LABEL_INDEX = new Map();
+let SEGMENTO_INDEX = new Map();
+let SEGMENTO_LABEL_INDEX = new Map();
+
+const SELECT_SEARCH_DATA = new WeakMap();
+const SELECT_SEARCH_REGISTRY = new Set();
+let SELECT_SEARCH_GLOBAL_LISTENERS = false;
 
 // Aqui eu guardo os dados calculados de ranking para não refazer o trabalho sempre que a tela muda.
 let RANKING_DIRECTORIAS = [];
@@ -137,6 +148,104 @@ let baseDataPromise = null;
 function limparTexto(value){
   if (value == null) return "";
   return String(value).trim();
+}
+
+function simplificarTexto(value){
+  const texto = limparTexto(value);
+  if (!texto) return "";
+  const semAcento = texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const comConectivo = semAcento.replace(/&/g, " e ");
+  return comConectivo
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+const DEFAULT_SELECTION_MARKERS = new Set(["", "todos", "todas", "todes", "all"]);
+
+function selecaoPadrao(value){
+  return DEFAULT_SELECTION_MARKERS.has(simplificarTexto(value));
+}
+
+function matchesSelection(filterValue, ...candidates){
+  const esperado = limparTexto(filterValue);
+  if (!esperado) return false;
+  const esperadoSimple = simplificarTexto(esperado);
+  const lista = [];
+  candidates.forEach(item => {
+    if (Array.isArray(item)) lista.push(...item);
+    else lista.push(item);
+  });
+  return lista.some(candidate => {
+    const valor = limparTexto(candidate);
+    if (!valor) return false;
+    if (valor === esperado) return true;
+    return simplificarTexto(valor) === esperadoSimple;
+  });
+}
+
+function optionMatchesValue(option, desired){
+  const alvo = limparTexto(desired);
+  if (!alvo) return false;
+  const candidatos = [option.value];
+  if (Array.isArray(option.aliases)) candidatos.push(...option.aliases);
+  return candidatos.some(candidate => {
+    const valor = limparTexto(candidate);
+    if (!valor) return false;
+    if (valor === alvo) return true;
+    return simplificarTexto(valor) === simplificarTexto(alvo);
+  });
+}
+
+function registerLabelIndexEntry(map, entry, ...values){
+  values.forEach(value => {
+    const normal = simplificarTexto(value);
+    if (!normal) return;
+    if (!map.has(normal)) map.set(normal, entry);
+  });
+}
+
+function findEntryInIndexes(idMap, labelMap, value){
+  const direto = limparTexto(value);
+  if (direto && idMap?.has(direto)) return idMap.get(direto);
+  const simples = simplificarTexto(value);
+  if (simples && labelMap?.has(simples)) return labelMap.get(simples);
+  return null;
+}
+
+function findSegmentoMeta(value){
+  return findEntryInIndexes(SEGMENTO_INDEX, SEGMENTO_LABEL_INDEX, value);
+}
+
+function findDiretoriaMeta(value){
+  return findEntryInIndexes(DIRETORIA_INDEX, DIRETORIA_LABEL_INDEX, value);
+}
+
+function findGerenciaMeta(value){
+  return findEntryInIndexes(GERENCIA_INDEX, GERENCIA_LABEL_INDEX, value);
+}
+
+function findGerenteGestaoMeta(value){
+  return findEntryInIndexes(GGESTAO_INDEX, GGESTAO_LABEL_INDEX, value);
+}
+
+function findGerenteMeta(value){
+  return findEntryInIndexes(GERENTE_INDEX, GERENTE_LABEL_INDEX, value);
+}
+
+function findAgenciaMeta(value){
+  const direto = findEntryInIndexes(AGENCIA_INDEX, AGENCIA_LABEL_INDEX, value);
+  if (direto) return direto;
+  const chave = limparTexto(value);
+  if (chave && MESU_BY_AGENCIA.has(chave)) return MESU_BY_AGENCIA.get(chave);
+  const simples = simplificarTexto(value);
+  if (!simples) return null;
+  for (const meta of MESU_BY_AGENCIA.values()){
+    if (simplificarTexto(meta.agenciaId) === simples) return meta;
+    if (simplificarTexto(meta.agenciaNome) === simples) return meta;
+    if (simplificarTexto(meta.agenciaCodigo) === simples) return meta;
+  }
+  return null;
 }
 
 // Aqui eu tento ler uma célula usando várias chaves possíveis porque cada base vem com um nome diferente.
@@ -463,129 +572,164 @@ function montarHierarquiaMesu(rows){
   GERENTES_BY_AGENCIA = new Map();
 
   rows.forEach(row => {
-    if (row.segmentoNome){
-      const key = row.segmentoId || row.segmentoNome;
-      if (!segMap.has(key)) {
-        segMap.set(key, { id: row.segmentoId || row.segmentoNome, nome: row.segmentoNome || row.segmentoId || "Segmento" });
-      }
-    }
-    if (row.diretoriaId){
-      const dirEntry = dirMap.get(row.diretoriaId) || {
-        id: row.diretoriaId,
-        nome: row.diretoriaNome || row.diretoriaId,
-        segmento: row.segmentoId || ""
-      };
-      if (!dirEntry.nome && row.diretoriaNome) dirEntry.nome = row.diretoriaNome;
-      if (!dirEntry.segmento && row.segmentoId) dirEntry.segmento = row.segmentoId;
-      dirMap.set(row.diretoriaId, dirEntry);
-    }
-    if (row.regionalId){
-      const regEntry = regMap.get(row.regionalId) || {
-        id: row.regionalId,
-        nome: row.regionalNome || row.regionalId,
-        diretoria: row.diretoriaId || "",
-        segmentoId: row.segmentoId || ""
-      };
-      if (!regEntry.nome && row.regionalNome) regEntry.nome = row.regionalNome;
-      if (!regEntry.diretoria && row.diretoriaId) regEntry.diretoria = row.diretoriaId;
-      if (!regEntry.segmentoId && row.segmentoId) regEntry.segmentoId = row.segmentoId;
-      regMap.set(row.regionalId, regEntry);
-      if (row.diretoriaId){
-        if (!GERENCIAS_BY_DIRETORIA.has(row.diretoriaId)) GERENCIAS_BY_DIRETORIA.set(row.diretoriaId, new Set());
-        GERENCIAS_BY_DIRETORIA.get(row.diretoriaId).add(row.regionalId);
-      }
-    }
-    if (row.agenciaId){
-      const agEntry = agMap.get(row.agenciaId) || {
-        id: row.agenciaId,
-        nome: row.agenciaNome || row.agenciaId,
-        gerencia: row.regionalId || "",
-        diretoria: row.diretoriaId || "",
-        segmento: row.segmentoId || ""
-      };
-      if (!agEntry.nome && row.agenciaNome) agEntry.nome = row.agenciaNome;
-      if (!agEntry.gerencia && row.regionalId) agEntry.gerencia = row.regionalId;
-      if (!agEntry.diretoria && row.diretoriaId) agEntry.diretoria = row.diretoriaId;
-      if (!agEntry.segmento && row.segmentoId) agEntry.segmento = row.segmentoId;
-      agMap.set(row.agenciaId, agEntry);
+    const segmentoId = limparTexto(row.segmentoId);
+    const segmentoNome = limparTexto(row.segmentoNome) || segmentoId;
+    const diretoriaId = limparTexto(row.diretoriaId);
+    const diretoriaNome = limparTexto(row.diretoriaNome) || diretoriaId;
+    const regionalId = limparTexto(row.regionalId);
+    const regionalNome = limparTexto(row.regionalNome) || regionalId;
+    const agenciaId = limparTexto(row.agenciaId);
+    const agenciaNome = limparTexto(row.agenciaNome) || agenciaId;
+    const agenciaCodigo = limparTexto(row.agenciaCodigo || row.agencia);
+    const gerenteGestaoId = limparTexto(row.gerenteGestaoId);
+    const gerenteGestaoNome = limparTexto(row.gerenteGestaoNome) || gerenteGestaoId;
+    const gerenteId = limparTexto(row.gerenteId);
+    const gerenteNome = limparTexto(row.gerenteNome) || gerenteId;
 
-      if (!MESU_BY_AGENCIA.has(row.agenciaId)){
-        MESU_BY_AGENCIA.set(row.agenciaId, {
-          segmentoId: row.segmentoId,
-          segmentoNome: row.segmentoNome,
-          diretoriaId: row.diretoriaId,
-          diretoriaNome: row.diretoriaNome,
-          regionalId: row.regionalId,
-          regionalNome: row.regionalNome,
-          agenciaId: row.agenciaId,
-          agenciaNome: row.agenciaNome,
-          gerenteGestaoId: row.gerenteGestaoId,
-          gerenteGestaoNome: row.gerenteGestaoNome,
-          gerenteId: row.gerenteId,
-          gerenteNome: row.gerenteNome,
+    row.segmentoId = segmentoId;
+    row.segmentoNome = segmentoNome;
+    row.diretoriaId = diretoriaId;
+    row.diretoriaNome = diretoriaNome;
+    row.regionalId = regionalId;
+    row.regionalNome = regionalNome;
+    row.agenciaId = agenciaId;
+    row.agenciaNome = agenciaNome;
+    row.gerenteGestaoId = gerenteGestaoId;
+    row.gerenteGestaoNome = gerenteGestaoNome;
+    row.gerenteId = gerenteId;
+    row.gerenteNome = gerenteNome;
+
+    if (segmentoNome){
+      const key = segmentoId || segmentoNome;
+      if (!segMap.has(key)) {
+        segMap.set(key, { id: segmentoId || segmentoNome, nome: segmentoNome || segmentoId || 'Segmento' });
+      }
+    }
+
+    if (diretoriaId){
+      const dirEntry = dirMap.get(diretoriaId) || {
+        id: diretoriaId,
+        nome: diretoriaNome || diretoriaId,
+        segmento: segmentoId || ''
+      };
+      if (!dirEntry.nome && diretoriaNome) dirEntry.nome = diretoriaNome;
+      if (!dirEntry.segmento && segmentoId) dirEntry.segmento = segmentoId;
+      dirMap.set(diretoriaId, dirEntry);
+    }
+
+    if (regionalId){
+      const regEntry = regMap.get(regionalId) || {
+        id: regionalId,
+        nome: regionalNome || regionalId,
+        diretoria: diretoriaId || '',
+        segmentoId: segmentoId || ''
+      };
+      if (!regEntry.nome && regionalNome) regEntry.nome = regionalNome;
+      if (!regEntry.diretoria && diretoriaId) regEntry.diretoria = diretoriaId;
+      if (!regEntry.segmentoId && segmentoId) regEntry.segmentoId = segmentoId;
+      regMap.set(regionalId, regEntry);
+      if (diretoriaId){
+        if (!GERENCIAS_BY_DIRETORIA.has(diretoriaId)) GERENCIAS_BY_DIRETORIA.set(diretoriaId, new Set());
+        GERENCIAS_BY_DIRETORIA.get(diretoriaId).add(regionalId);
+      }
+    }
+
+    if (agenciaId){
+      const agEntry = agMap.get(agenciaId) || {
+        id: agenciaId,
+        nome: agenciaNome || agenciaId,
+        gerencia: regionalId || '',
+        diretoria: diretoriaId || '',
+        segmento: segmentoId || '',
+        codigo: agenciaCodigo || agenciaId
+      };
+      if (!agEntry.nome && agenciaNome) agEntry.nome = agenciaNome;
+      if (!agEntry.gerencia && regionalId) agEntry.gerencia = regionalId;
+      if (!agEntry.diretoria && diretoriaId) agEntry.diretoria = diretoriaId;
+      if (!agEntry.segmento && segmentoId) agEntry.segmento = segmentoId;
+      if (!agEntry.codigo && agenciaCodigo) agEntry.codigo = agenciaCodigo;
+      agMap.set(agenciaId, agEntry);
+
+      if (!MESU_BY_AGENCIA.has(agenciaId)){
+        MESU_BY_AGENCIA.set(agenciaId, {
+          segmentoId,
+          segmentoNome,
+          diretoriaId,
+          diretoriaNome,
+          regionalId,
+          regionalNome,
+          agenciaId,
+          agenciaNome,
+          agenciaCodigo,
+          gerenteGestaoId,
+          gerenteGestaoNome,
+          gerenteId,
+          gerenteNome,
           gerenteGestaoIds: new Set(),
           gerenteIds: new Set()
         });
       }
-      const agencyMeta = MESU_BY_AGENCIA.get(row.agenciaId);
-      if (row.gerenteGestaoId){
-        agencyMeta.gerenteGestaoId = agencyMeta.gerenteGestaoId || row.gerenteGestaoId;
-        agencyMeta.gerenteGestaoNome = agencyMeta.gerenteGestaoNome || row.gerenteGestaoNome;
-        agencyMeta.gerenteGestaoIds.add(row.gerenteGestaoId);
+      const agencyMeta = MESU_BY_AGENCIA.get(agenciaId);
+      if (segmentoId && !agencyMeta.segmentoId) agencyMeta.segmentoId = segmentoId;
+      if (segmentoNome && !agencyMeta.segmentoNome) agencyMeta.segmentoNome = segmentoNome;
+      if (diretoriaId && !agencyMeta.diretoriaId) agencyMeta.diretoriaId = diretoriaId;
+      if (diretoriaNome && !agencyMeta.diretoriaNome) agencyMeta.diretoriaNome = diretoriaNome;
+      if (regionalId && !agencyMeta.regionalId) agencyMeta.regionalId = regionalId;
+      if (regionalNome && !agencyMeta.regionalNome) agencyMeta.regionalNome = regionalNome;
+      if (agenciaCodigo && !agencyMeta.agenciaCodigo) agencyMeta.agenciaCodigo = agenciaCodigo;
+      if (gerenteGestaoId){
+        agencyMeta.gerenteGestaoId = agencyMeta.gerenteGestaoId || gerenteGestaoId;
+        agencyMeta.gerenteGestaoNome = agencyMeta.gerenteGestaoNome || gerenteGestaoNome;
+        agencyMeta.gerenteGestaoIds.add(gerenteGestaoId);
       }
-      if (row.gerenteId){
-        agencyMeta.gerenteId = agencyMeta.gerenteId || row.gerenteId;
-        agencyMeta.gerenteNome = agencyMeta.gerenteNome || row.gerenteNome;
-        agencyMeta.gerenteIds.add(row.gerenteId);
+      if (gerenteId){
+        agencyMeta.gerenteId = agencyMeta.gerenteId || gerenteId;
+        agencyMeta.gerenteNome = agencyMeta.gerenteNome || gerenteNome;
+        agencyMeta.gerenteIds.add(gerenteId);
       }
-      if (row.segmentoId && !agencyMeta.segmentoId) agencyMeta.segmentoId = row.segmentoId;
-      if (row.segmentoNome && !agencyMeta.segmentoNome) agencyMeta.segmentoNome = row.segmentoNome;
-      if (row.diretoriaId && !agencyMeta.diretoriaId) agencyMeta.diretoriaId = row.diretoriaId;
-      if (row.diretoriaNome && !agencyMeta.diretoriaNome) agencyMeta.diretoriaNome = row.diretoriaNome;
-      if (row.regionalId && !agencyMeta.regionalId) agencyMeta.regionalId = row.regionalId;
-      if (row.regionalNome && !agencyMeta.regionalNome) agencyMeta.regionalNome = row.regionalNome;
-
-      if (row.regionalId){
-        if (!AGENCIAS_BY_GERENCIA.has(row.regionalId)) AGENCIAS_BY_GERENCIA.set(row.regionalId, new Set());
-        AGENCIAS_BY_GERENCIA.get(row.regionalId).add(row.agenciaId);
-      }
-    }
-    if (row.gerenteGestaoId){
-      const ggEntry = ggMap.get(row.gerenteGestaoId) || {
-        id: row.gerenteGestaoId,
-        nome: row.gerenteGestaoNome || row.gerenteGestaoId,
-        agencia: row.agenciaId || "",
-        gerencia: row.regionalId || "",
-        diretoria: row.diretoriaId || ""
-      };
-      if (!ggEntry.nome && row.gerenteGestaoNome) ggEntry.nome = row.gerenteGestaoNome;
-      if (!ggEntry.agencia && row.agenciaId) ggEntry.agencia = row.agenciaId;
-      if (!ggEntry.gerencia && row.regionalId) ggEntry.gerencia = row.regionalId;
-      if (!ggEntry.diretoria && row.diretoriaId) ggEntry.diretoria = row.diretoriaId;
-      ggMap.set(row.gerenteGestaoId, ggEntry);
-
-      if (row.agenciaId){
-        if (!GGESTAO_BY_AGENCIA.has(row.agenciaId)) GGESTAO_BY_AGENCIA.set(row.agenciaId, new Set());
-        GGESTAO_BY_AGENCIA.get(row.agenciaId).add(row.gerenteGestaoId);
+      if (regionalId){
+        if (!AGENCIAS_BY_GERENCIA.has(regionalId)) AGENCIAS_BY_GERENCIA.set(regionalId, new Set());
+        AGENCIAS_BY_GERENCIA.get(regionalId).add(agenciaId);
       }
     }
-    if (row.gerenteId){
-      const gerEntry = gerMap.get(row.gerenteId) || {
-        id: row.gerenteId,
-        nome: row.gerenteNome || row.gerenteId,
-        agencia: row.agenciaId || "",
-        gerencia: row.regionalId || "",
-        diretoria: row.diretoriaId || ""
-      };
-      if (!gerEntry.nome && row.gerenteNome) gerEntry.nome = row.gerenteNome;
-      if (!gerEntry.agencia && row.agenciaId) gerEntry.agencia = row.agenciaId;
-      if (!gerEntry.gerencia && row.regionalId) gerEntry.gerencia = row.regionalId;
-      if (!gerEntry.diretoria && row.diretoriaId) gerEntry.diretoria = row.diretoriaId;
-      gerMap.set(row.gerenteId, gerEntry);
 
-      if (row.agenciaId){
-        if (!GERENTES_BY_AGENCIA.has(row.agenciaId)) GERENTES_BY_AGENCIA.set(row.agenciaId, new Set());
-        GERENTES_BY_AGENCIA.get(row.agenciaId).add(row.gerenteId);
+    if (gerenteGestaoId){
+      const ggEntry = ggMap.get(gerenteGestaoId) || {
+        id: gerenteGestaoId,
+        nome: gerenteGestaoNome || gerenteGestaoId,
+        agencia: agenciaId || '',
+        gerencia: regionalId || '',
+        diretoria: diretoriaId || ''
+      };
+      if (!ggEntry.nome && gerenteGestaoNome) ggEntry.nome = gerenteGestaoNome;
+      if (!ggEntry.agencia && agenciaId) ggEntry.agencia = agenciaId;
+      if (!ggEntry.gerencia && regionalId) ggEntry.gerencia = regionalId;
+      if (!ggEntry.diretoria && diretoriaId) ggEntry.diretoria = diretoriaId;
+      ggMap.set(gerenteGestaoId, ggEntry);
+
+      if (agenciaId){
+        if (!GGESTAO_BY_AGENCIA.has(agenciaId)) GGESTAO_BY_AGENCIA.set(agenciaId, new Set());
+        GGESTAO_BY_AGENCIA.get(agenciaId).add(gerenteGestaoId);
+      }
+    }
+
+    if (gerenteId){
+      const gerenteEntry = gerMap.get(gerenteId) || {
+        id: gerenteId,
+        nome: gerenteNome || gerenteId,
+        agencia: agenciaId || '',
+        gerencia: regionalId || '',
+        diretoria: diretoriaId || ''
+      };
+      if (!gerenteEntry.nome && gerenteNome) gerenteEntry.nome = gerenteNome;
+      if (!gerenteEntry.agencia && agenciaId) gerenteEntry.agencia = agenciaId;
+      if (!gerenteEntry.gerencia && regionalId) gerenteEntry.gerencia = regionalId;
+      if (!gerenteEntry.diretoria && diretoriaId) gerenteEntry.diretoria = diretoriaId;
+      gerMap.set(gerenteId, gerenteEntry);
+
+      if (agenciaId){
+        if (!GERENTES_BY_AGENCIA.has(agenciaId)) GERENTES_BY_AGENCIA.set(agenciaId, new Set());
+        GERENTES_BY_AGENCIA.get(agenciaId).add(gerenteId);
       }
     }
   });
@@ -608,7 +752,7 @@ function montarHierarquiaMesu(rows){
     }
   });
 
-  const localeCompare = (a, b) => String(a).localeCompare(String(b), "pt-BR", { sensitivity: "base" });
+  const localeCompare = (a, b) => String(a).localeCompare(String(b), 'pt-BR', { sensitivity: 'base' });
 
   RANKING_DIRECTORIAS.sort((a,b) => localeCompare(a.nome, b.nome));
   RANKING_GERENCIAS.sort((a,b) => localeCompare(a.nome, b.nome));
@@ -617,25 +761,64 @@ function montarHierarquiaMesu(rows){
   RANKING_GERENTES.sort((a,b) => localeCompare(a.nome, b.nome));
   SEGMENTOS_DATA.sort((a,b) => localeCompare(a.nome, b.nome));
 
-  DIRETORIA_INDEX = new Map(RANKING_DIRECTORIAS.map(dir => [dir.id, dir]));
-  GERENCIA_INDEX = new Map(RANKING_GERENCIAS.map(gr => [gr.id, gr]));
-  AGENCIA_INDEX = new Map(RANKING_AGENCIAS.map(ag => [ag.id, ag]));
-  GGESTAO_INDEX = new Map(GERENTES_GESTAO.map(gg => [gg.id, gg]));
-  GERENTE_INDEX = new Map(RANKING_GERENTES.map(ger => [ger.id, ger]));
+  DIRETORIA_INDEX = new Map();
+  RANKING_DIRECTORIAS.forEach(dir => {
+    const key = limparTexto(dir.id || dir.nome);
+    if (key) DIRETORIA_INDEX.set(key, dir);
+  });
+  GERENCIA_INDEX = new Map();
+  RANKING_GERENCIAS.forEach(ger => {
+    const key = limparTexto(ger.id || ger.nome);
+    if (key) GERENCIA_INDEX.set(key, ger);
+  });
+  AGENCIA_INDEX = new Map();
+  RANKING_AGENCIAS.forEach(ag => {
+    const key = limparTexto(ag.id || ag.nome);
+    if (key) AGENCIA_INDEX.set(key, ag);
+  });
+  GGESTAO_INDEX = new Map();
+  GERENTES_GESTAO.forEach(gg => {
+    const key = limparTexto(gg.id || gg.nome);
+    if (key) GGESTAO_INDEX.set(key, gg);
+  });
+  GERENTE_INDEX = new Map();
+  RANKING_GERENTES.forEach(ge => {
+    const key = limparTexto(ge.id || ge.nome);
+    if (key) GERENTE_INDEX.set(key, ge);
+  });
+  SEGMENTO_INDEX = new Map();
+  SEGMENTOS_DATA.forEach(seg => {
+    const key = limparTexto(seg.id || seg.nome);
+    if (key) SEGMENTO_INDEX.set(key, seg);
+  });
+
+  DIRETORIA_LABEL_INDEX = new Map();
+  RANKING_DIRECTORIAS.forEach(dir => registerLabelIndexEntry(DIRETORIA_LABEL_INDEX, dir, dir.id, dir.nome));
+  GERENCIA_LABEL_INDEX = new Map();
+  RANKING_GERENCIAS.forEach(ger => registerLabelIndexEntry(GERENCIA_LABEL_INDEX, ger, ger.id, ger.nome));
+  AGENCIA_LABEL_INDEX = new Map();
+  RANKING_AGENCIAS.forEach(ag => registerLabelIndexEntry(AGENCIA_LABEL_INDEX, ag, ag.id, ag.nome, ag.codigo));
+  MESU_BY_AGENCIA.forEach(meta => {
+    registerLabelIndexEntry(AGENCIA_LABEL_INDEX, meta, meta.agenciaId, meta.agenciaNome, meta.agenciaCodigo);
+  });
+  GGESTAO_LABEL_INDEX = new Map();
+  GERENTES_GESTAO.forEach(gg => registerLabelIndexEntry(GGESTAO_LABEL_INDEX, gg, gg.id, gg.nome));
+  GERENTE_LABEL_INDEX = new Map();
+  RANKING_GERENTES.forEach(ger => registerLabelIndexEntry(GERENTE_LABEL_INDEX, ger, ger.id, ger.nome));
+  SEGMENTO_LABEL_INDEX = new Map();
+  SEGMENTOS_DATA.forEach(seg => registerLabelIndexEntry(SEGMENTO_LABEL_INDEX, seg, seg.id, seg.nome));
 
   if (!CURRENT_USER_CONTEXT.diretoria && rows.length){
     const first = rows[0];
     CURRENT_USER_CONTEXT = {
-      diretoria: first.diretoriaId || "",
-      gerencia: first.regionalId || "",
-      agencia: first.agenciaId || "",
-      gerenteGestao: first.gerenteGestaoId || "",
-      gerente: first.gerenteId || ""
+      diretoria: first.diretoriaId || '',
+      gerencia: first.regionalId || '',
+      agencia: first.agenciaId || '',
+      gerenteGestao: first.gerenteGestaoId || '',
+      gerente: first.gerenteId || ''
     };
   }
 }
-
-// Aqui eu padronizo a tabela de produtos porque cada planilha chama família e seção de um jeito.
 function normalizarLinhasProdutos(rows){
   return rows.map(raw => {
     const secaoId = lerCelula(raw, ["id_secao", "Id secao", "ID secao", "Seção ID", "secao_id", "secaoId"]);
@@ -4137,11 +4320,10 @@ function hierarchyRowMatchesField(row, field, value){
   if (!field) return true;
   const def = HIERARCHY_FIELD_MAP.get(field);
   if (!def) return true;
-  const normalizedValue = limparTexto(value);
-  if (!normalizedValue || normalizedValue === def.defaultValue) return true;
+  if (selecaoPadrao(value) || value === def.defaultValue) return true;
   const rowId = limparTexto(row[def.idKey]);
   const rowLabel = limparTexto(row[def.labelKey]);
-  return normalizedValue === rowId || normalizedValue === rowLabel;
+  return matchesSelection(value, rowId, rowLabel);
 }
 
 function filterHierarchyRowsForField(targetField, selection, rows){
@@ -4155,21 +4337,40 @@ function buildHierarchyOptions(fieldKey, selection, rows){
   const def = HIERARCHY_FIELD_MAP.get(fieldKey);
   if (!def) return [];
   const filtered = filterHierarchyRowsForField(fieldKey, selection, rows);
-  const seen = new Set();
+  const labelIndex = new Map();
   const options = [];
 
-  const pushOption = (value, label) => {
+  const register = (value, label) => {
+    const safeLabel = limparTexto(label) || limparTexto(value);
     const safeValue = limparTexto(value);
-    if (!safeValue || seen.has(safeValue)) return;
-    const safeLabel = limparTexto(label) || safeValue;
-    options.push({ value: safeValue, label: safeLabel });
-    seen.add(safeValue);
+    if (!safeLabel && !safeValue) return;
+    const key = simplificarTexto(safeLabel || safeValue);
+    if (labelIndex.has(key)) {
+      const existing = labelIndex.get(key);
+      if (safeValue && safeValue !== existing.value && !existing.aliases.includes(safeValue)) {
+        existing.aliases.push(safeValue);
+      }
+      if (safeLabel && safeLabel !== existing.value && !existing.aliases.includes(safeLabel)) {
+        existing.aliases.push(safeLabel);
+      }
+      return;
+    }
+    const optionValue = safeValue || safeLabel;
+    const entry = {
+      value: optionValue,
+      label: safeLabel || optionValue,
+      aliases: []
+    };
+    if (safeLabel && safeLabel !== optionValue) entry.aliases.push(safeLabel);
+    if (safeValue && safeValue !== optionValue) entry.aliases.push(safeValue);
+    labelIndex.set(key, entry);
+    options.push(entry);
   };
 
   filtered.forEach(row => {
     const value = row[def.idKey] || row[def.labelKey];
     const label = row[def.labelKey] || row[def.idKey];
-    pushOption(value, label);
+    register(value, label);
   });
 
   if (!options.length && typeof def.fallback === "function") {
@@ -4177,26 +4378,184 @@ function buildHierarchyOptions(fieldKey, selection, rows){
     fallback.forEach(item => {
       const value = item?.id ?? item?.value ?? item?.nome ?? item?.name;
       const label = item?.nome ?? item?.name ?? item?.label ?? item?.id ?? item?.value;
-      pushOption(value, label);
+      register(value, label);
     });
   }
 
   options.sort((a,b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
-  return [{ value: def.defaultValue, label: def.defaultLabel }].concat(options);
+  const defaultEntry = {
+    value: def.defaultValue,
+    label: def.defaultLabel,
+    aliases: [def.defaultValue]
+  };
+  return [defaultEntry].concat(options);
 }
 
 function setSelectOptions(select, options, desiredValue, defaultValue){
   const current = limparTexto(desiredValue);
   select.innerHTML = "";
+  let chosen = null;
   options.forEach(opt => {
     const option = document.createElement("option");
     option.value = opt.value;
     option.textContent = opt.label;
     select.appendChild(option);
+    if (!chosen && optionMatchesValue(opt, current)) {
+      chosen = opt;
+    }
   });
-  const next = options.some(opt => opt.value === current) ? current : defaultValue;
-  select.value = next;
-  return next;
+  if (!chosen) {
+    chosen = options.find(opt => optionMatchesValue(opt, defaultValue)) || options[0] || null;
+  }
+  const nextValue = chosen ? chosen.value : "";
+  select.value = nextValue;
+  if (select.value !== nextValue) {
+    select.selectedIndex = 0;
+  }
+  if (select.dataset.search === "true") {
+    ensureSelectSearch(select);
+    storeSelectSearchOptions(select, options);
+    syncSelectSearchInput(select);
+  }
+  return select.value || nextValue;
+}
+
+function ensureSelectSearchGlobalListeners(){
+  if (SELECT_SEARCH_GLOBAL_LISTENERS) return;
+  document.addEventListener("click", (ev) => {
+    SELECT_SEARCH_REGISTRY.forEach(data => {
+      if (data.panel.contains(ev.target) || data.input === ev.target) return;
+      data.panel.hidden = true;
+    });
+  });
+  SELECT_SEARCH_GLOBAL_LISTENERS = true;
+}
+
+function ensureSelectSearch(select){
+  if (!select || select.dataset.searchBound === "1" || select.dataset.search !== "true") return;
+  const group = select.closest(".filters__group");
+  if (!group) return;
+  const labelText = limparTexto(group.querySelector("label")?.textContent) || "opção";
+  const wrapper = document.createElement("div");
+  wrapper.className = "select-search";
+  wrapper.innerHTML = `
+    <input type="search" class="input input--xs select-search__input" placeholder="Pesquisar ${labelText.toLowerCase()}" aria-label="Pesquisar ${labelText}">
+    <div class="select-search__panel" role="listbox" aria-label="Sugestões de ${labelText}" hidden></div>`;
+  group.insertBefore(wrapper, select);
+
+  const input = wrapper.querySelector("input");
+  const panel = wrapper.querySelector(".select-search__panel");
+  const data = { select, input, panel, options: [] };
+  SELECT_SEARCH_DATA.set(select, data);
+  SELECT_SEARCH_REGISTRY.add(data);
+  ensureSelectSearchGlobalListeners();
+
+  const hidePanel = () => { panel.hidden = true; };
+
+  input.addEventListener("input", () => updateSelectSearchResults(select));
+  input.addEventListener("focus", () => updateSelectSearchResults(select));
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      input.value = "";
+      hidePanel();
+    }
+    if (ev.key === "Enter") {
+      const first = panel.querySelector(".select-search__item");
+      if (first) {
+        ev.preventDefault();
+        first.click();
+      }
+    }
+  });
+  input.addEventListener("blur", () => {
+    setTimeout(hidePanel, 120);
+  });
+
+  panel.addEventListener("mousedown", (ev) => ev.preventDefault());
+  panel.addEventListener("click", (ev) => {
+    const item = ev.target.closest(".select-search__item");
+    if (!item) return;
+    ev.preventDefault();
+    aplicarSelecaoBusca(select, item.dataset.value || item.getAttribute("data-value") || "");
+    hidePanel();
+  });
+
+  select.addEventListener("change", () => {
+    const meta = SELECT_SEARCH_DATA.get(select);
+    if (!meta) return;
+    meta.input.value = "";
+    meta.panel.hidden = true;
+  });
+
+  select.dataset.searchBound = "1";
+}
+
+function storeSelectSearchOptions(select, options){
+  const data = SELECT_SEARCH_DATA.get(select);
+  if (!data) return;
+  data.options = options.map(opt => ({
+    value: opt.value,
+    label: opt.label,
+    aliases: Array.isArray(opt.aliases) ? opt.aliases.map(item => limparTexto(item)) : []
+  }));
+  data.panel.hidden = true;
+  data.panel.innerHTML = "";
+}
+
+function syncSelectSearchInput(select){
+  const data = SELECT_SEARCH_DATA.get(select);
+  if (!data) return;
+  data.input.value = "";
+  data.panel.hidden = true;
+}
+
+function updateSelectSearchResults(select){
+  const data = SELECT_SEARCH_DATA.get(select);
+  if (!data) return;
+  const { input, panel, options } = data;
+  if (!options || !options.length) {
+    panel.hidden = true;
+    panel.innerHTML = "";
+    return;
+  }
+  const term = simplificarTexto(input.value);
+  const base = options.slice(1);
+  const matches = base.filter(opt => {
+    if (!term) return true;
+    if (simplificarTexto(opt.label).includes(term)) return true;
+    return (opt.aliases || []).some(alias => simplificarTexto(alias).includes(term));
+  });
+  const selected = term ? matches : matches.slice(0, 10);
+  const finalList = selected.slice(0, 10);
+  if (!finalList.length) {
+    if (!term) {
+      panel.hidden = true;
+      panel.innerHTML = "";
+      return;
+    }
+    panel.innerHTML = `<div class="select-search__empty">Nenhum resultado encontrado</div>`;
+    panel.hidden = false;
+    return;
+  }
+  const rows = finalList.map(opt => `<button type="button" class="select-search__item" data-value="${escapeHTML(opt.value)}">${escapeHTML(opt.label)}</button>`).join("\n");
+  panel.innerHTML = rows;
+  panel.hidden = false;
+}
+
+function aplicarSelecaoBusca(select, rawValue){
+  const data = SELECT_SEARCH_DATA.get(select);
+  if (!data) return;
+  const options = data.options || [];
+  const match = options.find(opt => optionMatchesValue(opt, rawValue));
+  const targetValue = match ? match.value : rawValue;
+  select.value = targetValue;
+  if (select.value !== targetValue) {
+    const fallback = options.find(opt => opt.value === targetValue);
+    if (!fallback) select.selectedIndex = 0;
+  }
+  data.input.value = "";
+  data.panel.hidden = true;
+  select.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function refreshHierarchyCombos(opts = {}){
@@ -4229,38 +4588,38 @@ function adjustHierarchySelection(selection, changedField){
   };
 
   if (changedField === "agencia" && effective !== def.defaultValue){
-    const meta = AGENCIA_INDEX.get(effective) || MESU_BY_AGENCIA.get(effective) || {};
+    const meta = findAgenciaMeta(effective) || {};
     setIf("gerencia", meta.gerencia || meta.regionalId || meta.regional);
     setIf("diretoria", meta.diretoria || meta.diretoriaId);
     setIf("segmento", meta.segmento || meta.segmentoId);
   }
 
   if (changedField === "gerencia" && effective !== def.defaultValue){
-    const meta = GERENCIA_INDEX.get(effective) || {};
+    const meta = findGerenciaMeta(effective) || {};
     setIf("diretoria", meta.diretoria);
     setIf("segmento", meta.segmentoId);
   }
 
   if (changedField === "diretoria" && effective !== def.defaultValue){
-    const meta = DIRETORIA_INDEX.get(effective) || {};
+    const meta = findDiretoriaMeta(effective) || {};
     setIf("segmento", meta.segmento);
   }
 
   if (changedField === "ggestao" && effective !== def.defaultValue){
-    const meta = GGESTAO_INDEX.get(effective) || {};
+    const meta = findGerenteGestaoMeta(effective) || {};
     setIf("agencia", meta.agencia);
     setIf("gerencia", meta.gerencia);
     setIf("diretoria", meta.diretoria);
-    const agMeta = meta.agencia ? (AGENCIA_INDEX.get(meta.agencia) || MESU_BY_AGENCIA.get(meta.agencia) || {}) : {};
+    const agMeta = meta.agencia ? (findAgenciaMeta(meta.agencia) || {}) : {};
     setIf("segmento", agMeta.segmento || agMeta.segmentoId);
   }
 
   if (changedField === "gerente" && effective !== def.defaultValue){
-    const meta = GERENTE_INDEX.get(effective) || {};
+    const meta = findGerenteMeta(effective) || {};
     setIf("agencia", meta.agencia);
     setIf("gerencia", meta.gerencia);
     setIf("diretoria", meta.diretoria);
-    const agMeta = meta.agencia ? (AGENCIA_INDEX.get(meta.agencia) || MESU_BY_AGENCIA.get(meta.agencia) || {}) : {};
+    const agMeta = meta.agencia ? (findAgenciaMeta(meta.agencia) || {}) : {};
     setIf("segmento", agMeta.segmento || agMeta.segmentoId);
   }
 
@@ -4280,7 +4639,7 @@ function ensureSegmentoField() {
   const actions = filters.querySelector(".filters__actions");
   const wrap = document.createElement("div");
   wrap.className = "filters__group";
-  wrap.innerHTML = `<label>Segmento</label><select id="f-segmento" class="input"></select>`;
+  wrap.innerHTML = `<label>Segmento</label><select id="f-segmento" class="input" data-search="true"></select>`;
   filters.insertBefore(wrap, actions);
 }
 function getFilterValues() {
@@ -4329,20 +4688,20 @@ function filterRowsExcept(rows, except = {}, opts = {}) {
   const endISO = ignoreDate ? "" : (dateEnd ?? state.period.end);
 
   return rows.filter(r => {
-    const okSeg = (f.segmento === "Todos" || f.segmento === "" || r.segmento === f.segmento);
-    const okDR  = (except.diretoria) || (f.diretoria === "Todas" || f.diretoria === "" || r.diretoria === f.diretoria);
-    const okGR  = (except.gerencia)  || (f.gerencia  === "Todas" || f.gerencia  === "" || r.gerenciaRegional === f.gerencia);
-    const okAg  = (except.agencia)   || (f.agencia   === "Todas" || f.agencia   === "" || r.agencia === f.agencia);
-    const okGG  = (f.ggestao   === "Todos" || f.ggestao   === "" || r.gerenteGestao === f.ggestao);
-    const okGer = (except.gerente)   || (f.gerente   === "Todos" || f.gerente   === "" || r.gerente === f.gerente);
+    const okSeg = selecaoPadrao(f.segmento) || matchesSelection(f.segmento, r.segmento, r.segmentoId, r.segmentoNome);
+    const okDR  = (except.diretoria) || selecaoPadrao(f.diretoria) || matchesSelection(f.diretoria, r.diretoria, r.diretoriaNome);
+    const okGR  = (except.gerencia)  || selecaoPadrao(f.gerencia)  || matchesSelection(f.gerencia, r.gerenciaRegional, r.gerenciaNome, r.regional);
+    const okAg  = (except.agencia)   || selecaoPadrao(f.agencia)   || matchesSelection(f.agencia, r.agencia, r.agenciaNome, r.agenciaCodigo);
+    const okGG  = selecaoPadrao(f.ggestao) || matchesSelection(f.ggestao, r.gerenteGestao, r.gerenteGestaoNome);
+    const okGer = (except.gerente)   || selecaoPadrao(f.gerente)   || matchesSelection(f.gerente, r.gerente, r.gerenteNome);
     const familiaMetaRow = r.produtoId ? PRODUTO_TO_FAMILIA.get(r.produtoId) : null;
     const rowSecaoId = r.secaoId
       || familiaMetaRow?.secaoId
       || (r.produtoId ? PRODUCT_INDEX.get(r.produtoId)?.sectionId : "")
       || (SECTION_IDS.has(r.familiaId) ? r.familiaId : "");
-    const okSec = (f.secaoId === "Todas" || f.secaoId === "" || rowSecaoId === f.secaoId || r.familiaId === f.secaoId || r.familia === f.secaoId);
-    const okFam = (f.familiaId === "Todas" || f.familiaId === "" || r.familiaId === f.familiaId || (!r.familiaId && r.familia === f.familiaId));
-    const okProd= (f.produtoId === "Todas" || f.produtoId === "Todos" || f.produtoId === "" || r.produtoId === f.produtoId);
+    const okSec = selecaoPadrao(f.secaoId) || matchesSelection(f.secaoId, rowSecaoId, r.secaoId, r.secaoNome, r.secao, getSectionLabel(rowSecaoId));
+    const okFam = selecaoPadrao(f.familiaId) || matchesSelection(f.familiaId, r.familiaId, r.familia);
+    const okProd= selecaoPadrao(f.produtoId) || matchesSelection(f.produtoId, r.produtoId, r.produtoNome, r.produto, r.prodOrSub, r.subproduto);
     let rowDate = r.data || r.competencia || "";
     if (rowDate && typeof rowDate !== "string") {
       if (rowDate instanceof Date) {
