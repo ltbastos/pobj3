@@ -1865,8 +1865,8 @@ function formatBRDate(iso){ if(!iso) return ""; const [y,m,day]=iso.split("-"); 
 function dateUTCFromISO(iso){ const [y,m,d]=iso.split("-").map(Number); return new Date(Date.UTC(y,m-1,d)); }
 // Aqui eu faço o caminho inverso: Date UTC para string ISO.
 function isoFromUTCDate(d){ return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`; }
-// Aqui eu preparo a estrutura das colunas disponíveis na visão de Detalhes e os helpers de persistência.
-const DETAIL_COLUMNS = [
+// Aqui eu mantenho um conjunto fixo de colunas que aparecem quando o usuário abre o detalhe de um contrato.
+const DETAIL_SUBTABLE_COLUMNS = [
   { id: "canal",       label: "Canal da venda",         render: (group = {}) => escapeHTML(group.canal || "—") },
   { id: "tipo",        label: "Tipo da venda",          render: (group = {}) => escapeHTML(group.tipo || "—") },
   { id: "gerente",     label: "Gerente",                render: (group = {}) => escapeHTML(group.gerente || "—") },
@@ -1874,6 +1874,16 @@ const DETAIL_COLUMNS = [
   { id: "vencimento",  label: "Data de vencimento",     render: (group = {}) => renderDetailDateCell(group.dataVencimento) },
   { id: "cancelamento",label: "Data de cancelamento",   render: (group = {}) => renderDetailDateCell(group.dataCancelamento) },
   { id: "motivo",      label: "Motivo do cancelamento", render: (group = {}) => escapeHTML(group.motivoCancelamento || "—") },
+];
+
+// Aqui eu montei os metadados das colunas da tabela principal para poder ligar/desligar conforme a visão escolhida.
+const DETAIL_COLUMNS = [
+  { id: "quantidade",    label: "Quantidade",       cellClass: "",        render: renderDetailQtyCell },
+  { id: "realizado",     label: "Realizado (R$)",   cellClass: "",        render: renderDetailRealizadoCell },
+  { id: "meta",          label: "Meta (R$)",        cellClass: "",        render: renderDetailMetaCell },
+  { id: "atingimento_v", label: "Atingimento (R$)", cellClass: "",        render: renderDetailAchievementValueCell },
+  { id: "atingimento_p", label: "Atingimento (%)",  cellClass: "",        render: renderDetailAchievementPercentCell },
+  { id: "data",          label: "Data",             cellClass: "",        render: renderDetailDateCellFromNode },
 ];
 const DETAIL_DEFAULT_VIEW = {
   id: "default",
@@ -1892,6 +1902,61 @@ function renderDetailDateCell(iso){
   if (!label) return "—";
   const safe = escapeHTML(label);
   return `<span class="detail-date" title="${safe}">${safe}</span>`;
+}
+
+function renderDetailQtyCell(node = {}){
+  const qty = toNumber(node.qtd);
+  const rounded = Math.round(qty);
+  const full = fmtINT.format(rounded);
+  const display = formatIntReadable(qty);
+  return `<span title="${full}">${display}</span>`;
+}
+
+function renderDetailRealizadoCell(node = {}){
+  const value = toNumber(node.realizado);
+  const rounded = Math.round(value);
+  const full = fmtBRL.format(rounded);
+  const display = formatBRLReadable(value);
+  return `<span title="${full}">${display}</span>`;
+}
+
+function renderDetailMetaCell(node = {}){
+  const value = toNumber(node.meta);
+  const rounded = Math.round(value);
+  const full = fmtBRL.format(rounded);
+  const display = formatBRLReadable(value);
+  return `<span title="${full}">${display}</span>`;
+}
+
+function renderDetailAchievementValueCell(node = {}){
+  return renderDetailAchievementCurrency(node.realizado, node.meta);
+}
+
+function renderDetailAchievementPercentCell(node = {}){
+  const ratio = Number(node.ating || 0);
+  return renderDetailAchievementPercent(ratio);
+}
+
+function renderDetailDateCellFromNode(node = {}){
+  return renderDetailDateCell(node.data);
+}
+
+function renderDetailAchievementCurrency(realizado, meta){
+  const r = toNumber(realizado);
+  const m = toNumber(meta);
+  const hasMeta = m > 0;
+  const achieved = hasMeta ? Math.max(0, Math.min(r, m)) : Math.max(0, r);
+  const cls = hasMeta ? (r >= m ? "def-pos" : "def-neg") : "def-pos";
+  const full = fmtBRL.format(Math.round(achieved));
+  const display = formatBRLReadable(achieved);
+  return `<span class="def-badge ${cls}" title="${full}">${display}</span>`;
+}
+
+function renderDetailAchievementPercent(ratio){
+  const pct = Number.isFinite(ratio) ? ratio * 100 : 0;
+  const safe = Math.max(0, pct);
+  const cls = safe < 50 ? "att-low" : (safe < 100 ? "att-warn" : "att-ok");
+  return `<span class="att-badge ${cls}">${safe.toFixed(1)}%</span>`;
 }
 function getDetailColumnMeta(id){
   return DETAIL_COLUMNS.find(col => col.id === id) || null;
@@ -3279,11 +3344,6 @@ function ensureChipBarAndToolbar() {
         <span class="detail-view-bar__label">Visões da tabela</span>
         <div id="detail-view-chips" class="detail-view-chips"></div>
       </div>
-      <div class="detail-view-bar__right">
-        <button type="button" id="btn-manage-detail-columns" class="btn btn--ghost btn--sm detail-view-manage">
-          <i class="ti ti-columns"></i> Personalizar colunas
-        </button>
-      </div>
     </div>`;
   const header = card.querySelector(".card__header") || card;
   header.insertAdjacentElement("afterend", holder);
@@ -3312,7 +3372,8 @@ function ensureChipBarAndToolbar() {
   $("#tt-toolbar").innerHTML = `
     <button type="button" id="btn-expandir" class="btn btn--sm"><i class="ti ti-chevrons-down"></i> Expandir tudo</button>
     <button type="button" id="btn-recolher" class="btn btn--sm"><i class="ti ti-chevrons-up"></i> Recolher tudo</button>
-    <button type="button" id="btn-compacto" class="btn btn--sm"><i class="ti ti-layout-collage"></i> Modo compacto</button>`;
+    <button type="button" id="btn-compacto" class="btn btn--sm"><i class="ti ti-layout-collage"></i> Modo compacto</button>
+    <button type="button" id="btn-manage-detail-columns" class="btn btn--ghost btn--sm detail-view-manage"><i class="ti ti-columns"></i> Personalizar colunas</button>`;
   $("#btn-expandir").addEventListener("click", expandAllRows);
   $("#btn-recolher").addEventListener("click", collapseAllRows);
   $("#btn-compacto").addEventListener("click", () => {
@@ -7517,25 +7578,22 @@ function renderTreeTable() {
   const def = TABLE_VIEWS.find(v=> v.id === state.tableView) || TABLE_VIEWS[0];
   const rowsFiltered = filterRows(state._rankingRaw);
   const nodes = buildTree(rowsFiltered, def.id);
+  const activeColumns = getActiveDetailColumns();
 
-  const host = document.getElementById("gridRanking"); 
+  const host = document.getElementById("gridRanking");
   if (!host) return;
   host.innerHTML = "";
 
   const table = document.createElement("table");
   table.className = "tree-table";
+  const headerCells = [
+    `<th>${escapeHTML(def.label)}</th>`,
+    ...activeColumns.map(col => `<th>${escapeHTML(col.label)}</th>`),
+    `<th class="col-actions">Ações</th>`,
+  ].join("");
   table.innerHTML = `
     <thead>
-      <tr>
-        <th>${def.label}</th>
-        <th>Quantidade</th>
-        <th>Realizado (R$)</th>
-        <th>Meta (R$)</th>
-        <th>Atingimento (R$)</th>
-        <th>Atingimento (%)</th>
-        <th>Data</th>
-        <th class="col-actions">Ações</th>
-      </tr>
+      <tr>${headerCells}</tr>
     </thead>
     <tbody></tbody>
   `;
@@ -7546,23 +7604,11 @@ function renderTreeTable() {
   else document.getElementById("table-section")?.classList.remove("is-compact");
 
   let seq=0; const mkId=()=>`n${++seq}`;
-  const attPct = (p)=>{ const pct=(p*100); const cls=pct<50?"att-low":(pct<100?"att-warn":"att-ok"); return `<span class="att-badge ${cls}">${pct.toFixed(1)}%</span>`; };
-  const attCurrency = (real, meta)=>{
-    const r = toNumber(real);
-    const m = toNumber(meta);
-    const hasMeta = m > 0;
-    const achieved = hasMeta ? Math.max(0, Math.min(r, m)) : Math.max(0, r);
-    const cls = hasMeta ? (r >= m ? "def-pos" : "def-neg") : "def-pos";
-    const full = fmtBRL.format(Math.round(achieved));
-    const display = formatBRLReadable(achieved);
-    return `<span class="def-badge ${cls}" title="${full}">${display}</span>`;
-  };
 
   const buildDetailTableHTML = (node = null) => {
     const groups = Array.isArray(node?.detailGroups) ? node.detailGroups : [];
     if (!groups.length) return "";
-    const columns = getActiveDetailColumns();
-    if (!columns.length) return "";
+    const columns = DETAIL_SUBTABLE_COLUMNS;
     const rows = groups.map(group => {
       const cells = columns.map(col => `<td>${col.render(group)}</td>`).join("");
       return `<tr>${cells}</tr>`;
@@ -7631,23 +7677,17 @@ function renderTreeTable() {
         ? `<div class="tree-label"><span class="label-strong">${fallbackLabel}</span>${statusBadge}</div>`
         : `<span class="label-strong">${fallbackLabel}</span>`);
 
-    const qtyFull = fmtINT.format(Math.round(node.qtd || 0));
-    const qtyDisplay = formatIntReadable(node.qtd || 0);
-    const realizadoFull = fmtBRL.format(Math.round(node.realizado || 0));
-    const realizadoDisplay = formatBRLReadable(node.realizado || 0);
-    const metaFull = fmtBRL.format(Math.round(node.meta || 0));
-    const metaDisplay = formatBRLReadable(node.meta || 0);
+    const dataCells = activeColumns.map(col => {
+      const cls = col.cellClass ? ` class="${col.cellClass}"` : "";
+      const content = col.render(node);
+      return `<td${cls}>${content}</td>`;
+    }).join("");
 
     tr.innerHTML=`
       <td><div class="tree-cell">
         <button class="toggle" type="button" ${has?"":"disabled"} aria-label="${has?"Expandir/colapsar":""}"><i class="ti ${has?"ti-chevron-right":"ti-dot"}"></i></button>
         ${labelHtml}</div></td>
-      <td><span title="${qtyFull}">${qtyDisplay}</span></td>
-      <td><span title="${realizadoFull}">${realizadoDisplay}</span></td>
-      <td><span title="${metaFull}">${metaDisplay}</span></td>
-      <td>${attCurrency(node.realizado,node.meta)}</td>
-      <td>${attPct(node.ating||0)}</td>
-      <td>${formatBRDate(node.data||"")}</td>
+      ${dataCells}
       <td class="actions-cell">
         <span class="actions-group">
           <button type="button" class="icon-btn" title="Abrir chamado"><i class="ti ti-ticket"></i></button>
@@ -7687,7 +7727,8 @@ function renderTreeTable() {
           detailTr.classList.add("is-cancelled-detail");
           detailTr.dataset.cancelled = "1";
         }
-        detailTr.innerHTML=`<td colspan="8">${detailHTML}</td>`;
+        const detailColspan = activeColumns.length + 2;
+        detailTr.innerHTML=`<td colspan="${detailColspan}">${detailHTML}</td>`;
         tbody.appendChild(detailTr);
 
         tr.addEventListener("click", (ev)=>{

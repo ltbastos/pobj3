@@ -748,11 +748,10 @@ select.input{
   display:flex;
   flex-wrap:wrap;
   align-items:center;
-  justify-content:space-between;
+  justify-content:flex-start;
   gap:12px;
 }
 .detail-view-bar__left{ display:flex; flex-direction:column; gap:6px; flex:1 1 auto; min-width:220px; }
-.detail-view-bar__right{ display:flex; align-items:center; gap:8px; }
 .detail-view-bar__label{ font-size:12px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.08em; }
 .detail-view-chips{ display:flex; flex-wrap:wrap; gap:8px; }
 .detail-view-empty{ font-size:12px; color:#6b7280; }
