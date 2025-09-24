@@ -2966,13 +2966,10 @@ function renderResumoKPI(summary, context = {}) {
     const fillTarget = pct100.toFixed(2);
     const atgTitle = buildTitle("Atingidos", fmtType, atingidos, visibleAting);
     const totTitle = buildTitle("Total", fmtType, total, visibleTotal);
-    const iconMarkup = iconClass
-      ? `
-          <span class="kpi-icon"><i class="${iconClass}"></i></span>`
-      : "";
     return `
       <div class="kpi-pill">
-        <div class="kpi-strip__main">${iconMarkup}
+        <div class="kpi-strip__main">
+          <span class="kpi-icon"><i class="${iconClass}"></i></span>
           <div class="kpi-strip__text">
             <span class="kpi-strip__label" title="${titulo}">${titulo}</span>
             <div class="kpi-strip__stats">
@@ -2991,7 +2988,7 @@ function renderResumoKPI(summary, context = {}) {
   kpi.innerHTML = [
     buildCard("Indicadores", "ti ti-list-check", indicadoresAtingidos, indicadoresTotal, "int", visibleItemsHitCount),
     buildCard("Pontos", "ti ti-medal", pontosAtingidos, pontosTotal, "int", visiblePointsHit),
-    buildCard("Variável", null, varAtingidoBase, varTotalBase, "brl", visibleVarAtingido, visibleVarMeta)
+    buildCard("Variável", "", varAtingidoBase, varTotalBase, "brl", visibleVarAtingido, visibleVarMeta)
   ].join("");
 
   triggerBarAnimation(kpi.querySelectorAll('.hitbar'), shouldAnimateResumo);
