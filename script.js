@@ -2033,15 +2033,22 @@ function businessDaysBetweenInclusive(startISO,endISO){
   }
   return cnt;
 }
+// Aqui eu calculo quantos dias úteis já se passaram dentro do intervalo até hoje (incluindo hoje).
+function businessDaysElapsedUntilToday(startISO,endISO){
+  if(!startISO || !endISO) return 0;
+  const todayISOValue = todayISO();
+  let start = dateUTCFromISO(startISO), end = dateUTCFromISO(endISO), today = dateUTCFromISO(todayISOValue);
+  if(!start || !end || !today) return 0;
+  if(today < start) return 0;
+  if(today > end) today = end;
+  return businessDaysBetweenInclusive(startISO, isoFromUTCDate(today));
+}
 // Aqui eu calculo quantos dias úteis ainda faltam a partir de hoje até o fim de um período.
 function businessDaysRemainingFromToday(startISO,endISO){
   if(!startISO || !endISO) return 0;
-  const today = todayISO();
-  let t = dateUTCFromISO(today), s=dateUTCFromISO(startISO), e=dateUTCFromISO(endISO);
-  if(t >= e) return 0;
-  let startCount = new Date(t); startCount.setUTCDate(startCount.getUTCDate()+1);
-  if(startCount < s) startCount = s;
-  return businessDaysBetweenInclusive(isoFromUTCDate(startCount), endISO);
+  const total = businessDaysBetweenInclusive(startISO, endISO);
+  const elapsed = businessDaysElapsedUntilToday(startISO, endISO);
+  return Math.max(0, total - elapsed);
 }
 
 /* ===== Aqui eu deixo funções auxiliares para métricas e números ===== */
@@ -5323,8 +5330,8 @@ function renderResumoKPI(summary, context = {}) {
 function buildCardTooltipHTML(item) {
   const start = state.period.start, end = state.period.end;
   const diasTotais     = businessDaysBetweenInclusive(start, end);
-  const diasRestantes  = businessDaysRemainingFromToday(start, end);
-  const diasDecorridos = Math.max(0, Math.min(diasTotais, diasTotais - diasRestantes));
+  const diasDecorridos = businessDaysElapsedUntilToday(start, end);
+  const diasRestantes  = Math.max(0, diasTotais - diasDecorridos);
 
   let meta = toNumber(item.meta);
   let realizado = toNumber(item.realizado);
@@ -6274,8 +6281,8 @@ function renderExecutiveView(){
   const defas = total.real_mens - total.meta_mens;
 
   const diasTotais     = businessDaysBetweenInclusive(state.period.start, state.period.end);
-  const diasRestantes  = businessDaysRemainingFromToday(state.period.start, state.period.end);
-  const diasDecorridos = Math.max(0, diasTotais - diasRestantes);
+  const diasDecorridos = businessDaysElapsedUntilToday(state.period.start, state.period.end);
+  const diasRestantes  = Math.max(0, diasTotais - diasDecorridos);
   const mediaDiaria    = diasDecorridos>0 ? (total.real_mens/diasDecorridos) : 0;
   const necessarioDia  = diasRestantes>0 ? Math.max(0, (total.meta_mens-total.real_mens)/diasRestantes) : 0;
   const forecast       = mediaDiaria * diasTotais;
