@@ -4,12 +4,12 @@
    (com fixes: svh/topbar, z-index, listeners únicos, a11y)
    ========================================================= */
 
-/* ===== Config ===== */
+/* ===== Aqui eu organizo as configurações base do painel ===== */
 const DATA_SOURCE = "csv";
 const API_URL = "/api";
 const TICKET_URL = "https://botpj.com/index.php?class=LoginForm";
 
-/* ===== Chat Config ===== */
+/* ===== Aqui eu deixo separado tudo que envolve o chat embutido ===== */
 // MODO 1 (recomendado): "iframe" — cole a URL do seu agente (Copilot Studio / SharePoint)
 // MODO 2 (alternativo): "http"  — envia para um endpoint seu que responde { answer }
 const CHAT_MODE = "iframe";  // "iframe" | "http"
@@ -17,11 +17,14 @@ const CHAT_IFRAME_URL = "";  // cole aqui a URL do canal "Website" do seu agente
 const AGENT_ENDPOINT = "/api/agent"; // seu endpoint (se usar http)
 
 
+// Aqui eu criei atalhos para querySelector e querySelectorAll porque uso isso o tempo todo.
 const $  = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
+// Aqui eu preparo alguns formatadores (moeda, inteiro, número com 1 casa) para reaproveitar sem recalcular.
 const fmtBRL = new Intl.NumberFormat("pt-BR", { style:"currency", currency:"BRL" });
 const fmtINT = new Intl.NumberFormat("pt-BR");
 const fmtONE = new Intl.NumberFormat("pt-BR", { minimumFractionDigits:1, maximumFractionDigits:1 });
+// Aqui eu defino as cores padrão da visão executiva para manter identidade visual.
 const EXEC_BAR_FILL = "#93c5fd";
 const EXEC_BAR_STROKE = "#60a5fa";
 const EXEC_META_COLOR = "#fca5a5";
@@ -29,7 +32,8 @@ const EXEC_SERIES_PALETTE = [
   "#2563eb", "#9333ea", "#0ea5e9", "#16a34a", "#f97316",
   "#ef4444", "#14b8a6", "#d946ef", "#f59e0b", "#22d3ee"
 ];
-const setActiveTab = (viewId = "cards") => {
+// Aqui eu deixo claro para mim que essa função só serve para trocar a aba visível e manter o botão certo destacado.
+const definirAbaAtiva = (viewId = "cards") => {
   const tabs = Array.from($$(".tab"));
   const target = tabs.some(tab => (tab.dataset.view || "") === viewId) ? viewId : "cards";
   tabs.forEach(tab => {
@@ -37,15 +41,18 @@ const setActiveTab = (viewId = "cards") => {
     tab.classList.toggle("is-active", expected === target);
   });
 };
+// Aqui eu extraio o símbolo da moeda para usar em componentes customizados.
 const fmtBRLParts = fmtBRL.formatToParts(1);
 const CURRENCY_SYMBOL = fmtBRLParts.find(p => p.type === "currency")?.value || "R$";
 const CURRENCY_LITERAL = fmtBRLParts.find(p => p.type === "literal")?.value || " ";
+// Aqui eu defino as regras de sufixo (mil, milhão...) para simplificar valores grandes.
 const SUFFIX_RULES = [
   { value: 1_000_000_000_000, singular: "trilhão", plural: "trilhões" },
   { value: 1_000_000_000,     singular: "bilhão",  plural: "bilhões" },
   { value: 1_000_000,         singular: "milhão",  plural: "milhões" },
   { value: 1_000,             singular: "mil",     plural: "mil" }
 ];
+// Aqui eu deixo uma lista padrão de motivos para simulação de cancelamento quando a base não traz o detalhe.
 const MOTIVOS_CANCELAMENTO = [
   "Solicitação do cliente",
   "Inadimplência",
@@ -56,11 +63,13 @@ const MOTIVOS_CANCELAMENTO = [
 
 let MESU_DATA = [];
 let PRODUTOS_DATA = [];
+// Aqui eu mapeio as chaves de status para nomes amigáveis que vão aparecer nos filtros e cards.
 const STATUS_LABELS = {
   todos: "Todos",
   atingidos: "Atingidos",
   nao: "Não atingidos",
 };
+// Aqui eu defino uma ordem padrão de status caso o CSV não traga essa informação.
 const DEFAULT_STATUS_ORDER = ["todos", "atingidos", "nao"];
 const DEFAULT_STATUS_INDICADORES = DEFAULT_STATUS_ORDER.map((key, idx) => ({
   id: key,
@@ -70,8 +79,10 @@ const DEFAULT_STATUS_INDICADORES = DEFAULT_STATUS_ORDER.map((key, idx) => ({
   ordem: idx,
 }));
 let STATUS_INDICADORES_DATA = DEFAULT_STATUS_INDICADORES.map(item => ({ ...item }));
+// Aqui eu mantenho um Map para buscar status pelo código sem precisar ficar percorrendo arrays.
 let STATUS_BY_KEY = new Map(DEFAULT_STATUS_INDICADORES.map(entry => [entry.key, { ...entry }]));
 
+// Aqui eu preparo vários mapas auxiliares para navegar na hierarquia (diretoria → gerente) sem sofrimento.
 let MESU_BY_AGENCIA = new Map();
 let MESU_FALLBACK_ROWS = [];
 let DIRETORIA_INDEX = new Map();
@@ -84,6 +95,7 @@ let AGENCIAS_BY_GERENCIA = new Map();
 let GGESTAO_BY_AGENCIA = new Map();
 let GERENTES_BY_AGENCIA = new Map();
 
+// Aqui eu guardo os dados calculados de ranking para não refazer o trabalho sempre que a tela muda.
 let RANKING_DIRECTORIAS = [];
 let RANKING_GERENCIAS = [];
 let RANKING_AGENCIAS = [];
@@ -91,11 +103,13 @@ let RANKING_GERENTES = [];
 let GERENTES_GESTAO = [];
 let SEGMENTOS_DATA = [];
 
+// Aqui eu tenho mapas auxiliares para ligar produto, família e seção.
 let PRODUTOS_BY_FAMILIA = new Map();
 let FAMILIA_DATA = [];
 let FAMILIA_BY_ID = new Map();
 let PRODUTO_TO_FAMILIA = new Map();
 
+// Aqui eu deixo caches das bases fact/dim para usar em várias telas.
 let fDados = [];
 let fCampanhas = [];
 let fVariavel = [];
@@ -106,6 +120,7 @@ let FACT_CAMPANHAS = [];
 let DIM_CALENDARIO = [];
 let AVAILABLE_DATE_MAX = "";
 
+// Aqui eu guardo qual recorte o usuário escolheu para conseguir lembrar quando mudar de aba.
 let CURRENT_USER_CONTEXT = {
   diretoria: "",
   gerencia: "",
@@ -114,27 +129,31 @@ let CURRENT_USER_CONTEXT = {
   gerente: ""
 };
 
+// Aqui eu aponto onde normalmente ficam os CSVs e guardo a Promise de carregamento para evitar múltiplos downloads.
 const BASE_CSV_PATH = "Base";
 let baseDataPromise = null;
 
-function sanitizeText(value){
+// Aqui eu limpo qualquer valor que vem das bases porque sei que sempre chega com espaços e formatos diferentes.
+function limparTexto(value){
   if (value == null) return "";
   return String(value).trim();
 }
 
-function readCell(raw, keys){
+// Aqui eu tento ler uma célula usando várias chaves possíveis porque cada base vem com um nome diferente.
+function lerCelula(raw, keys){
   if (!raw) return "";
   for (const key of keys){
     if (Object.prototype.hasOwnProperty.call(raw, key)){
-      const val = sanitizeText(raw[key]);
+      const val = limparTexto(raw[key]);
       if (val !== "") return val;
     }
   }
   return "";
 }
 
-function parseISODate(value) {
-  const text = sanitizeText(value);
+// Aqui eu garanto que qualquer data vira formato ISO (aaaa-mm-dd) porque isso evita dor de cabeça com ordenação.
+function converterDataISO(value) {
+  const text = limparTexto(value);
   if (!text) return "";
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(text)) {
@@ -144,15 +163,17 @@ function parseISODate(value) {
   return text;
 }
 
-function parseBoolean(value, fallback = false) {
-  const text = sanitizeText(value).toLowerCase();
+// Aqui eu transformo valores variados (1, sim, true...) em booleanos para padronizar as checagens depois.
+function converterBooleano(value, fallback = false) {
+  const text = limparTexto(value).toLowerCase();
   if (!text) return fallback;
   if (/^(?:1|true|sim|yes|ativo|active|on)$/i.test(text)) return true;
   if (/^(?:0|false|nao|não|inativo|inactive|off)$/i.test(text)) return false;
   return fallback;
 }
 
-function pickFirstFilled(...values) {
+// Aqui eu pego o primeiro valor que realmente veio preenchido porque as bases mandam duplicado em várias colunas.
+function pegarPrimeiroPreenchido(...values) {
   for (const val of values) {
     if (val !== undefined && val !== null && val !== "") {
       return val;
@@ -161,8 +182,9 @@ function pickFirstFilled(...values) {
   return "";
 }
 
-function normalizeStatusKey(value) {
-  const text = sanitizeText(value);
+// Aqui eu converto o texto do status para um formato previsível (sem acento e em minúsculas) para montar os filtros.
+function normalizarChaveStatus(value) {
+  const text = limparTexto(value);
   if (!text) return "";
   const ascii = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const lower = ascii.toLowerCase().replace(/\s+/g, " ").trim();
@@ -178,20 +200,22 @@ function normalizeStatusKey(value) {
   return slug;
 }
 
-function getStatusLabelFromKey(key, fallback = "") {
-  const normalized = normalizeStatusKey(key);
+// Aqui eu traduzo a chave do status para o rótulo certo exibido na tela, sempre tentando usar as descrições oficiais.
+function obterRotuloStatus(key, fallback = "") {
+  const normalized = normalizarChaveStatus(key);
   if (normalized && STATUS_BY_KEY.has(normalized)) {
     const entry = STATUS_BY_KEY.get(normalized);
     if (entry?.nome) return entry.nome;
   }
   if (normalized && STATUS_LABELS[normalized]) return STATUS_LABELS[normalized];
   if (STATUS_LABELS[key]) return STATUS_LABELS[key];
-  const fallbackText = sanitizeText(fallback);
+  const fallbackText = limparTexto(fallback);
   if (fallbackText) return fallbackText;
   return normalized || key;
 }
 
-function detectCsvDelimiter(headerLine, sampleLines = []){
+// Aqui eu faço uma gambiarra controlada para descobrir qual separador o CSV está usando (vírgula, ponto e vírgula, tab...).
+function descobrirDelimitadorCsv(headerLine, sampleLines = []){
   const lines = [headerLine].concat(Array.isArray(sampleLines) ? sampleLines.slice(0, 5) : []).filter(Boolean);
   if (!lines.length) return ",";
   const candidates = [",", ";", "\t", "|"];
@@ -218,7 +242,8 @@ function detectCsvDelimiter(headerLine, sampleLines = []){
   return best;
 }
 
-function splitCsvLine(line, delimiter){
+// Aqui eu separo uma linha de CSV respeitando aspas duplas porque algumas colunas trazem vírgula dentro do texto.
+function dividirLinhaCsv(line, delimiter){
   const cols = [];
   let current = "";
   let insideQuotes = false;
@@ -242,22 +267,23 @@ function splitCsvLine(line, delimiter){
   return cols;
 }
 
-function parseCSV(text){
+// Aqui eu transformo o texto cru do CSV em uma lista de objetos bonitinha, sempre limpando a sujeira de BOM e quebras.
+function converterCSV(text){
   if (!text) return [];
   const normalized = text.replace(/\uFEFF/g, "").replace(/\r\n?/g, "\n");
   const lines = normalized.split("\n").filter(line => line.trim() !== "");
   if (!lines.length) return [];
   const header = lines.shift();
   if (!header) return [];
-  const delimiter = detectCsvDelimiter(header, lines);
-  const headers = splitCsvLine(header, delimiter).map(h => sanitizeText(h));
+  const delimiter = descobrirDelimitadorCsv(header, lines);
+  const headers = dividirLinhaCsv(header, delimiter).map(h => limparTexto(h));
   const rows = [];
   for (const line of lines){
-    const cols = splitCsvLine(line, delimiter);
+    const cols = dividirLinhaCsv(line, delimiter);
     if (!cols.length) continue;
     const obj = {};
     headers.forEach((key, idx) => {
-      obj[key] = sanitizeText(idx < cols.length ? cols[idx] : "");
+      obj[key] = limparTexto(idx < cols.length ? cols[idx] : "");
     });
     rows.push(obj);
   }
@@ -289,7 +315,8 @@ const PAGE_PATH_DEPTH = (() => {
   }
 })();
 
-function buildCsvUrlAttempts(path){
+// Aqui eu gero uma lista de caminhos alternativos porque cada ambiente hospeda os CSVs em pastas diferentes.
+function montarTentativasCsvUrl(path){
   if (!path) return [];
   if (/^(?:https?|data|blob):/i.test(path)) {
     return [path];
@@ -347,7 +374,7 @@ function buildCsvUrlAttempts(path){
 }
 
 async function loadCsvFile(path){
-  const attempts = buildCsvUrlAttempts(path);
+  const attempts = montarTentativasCsvUrl(path);
   let lastError = null;
   for (const attempt of attempts){
     try {
@@ -357,7 +384,7 @@ async function loadCsvFile(path){
         continue;
       }
       const text = await response.text();
-      return parseCSV(text);
+      return converterCSV(text);
     } catch (err) {
       lastError = err;
     }
@@ -371,20 +398,21 @@ async function loadCsvFile(path){
   return [];
 }
 
-function normalizeMesuRows(rows){
+// Aqui eu pego os dados MESU brutos e padronizo os campos para facilitar os filtros hierárquicos depois.
+function normalizarLinhasMesu(rows){
   return rows.map(raw => {
-    const segmentoNome = readCell(raw, ["Segmento", "segmento"]);
-    const segmentoId = readCell(raw, ["Id Segmento", "ID Segmento", "id segmento", "Id segmento", "segmento_id"]) || segmentoNome;
-    const diretoriaNome = readCell(raw, ["Diretoria", "Diretoria Regional", "diretoria", "Diretoria regional"]);
-    const diretoriaId = readCell(raw, ["Id Diretoria", "ID Diretoria", "Diretoria ID", "Id Diretoria Regional", "id diretoria"]) || diretoriaNome;
-    const regionalNome = readCell(raw, ["Regional", "Gerencia Regional", "Gerência Regional", "Gerencia regional", "Regional Nome"]);
-    const regionalId = readCell(raw, ["Id Regional", "ID Regional", "Id Gerencia Regional", "Id Gerência Regional", "Gerencia ID"]) || regionalNome;
-    const agenciaNome = readCell(raw, ["Agencia", "Agência", "Agencia Nome", "Agência Nome"]);
-    const agenciaId = readCell(raw, ["Id Agencia", "ID Agencia", "Id Agência", "Agencia ID", "Agência ID"]) || agenciaNome;
-    const gerenteGestaoNome = readCell(raw, ["Gerente de Gestao", "Gerente de Gestão", "Gerente Gestao", "Gerente Geral", "Gerente geral"]);
-    const gerenteGestaoId = readCell(raw, ["Id Gerente de Gestao", "ID Gerente de Gestao", "Id Gerente de Gestão", "Gerente de Gestao Id", "gerenteGestaoId"]) || gerenteGestaoNome;
-    const gerenteNome = readCell(raw, ["Gerente", "Gerente Nome", "Nome Gerente"]);
-    const gerenteId = readCell(raw, ["Id Gerente", "ID Gerente", "Gerente Id"]) || gerenteNome;
+    const segmentoNome = lerCelula(raw, ["Segmento", "segmento"]);
+    const segmentoId = lerCelula(raw, ["Id Segmento", "ID Segmento", "id segmento", "Id segmento", "segmento_id"]) || segmentoNome;
+    const diretoriaNome = lerCelula(raw, ["Diretoria", "Diretoria Regional", "diretoria", "Diretoria regional"]);
+    const diretoriaId = lerCelula(raw, ["Id Diretoria", "ID Diretoria", "Diretoria ID", "Id Diretoria Regional", "id diretoria"]) || diretoriaNome;
+    const regionalNome = lerCelula(raw, ["Regional", "Gerencia Regional", "Gerência Regional", "Gerencia regional", "Regional Nome"]);
+    const regionalId = lerCelula(raw, ["Id Regional", "ID Regional", "Id Gerencia Regional", "Id Gerência Regional", "Gerencia ID"]) || regionalNome;
+    const agenciaNome = lerCelula(raw, ["Agencia", "Agência", "Agencia Nome", "Agência Nome"]);
+    const agenciaId = lerCelula(raw, ["Id Agencia", "ID Agencia", "Id Agência", "Agencia ID", "Agência ID"]) || agenciaNome;
+    const gerenteGestaoNome = lerCelula(raw, ["Gerente de Gestao", "Gerente de Gestão", "Gerente Gestao", "Gerente Geral", "Gerente geral"]);
+    const gerenteGestaoId = lerCelula(raw, ["Id Gerente de Gestao", "ID Gerente de Gestao", "Id Gerente de Gestão", "Gerente de Gestao Id", "gerenteGestaoId"]) || gerenteGestaoNome;
+    const gerenteNome = lerCelula(raw, ["Gerente", "Gerente Nome", "Nome Gerente"]);
+    const gerenteId = lerCelula(raw, ["Id Gerente", "ID Gerente", "Gerente Id"]) || gerenteNome;
 
     return {
       segmentoNome,
@@ -403,7 +431,8 @@ function normalizeMesuRows(rows){
   }).filter(row => row.diretoriaId || row.regionalId || row.agenciaId);
 }
 
-function buildHierarchyFromMesu(rows){
+// Aqui eu aproveito os dados MESU já limpos para montar índices (diretoria → gerência → agência...) e acelerar os combos.
+function montarHierarquiaMesu(rows){
   const dirMap = new Map();
   const regMap = new Map();
   const agMap = new Map();
@@ -592,14 +621,15 @@ function buildHierarchyFromMesu(rows){
   }
 }
 
-function normalizeProdutosRows(rows){
+// Aqui eu padronizo a tabela de produtos porque cada planilha chama família e seção de um jeito.
+function normalizarLinhasProdutos(rows){
   return rows.map(raw => {
-    const secaoId = readCell(raw, ["id_secao", "Id secao", "ID secao", "Seção ID", "secao_id", "secaoId"]);
-    const secaoNome = readCell(raw, ["secao", "Seção", "Nome secao", "Nome seção"]) || secaoId;
-    const familiaNome = readCell(raw, ["Familia de produtos", "Família de produtos", "Familia", "família", "familia"]);
-    const familiaId = readCell(raw, ["Id familia", "ID familia", "Familia Id", "id familia"]) || familiaNome;
-    const produtoNome = readCell(raw, ["Produto", "produto", "Produto Nome"]);
-    const produtoId = readCell(raw, ["Id produto", "ID produto", "Produto Id", "id produto"]) || produtoNome;
+    const secaoId = lerCelula(raw, ["id_secao", "Id secao", "ID secao", "Seção ID", "secao_id", "secaoId"]);
+    const secaoNome = lerCelula(raw, ["secao", "Seção", "Nome secao", "Nome seção"]) || secaoId;
+    const familiaNome = lerCelula(raw, ["Familia de produtos", "Família de produtos", "Familia", "família", "familia"]);
+    const familiaId = lerCelula(raw, ["Id familia", "ID familia", "Familia Id", "id familia"]) || familiaNome;
+    const produtoNome = lerCelula(raw, ["Produto", "produto", "Produto Nome"]);
+    const produtoId = lerCelula(raw, ["Id produto", "ID produto", "Produto Id", "id produto"]) || produtoNome;
     return {
       secaoId,
       secaoNome,
@@ -611,7 +641,8 @@ function normalizeProdutosRows(rows){
   }).filter(row => row.familiaId && row.produtoId);
 }
 
-function buildProdutosData(rows){
+// Aqui eu crio mapas rápidos (produto → família/seção) para não ficar caçando informação na hora de renderizar.
+function montarDadosProdutos(rows){
   const famMap = new Map();
   const byFamilia = new Map();
   PRODUTO_TO_FAMILIA = new Map();
@@ -712,47 +743,48 @@ function buildProdutosData(rows){
   });
 }
 
-function normalizeFactRealizadosRows(rows){
+// Aqui eu trato o fato de realizados para garantir que datas e números fiquem com tipos corretos.
+function normalizarLinhasFatoRealizados(rows){
   return rows.map(raw => {
-    const registroId = readCell(raw, ["Registro ID", "ID", "registro", "registro_id"]);
+    const registroId = lerCelula(raw, ["Registro ID", "ID", "registro", "registro_id"]);
     if (!registroId) return null;
 
-    const segmento = readCell(raw, ["Segmento"]);
-    const segmentoId = readCell(raw, ["Segmento ID", "Id Segmento"]);
-    const diretoria = readCell(raw, ["Diretoria ID", "Diretoria", "Id Diretoria", "Diretoria Codigo"]);
-    const diretoriaNome = readCell(raw, ["Diretoria Nome", "Diretoria Regional"]) || diretoria;
-    const gerencia = readCell(raw, ["Gerencia ID", "Gerencia Regional", "Id Gerencia Regional"]);
-    const gerenciaNome = readCell(raw, ["Gerencia Nome", "Gerencia Regional", "Regional Nome"]) || gerencia;
-    const regionalNome = readCell(raw, ["Regional Nome", "Regional"]) || gerenciaNome;
-    const agenciaId = readCell(raw, ["Agencia ID", "Id Agencia", "Agência ID", "Agencia"]);
-    const agenciaNome = readCell(raw, ["Agencia Nome", "Agência Nome", "Agencia"]);
-    const agenciaCodigo = readCell(raw, ["Agencia Codigo", "Código Agência", "Codigo Agencia"]) || agenciaId || agenciaNome;
-    const gerenteGestao = readCell(raw, ["Gerente Gestao ID", "Gerente Gestao", "Id Gerente de Gestao"]);
-    const gerenteGestaoNome = readCell(raw, ["Gerente Gestao Nome", "Gerente de Gestao", "Gerente Gestao"]) || gerenteGestao;
-    const gerente = readCell(raw, ["Gerente ID", "Gerente"]);
-    const gerenteNome = readCell(raw, ["Gerente Nome", "Gerente"]) || gerente;
-    const familiaId = readCell(raw, ["Familia ID", "Familia", "Família ID"]) || "";
-    const familiaNome = readCell(raw, ["Familia Nome", "Família", "Familia"]) || familiaId;
-    const produtoId = readCell(raw, ["Produto ID", "Produto", "Id Produto"]);
+    const segmento = lerCelula(raw, ["Segmento"]);
+    const segmentoId = lerCelula(raw, ["Segmento ID", "Id Segmento"]);
+    const diretoria = lerCelula(raw, ["Diretoria ID", "Diretoria", "Id Diretoria", "Diretoria Codigo"]);
+    const diretoriaNome = lerCelula(raw, ["Diretoria Nome", "Diretoria Regional"]) || diretoria;
+    const gerencia = lerCelula(raw, ["Gerencia ID", "Gerencia Regional", "Id Gerencia Regional"]);
+    const gerenciaNome = lerCelula(raw, ["Gerencia Nome", "Gerencia Regional", "Regional Nome"]) || gerencia;
+    const regionalNome = lerCelula(raw, ["Regional Nome", "Regional"]) || gerenciaNome;
+    const agenciaId = lerCelula(raw, ["Agencia ID", "Id Agencia", "Agência ID", "Agencia"]);
+    const agenciaNome = lerCelula(raw, ["Agencia Nome", "Agência Nome", "Agencia"]);
+    const agenciaCodigo = lerCelula(raw, ["Agencia Codigo", "Código Agência", "Codigo Agencia"]) || agenciaId || agenciaNome;
+    const gerenteGestao = lerCelula(raw, ["Gerente Gestao ID", "Gerente Gestao", "Id Gerente de Gestao"]);
+    const gerenteGestaoNome = lerCelula(raw, ["Gerente Gestao Nome", "Gerente de Gestao", "Gerente Gestao"]) || gerenteGestao;
+    const gerente = lerCelula(raw, ["Gerente ID", "Gerente"]);
+    const gerenteNome = lerCelula(raw, ["Gerente Nome", "Gerente"]) || gerente;
+    const familiaId = lerCelula(raw, ["Familia ID", "Familia", "Família ID"]) || "";
+    const familiaNome = lerCelula(raw, ["Familia Nome", "Família", "Familia"]) || familiaId;
+    const produtoId = lerCelula(raw, ["Produto ID", "Produto", "Id Produto"]);
     if (!produtoId) return null;
-    const produtoNome = readCell(raw, ["Produto Nome", "Produto"]) || produtoId;
-    const subproduto = readCell(raw, ["Subproduto", "Sub produto", "Sub-Produto"]);
-    const carteira = readCell(raw, ["Carteira"]);
-    const canalVenda = readCell(raw, ["Canal Venda", "Canal"]);
-    const tipoVenda = readCell(raw, ["Tipo Venda", "Tipo"]);
-    const modalidadePagamento = readCell(raw, ["Modalidade Pagamento", "Modalidade"]);
-    let data = parseISODate(readCell(raw, ["Data", "Data Movimento", "Data Movimentacao", "Data Movimentação"]));
-    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    const produtoNome = lerCelula(raw, ["Produto Nome", "Produto"]) || produtoId;
+    const subproduto = lerCelula(raw, ["Subproduto", "Sub produto", "Sub-Produto"]);
+    const carteira = lerCelula(raw, ["Carteira"]);
+    const canalVenda = lerCelula(raw, ["Canal Venda", "Canal"]);
+    const tipoVenda = lerCelula(raw, ["Tipo Venda", "Tipo"]);
+    const modalidadePagamento = lerCelula(raw, ["Modalidade Pagamento", "Modalidade"]);
+    let data = converterDataISO(lerCelula(raw, ["Data", "Data Movimento", "Data Movimentacao", "Data Movimentação"]));
+    let competencia = converterDataISO(lerCelula(raw, ["Competencia", "Competência"]));
     if (!data && competencia) {
       data = competencia;
     }
     if (!competencia && data) {
       competencia = `${data.slice(0, 7)}-01`;
     }
-    const realizadoMens = toNumber(readCell(raw, ["Realizado Mensal", "Realizado"]));
-    const realizadoAcum = toNumber(readCell(raw, ["Realizado Acumulado", "Realizado Acum"]));
-    const quantidade = toNumber(readCell(raw, ["Quantidade", "Qtd"]));
-    const variavelReal = toNumber(readCell(raw, ["Variavel Real", "Variável Real"]));
+    const realizadoMens = toNumber(lerCelula(raw, ["Realizado Mensal", "Realizado"]));
+    const realizadoAcum = toNumber(lerCelula(raw, ["Realizado Acumulado", "Realizado Acum"]));
+    const quantidade = toNumber(lerCelula(raw, ["Quantidade", "Qtd"]));
+    const variavelReal = toNumber(lerCelula(raw, ["Variavel Real", "Variável Real"]));
 
     return {
       registroId,
@@ -791,41 +823,42 @@ function normalizeFactRealizadosRows(rows){
   }).filter(Boolean);
 }
 
-function normalizeFactMetasRows(rows){
+// Aqui eu deixo o fato de metas com os mesmos padrões de datas e chaves dos realizados para facilitar os cruzamentos.
+function normalizarLinhasFatoMetas(rows){
   return rows.map(raw => {
-    const registroId = readCell(raw, ["Registro ID", "ID", "registro"]);
+    const registroId = lerCelula(raw, ["Registro ID", "ID", "registro"]);
     if (!registroId) return null;
-    const segmento = readCell(raw, ["Segmento"]);
-    const segmentoId = readCell(raw, ["Segmento ID", "Id Segmento"]);
-    const diretoria = readCell(raw, ["Diretoria ID", "Diretoria", "Id Diretoria"]);
-    const diretoriaNome = readCell(raw, ["Diretoria Nome", "Diretoria Regional"]) || diretoria;
-    const gerencia = readCell(raw, ["Gerencia ID", "Gerencia Regional", "Id Gerencia Regional"]);
-    const gerenciaNome = readCell(raw, ["Gerencia Nome", "Gerencia Regional", "Regional Nome"]) || gerencia;
-    const regionalNome = readCell(raw, ["Regional Nome", "Regional"]) || gerenciaNome;
-    const agenciaId = readCell(raw, ["Agencia ID", "Agência ID", "Id Agencia"]);
-    const agenciaCodigo = readCell(raw, ["Agencia Codigo", "Agência Codigo", "Codigo Agencia"]);
-    const agenciaNome = readCell(raw, ["Agencia Nome", "Agência Nome", "Agencia"])
+    const segmento = lerCelula(raw, ["Segmento"]);
+    const segmentoId = lerCelula(raw, ["Segmento ID", "Id Segmento"]);
+    const diretoria = lerCelula(raw, ["Diretoria ID", "Diretoria", "Id Diretoria"]);
+    const diretoriaNome = lerCelula(raw, ["Diretoria Nome", "Diretoria Regional"]) || diretoria;
+    const gerencia = lerCelula(raw, ["Gerencia ID", "Gerencia Regional", "Id Gerencia Regional"]);
+    const gerenciaNome = lerCelula(raw, ["Gerencia Nome", "Gerencia Regional", "Regional Nome"]) || gerencia;
+    const regionalNome = lerCelula(raw, ["Regional Nome", "Regional"]) || gerenciaNome;
+    const agenciaId = lerCelula(raw, ["Agencia ID", "Agência ID", "Id Agencia"]);
+    const agenciaCodigo = lerCelula(raw, ["Agencia Codigo", "Agência Codigo", "Codigo Agencia"]);
+    const agenciaNome = lerCelula(raw, ["Agencia Nome", "Agência Nome", "Agencia"])
       || agenciaCodigo
       || agenciaId;
-    const gerenteGestao = readCell(raw, ["Gerente Gestao ID", "Gerente Gestao", "Id Gerente de Gestao"]);
-    const gerenteGestaoNome = readCell(raw, ["Gerente Gestao Nome", "Gerente de Gestao", "Gerente Gestao"]) || gerenteGestao;
-    const gerente = readCell(raw, ["Gerente ID", "Gerente"]);
-    const gerenteNome = readCell(raw, ["Gerente Nome", "Gerente"]) || gerente;
-    const familiaId = readCell(raw, ["Familia ID", "Familia", "Família ID"]);
-    const familiaNome = readCell(raw, ["Familia Nome", "Família Nome", "Familia"]) || familiaId;
-    const produtoId = readCell(raw, ["Produto ID", "Produto", "Id Produto"]);
-    const produtoNome = readCell(raw, ["Produto Nome", "Produto"]) || produtoId;
-    const subproduto = readCell(raw, ["Subproduto", "Sub produto", "Sub-Produto"]);
-    const carteira = readCell(raw, ["Carteira"]);
-    const canalVenda = readCell(raw, ["Canal Venda", "Canal"]);
-    const tipoVenda = readCell(raw, ["Tipo Venda", "Tipo"]);
-    const modalidadePagamento = readCell(raw, ["Modalidade Pagamento", "Modalidade"]);
-    const metaMens = toNumber(readCell(raw, ["Meta Mensal", "Meta"]));
-    const metaAcum = toNumber(readCell(raw, ["Meta Acumulada", "Meta Acum"]));
-    const variavelMeta = toNumber(readCell(raw, ["Variavel Meta", "Variável Meta"]));
-    const peso = toNumber(readCell(raw, ["Peso"]));
-    let data = parseISODate(readCell(raw, ["Data", "Data Competencia", "Data da Meta"]));
-    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    const gerenteGestao = lerCelula(raw, ["Gerente Gestao ID", "Gerente Gestao", "Id Gerente de Gestao"]);
+    const gerenteGestaoNome = lerCelula(raw, ["Gerente Gestao Nome", "Gerente de Gestao", "Gerente Gestao"]) || gerenteGestao;
+    const gerente = lerCelula(raw, ["Gerente ID", "Gerente"]);
+    const gerenteNome = lerCelula(raw, ["Gerente Nome", "Gerente"]) || gerente;
+    const familiaId = lerCelula(raw, ["Familia ID", "Familia", "Família ID"]);
+    const familiaNome = lerCelula(raw, ["Familia Nome", "Família Nome", "Familia"]) || familiaId;
+    const produtoId = lerCelula(raw, ["Produto ID", "Produto", "Id Produto"]);
+    const produtoNome = lerCelula(raw, ["Produto Nome", "Produto"]) || produtoId;
+    const subproduto = lerCelula(raw, ["Subproduto", "Sub produto", "Sub-Produto"]);
+    const carteira = lerCelula(raw, ["Carteira"]);
+    const canalVenda = lerCelula(raw, ["Canal Venda", "Canal"]);
+    const tipoVenda = lerCelula(raw, ["Tipo Venda", "Tipo"]);
+    const modalidadePagamento = lerCelula(raw, ["Modalidade Pagamento", "Modalidade"]);
+    const metaMens = toNumber(lerCelula(raw, ["Meta Mensal", "Meta"]));
+    const metaAcum = toNumber(lerCelula(raw, ["Meta Acumulada", "Meta Acum"]));
+    const variavelMeta = toNumber(lerCelula(raw, ["Variavel Meta", "Variável Meta"]));
+    const peso = toNumber(lerCelula(raw, ["Peso"]));
+    let data = converterDataISO(lerCelula(raw, ["Data", "Data Competencia", "Data da Meta"]));
+    let competencia = converterDataISO(lerCelula(raw, ["Competencia", "Competência"]));
     if (!data && competencia) {
       data = competencia;
     }
@@ -869,18 +902,19 @@ function normalizeFactMetasRows(rows){
   }).filter(Boolean);
 }
 
-function normalizeFactVariavelRows(rows){
+// Aqui eu trato o fato variável (pontos) porque ele vem com os nomes de colunas diferentes das outras bases.
+function normalizarLinhasFatoVariavel(rows){
   return rows.map(raw => {
-    const registroId = readCell(raw, ["Registro ID", "ID", "registro"]);
+    const registroId = lerCelula(raw, ["Registro ID", "ID", "registro"]);
     if (!registroId) return null;
-    const produtoId = readCell(raw, ["Produto ID", "Produto", "Id Produto"]);
-    const produtoNome = readCell(raw, ["Produto Nome", "Produto"]) || produtoId;
-    const familiaId = readCell(raw, ["Familia ID", "Familia", "Família ID"]);
-    const familiaNome = readCell(raw, ["Familia Nome", "Família Nome", "Familia"]) || familiaId;
-    const variavelMeta = toNumber(readCell(raw, ["Variavel Meta", "Variável Meta"]));
-    const variavelReal = toNumber(readCell(raw, ["Variavel Real", "Variável Real"]));
-    let data = parseISODate(readCell(raw, ["Data"]));
-    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    const produtoId = lerCelula(raw, ["Produto ID", "Produto", "Id Produto"]);
+    const produtoNome = lerCelula(raw, ["Produto Nome", "Produto"]) || produtoId;
+    const familiaId = lerCelula(raw, ["Familia ID", "Familia", "Família ID"]);
+    const familiaNome = lerCelula(raw, ["Familia Nome", "Família Nome", "Familia"]) || familiaId;
+    const variavelMeta = toNumber(lerCelula(raw, ["Variavel Meta", "Variável Meta"]));
+    const variavelReal = toNumber(lerCelula(raw, ["Variavel Real", "Variável Real"]));
+    let data = converterDataISO(lerCelula(raw, ["Data"]));
+    let competencia = converterDataISO(lerCelula(raw, ["Competencia", "Competência"]));
     if (!data && competencia) {
       data = competencia;
     }
@@ -901,35 +935,36 @@ function normalizeFactVariavelRows(rows){
   }).filter(Boolean);
 }
 
-function normalizeFactCampanhasRows(rows){
+// Aqui eu padronizo os dados das campanhas porque preciso ligar sprint, unidade e indicadores rapidamente.
+function normalizarLinhasFatoCampanhas(rows){
   return rows.map(raw => {
-    const id = readCell(raw, ["Campanha ID", "ID"]);
+    const id = lerCelula(raw, ["Campanha ID", "ID"]);
     if (!id) return null;
-    const sprintId = readCell(raw, ["Sprint ID", "Sprint"]);
-    const diretoria = readCell(raw, ["Diretoria", "Diretoria ID", "Id Diretoria"]);
-    const diretoriaNome = readCell(raw, ["Diretoria Nome", "Diretoria Regional"]) || diretoria;
-    const gerencia = readCell(raw, ["Gerencia Regional", "Gerencia ID", "Id Gerencia"]);
-    const regionalNome = readCell(raw, ["Regional Nome", "Regional"]) || gerencia;
-    const agenciaCodigo = readCell(raw, ["Agencia Codigo", "Agencia ID", "Código Agência", "Agência Codigo"]);
-    const agenciaNome = readCell(raw, ["Agencia Nome", "Agência Nome", "Agencia"]) || agenciaCodigo;
-    const gerenteGestao = readCell(raw, ["Gerente Gestao", "Gerente Gestao ID", "Gerente de Gestao"]);
-    const gerenteGestaoNome = readCell(raw, ["Gerente Gestao Nome", "Gerente de Gestao Nome"]) || gerenteGestao;
-    const gerente = readCell(raw, ["Gerente", "Gerente ID"]);
-    const gerenteNome = readCell(raw, ["Gerente Nome"]) || gerente;
-    const segmento = readCell(raw, ["Segmento"]);
-    const familiaId = readCell(raw, ["Familia ID", "Família ID", "Familia"]);
-    const familiaNome = readCell(raw, ["Familia Nome", "Família Nome"]) || familiaId;
-    const produtoId = readCell(raw, ["Produto ID", "Produto"]);
+    const sprintId = lerCelula(raw, ["Sprint ID", "Sprint"]);
+    const diretoria = lerCelula(raw, ["Diretoria", "Diretoria ID", "Id Diretoria"]);
+    const diretoriaNome = lerCelula(raw, ["Diretoria Nome", "Diretoria Regional"]) || diretoria;
+    const gerencia = lerCelula(raw, ["Gerencia Regional", "Gerencia ID", "Id Gerencia"]);
+    const regionalNome = lerCelula(raw, ["Regional Nome", "Regional"]) || gerencia;
+    const agenciaCodigo = lerCelula(raw, ["Agencia Codigo", "Agencia ID", "Código Agência", "Agência Codigo"]);
+    const agenciaNome = lerCelula(raw, ["Agencia Nome", "Agência Nome", "Agencia"]) || agenciaCodigo;
+    const gerenteGestao = lerCelula(raw, ["Gerente Gestao", "Gerente Gestao ID", "Gerente de Gestao"]);
+    const gerenteGestaoNome = lerCelula(raw, ["Gerente Gestao Nome", "Gerente de Gestao Nome"]) || gerenteGestao;
+    const gerente = lerCelula(raw, ["Gerente", "Gerente ID"]);
+    const gerenteNome = lerCelula(raw, ["Gerente Nome"]) || gerente;
+    const segmento = lerCelula(raw, ["Segmento"]);
+    const familiaId = lerCelula(raw, ["Familia ID", "Família ID", "Familia"]);
+    const familiaNome = lerCelula(raw, ["Familia Nome", "Família Nome"]) || familiaId;
+    const produtoId = lerCelula(raw, ["Produto ID", "Produto"]);
     if (!produtoId) return null;
-    const produtoNome = readCell(raw, ["Produto Nome", "Produto"]) || produtoId;
-    const subproduto = readCell(raw, ["Subproduto", "Sub produto"]);
-    const carteira = readCell(raw, ["Carteira"]);
-    const linhas = toNumber(readCell(raw, ["Linhas"]));
-    const cash = toNumber(readCell(raw, ["Cash"]));
-    const conquista = toNumber(readCell(raw, ["Conquista"]));
-    const atividade = parseBoolean(readCell(raw, ["Atividade", "Ativo", "Status"]), true);
-    let data = parseISODate(readCell(raw, ["Data"]));
-    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    const produtoNome = lerCelula(raw, ["Produto Nome", "Produto"]) || produtoId;
+    const subproduto = lerCelula(raw, ["Subproduto", "Sub produto"]);
+    const carteira = lerCelula(raw, ["Carteira"]);
+    const linhas = toNumber(lerCelula(raw, ["Linhas"]));
+    const cash = toNumber(lerCelula(raw, ["Cash"]));
+    const conquista = toNumber(lerCelula(raw, ["Conquista"]));
+    const atividade = converterBooleano(lerCelula(raw, ["Atividade", "Ativo", "Status"]), true);
+    let data = converterDataISO(lerCelula(raw, ["Data"]));
+    let competencia = converterDataISO(lerCelula(raw, ["Competencia", "Competência"]));
     if (!data && competencia) {
       data = competencia;
     }
@@ -968,25 +1003,27 @@ function normalizeFactCampanhasRows(rows){
   }).filter(Boolean);
 }
 
-function normalizeCalendarioRows(rows){
+// Aqui eu organizo o calendário corporativo (competências) para usar nas telas de período.
+function normalizarLinhasCalendario(rows){
   return rows.map(raw => {
-    const data = parseISODate(readCell(raw, ["Data"]));
+    const data = converterDataISO(lerCelula(raw, ["Data"]));
     if (!data) return null;
-    const competencia = parseISODate(readCell(raw, ["Competencia", "Competência"])) || `${data.slice(0, 7)}-01`;
-    const ano = readCell(raw, ["Ano"]) || data.slice(0, 4);
-    const mes = readCell(raw, ["Mes", "Mês"]) || data.slice(5, 7);
-    const mesNome = readCell(raw, ["Mes Nome", "Mês Nome"]);
-    const dia = readCell(raw, ["Dia"]) || data.slice(8, 10);
-    const diaSemana = readCell(raw, ["Dia da Semana"]);
-    const semana = readCell(raw, ["Semana"]);
-    const trimestre = readCell(raw, ["Trimestre"]);
-    const semestre = readCell(raw, ["Semestre"]);
-    const ehDiaUtil = parseBoolean(readCell(raw, ["Eh Dia Util", "É Dia Útil", "Dia Util"]), false) ? 1 : 0;
+    const competencia = converterDataISO(lerCelula(raw, ["Competencia", "Competência"])) || `${data.slice(0, 7)}-01`;
+    const ano = lerCelula(raw, ["Ano"]) || data.slice(0, 4);
+    const mes = lerCelula(raw, ["Mes", "Mês"]) || data.slice(5, 7);
+    const mesNome = lerCelula(raw, ["Mes Nome", "Mês Nome"]);
+    const dia = lerCelula(raw, ["Dia"]) || data.slice(8, 10);
+    const diaSemana = lerCelula(raw, ["Dia da Semana"]);
+    const semana = lerCelula(raw, ["Semana"]);
+    const trimestre = lerCelula(raw, ["Trimestre"]);
+    const semestre = lerCelula(raw, ["Semestre"]);
+    const ehDiaUtil = converterBooleano(lerCelula(raw, ["Eh Dia Util", "É Dia Útil", "Dia Util"]), false) ? 1 : 0;
     return { data, competencia, ano, mes, mesNome, dia, diaSemana, semana, trimestre, semestre, ehDiaUtil };
   }).filter(Boolean).sort((a, b) => (a.data || "").localeCompare(b.data || ""));
 }
 
-function normalizeStatusRows(rows){
+// Aqui eu trato a base de status dos indicadores para poder exibir os nomes amigáveis e a ordem certa.
+function normalizarLinhasStatus(rows){
   const normalized = [];
   const seen = new Set();
   const missing = new Set();
@@ -997,27 +1034,27 @@ function normalizeStatusRows(rows){
   }
 
   const register = (candidate = {}) => {
-    const rawKey = pickFirstFilled(
+    const rawKey = pegarPrimeiroPreenchido(
       candidate.key,
       candidate.slug,
       candidate.id,
       candidate.codigo,
       candidate.nome
     );
-    const resolvedKey = normalizeStatusKey(rawKey);
+    const resolvedKey = normalizarChaveStatus(rawKey);
     if (!resolvedKey) return false;
     if (seen.has(resolvedKey)) return true;
 
-    const codigo = sanitizeText(candidate.codigo)
-      || sanitizeText(candidate.id)
+    const codigo = limparTexto(candidate.codigo)
+      || limparTexto(candidate.id)
       || resolvedKey;
-    const nome = sanitizeText(candidate.nome)
+    const nome = limparTexto(candidate.nome)
       || STATUS_LABELS[resolvedKey]
-      || sanitizeText(candidate.label)
+      || limparTexto(candidate.label)
       || codigo
       || resolvedKey;
-    const originalId = sanitizeText(candidate.id) || codigo || resolvedKey;
-    const ordemRaw = sanitizeText(candidate.ordem);
+    const originalId = limparTexto(candidate.id) || codigo || resolvedKey;
+    const ordemRaw = limparTexto(candidate.ordem);
     const ordemNum = Number(ordemRaw);
     const ordem = ordemRaw !== "" && Number.isFinite(ordemNum) ? ordemNum : undefined;
 
@@ -1031,14 +1068,14 @@ function normalizeStatusRows(rows){
 
   list.forEach(raw => {
     if (!raw || typeof raw !== "object") return;
-    const nome = readCell(raw, ["Status Nome", "Status", "Nome", "Descrição", "Descricao"]);
-    const codigo = readCell(raw, ["Status Id", "StatusID", "id", "ID", "Codigo", "Código"]);
-    const chave = readCell(raw, ["Status Chave", "Status Key", "Chave", "Slug"]);
-    const ordem = readCell(raw, ["Ordem", "Order", "Posicao", "Posição", "Sequencia", "Sequência"]);
-    const key = pickFirstFilled(chave, codigo, nome);
+    const nome = lerCelula(raw, ["Status Nome", "Status", "Nome", "Descrição", "Descricao"]);
+    const codigo = lerCelula(raw, ["Status Id", "StatusID", "id", "ID", "Codigo", "Código"]);
+    const chave = lerCelula(raw, ["Status Chave", "Status Key", "Chave", "Slug"]);
+    const ordem = lerCelula(raw, ["Ordem", "Order", "Posicao", "Posição", "Sequencia", "Sequência"]);
+    const key = pegarPrimeiroPreenchido(chave, codigo, nome);
     const ok = register({ id: codigo || key, codigo, nome, key, ordem });
     if (!ok) {
-      const fallback = pickFirstFilled(nome, codigo, chave);
+      const fallback = pegarPrimeiroPreenchido(nome, codigo, chave);
       if (fallback) missing.add(fallback);
     }
   });
@@ -1059,9 +1096,9 @@ function rebuildStatusIndex(rows) {
 
   source.forEach(item => {
     if (!item || typeof item !== "object") return;
-    const key = item.key || normalizeStatusKey(item.id ?? item.codigo ?? item.nome);
+    const key = item.key || normalizarChaveStatus(item.id ?? item.codigo ?? item.nome);
     if (!key || map.has(key)) return;
-    const ordemRaw = sanitizeText(item.ordem);
+    const ordemRaw = limparTexto(item.ordem);
     const ordemNum = Number(ordemRaw);
     const ordem = ordemRaw !== "" && Number.isFinite(ordemNum) ? ordemNum : undefined;
     const entry = { ...item, key };
@@ -1092,7 +1129,7 @@ function rebuildStatusIndex(rows) {
 }
 
 function getStatusEntry(key) {
-  const normalized = normalizeStatusKey(key);
+  const normalized = normalizarChaveStatus(key);
   if (!normalized) return null;
   return STATUS_BY_KEY.get(normalized) || null;
 }
@@ -1100,9 +1137,9 @@ function getStatusEntry(key) {
 function buildStatusFilterEntries() {
   const base = Array.isArray(STATUS_INDICADORES_DATA) ? STATUS_INDICADORES_DATA : [];
   const entries = base.map(st => {
-    const key = st?.key || normalizeStatusKey(st?.id ?? st?.codigo ?? st?.nome);
+    const key = st?.key || normalizarChaveStatus(st?.id ?? st?.codigo ?? st?.nome);
     if (!key) return null;
-    const label = st?.nome || getStatusLabelFromKey(key, st?.codigo ?? st?.id ?? key);
+    const label = st?.nome || obterRotuloStatus(key, st?.codigo ?? st?.id ?? key);
     const codigo = st?.codigo ?? st?.id ?? key;
     let ordem = st?.ordem;
     if (typeof ordem === "string" && ordem !== "") {
@@ -1149,7 +1186,7 @@ function updateStatusFilterOptions(preserveSelection = true) {
 
   const previousOption = select.selectedOptions?.[0] || null;
   const previousKey = preserveSelection
-    ? (previousOption?.dataset.statusKey || normalizeStatusKey(select.value) || "")
+    ? (previousOption?.dataset.statusKey || normalizarChaveStatus(select.value) || "")
     : "";
 
   const entries = buildStatusFilterEntries();
@@ -1206,26 +1243,26 @@ async function loadBaseData(){
       loadCSVAuto(`${basePath}dCalendario.csv`).catch(() => []),
     ]);
 
-    const mesuRows = normalizeMesuRows(mesuRaw);
-    const produtoRows = normalizeProdutosRows(produtoRaw);
-    const statusRows = normalizeStatusRows(statusRaw);
+    const mesuRows = normalizarLinhasMesu(mesuRaw);
+    const produtoRows = normalizarLinhasProdutos(produtoRaw);
+    const statusRows = normalizarLinhasStatus(statusRaw);
     if (statusRows.length) {
       rebuildStatusIndex(statusRows);
     } else {
       rebuildStatusIndex(DEFAULT_STATUS_INDICADORES);
     }
 
-    buildProdutosData(produtoRows);
-    buildHierarchyFromMesu(mesuRows);
+    montarDadosProdutos(produtoRows);
+    montarHierarquiaMesu(mesuRows);
 
-    FACT_REALIZADOS = normalizeFactRealizadosRows(realizadosRaw);
-    FACT_METAS = normalizeFactMetasRows(metasRaw);
-    FACT_VARIAVEL = normalizeFactVariavelRows(variavelRaw);
-    FACT_CAMPANHAS = normalizeFactCampanhasRows(campanhasRaw);
+    FACT_REALIZADOS = normalizarLinhasFatoRealizados(realizadosRaw);
+    FACT_METAS = normalizarLinhasFatoMetas(metasRaw);
+    FACT_VARIAVEL = normalizarLinhasFatoVariavel(variavelRaw);
+    FACT_CAMPANHAS = normalizarLinhasFatoCampanhas(campanhasRaw);
     if (FACT_CAMPANHAS.length) {
       replaceCampaignUnitData(FACT_CAMPANHAS);
     }
-    DIM_CALENDARIO = normalizeCalendarioRows(calendarioRaw);
+    DIM_CALENDARIO = normalizarLinhasCalendario(calendarioRaw);
     updateCampaignSprintsUnits();
 
     const availableDatesSource = (DIM_CALENDARIO.length
@@ -1258,7 +1295,8 @@ async function loadBaseData(){
 
 
 
-/* ===== Ajusta altura conforme topbar (svh) ===== */
+/* ===== Aqui eu ajusto a altura da topbar para o CSS responsivo funcionar ===== */
+// Aqui eu calculo a altura real da topbar e jogo no CSS para o layout não quebrar ao abrir menus.
 const setTopbarH = () => {
   const h = document.querySelector('.topbar')?.offsetHeight || 56;
   document.documentElement.style.setProperty('--topbar-h', `${h}px`);
@@ -1267,7 +1305,8 @@ window.addEventListener('load', setTopbarH);
 window.addEventListener('resize', setTopbarH);
 setTopbarH();
 
-/* ===== Visões (chips) da tabela ===== */
+/* ===== Aqui eu defino as visões (chips) que aparecem acima da tabela detalhada ===== */
+// Aqui eu descrevo as visões possíveis da tabela para alternar entre diretoria, gerente etc.
 const TABLE_VIEWS = [
   { id:"diretoria", label:"Diretoria", key:"diretoria" },
   { id:"gerencia",  label:"Regional",  key:"gerenciaRegional" },
@@ -1281,6 +1320,7 @@ const TABLE_VIEWS = [
 ];
 
 /* === Seções e cards === */
+// Aqui eu defino os grupos de indicadores que viram cards no resumo.
 const CARD_SECTIONS_DEF = [
   { id:"captacao", label:"CAPTAÇÃO", items:[
     { id:"captacao_bruta",   nome:"Captação Bruta",                           icon:"ti ti-pig-money",       peso:4, metric:"valor" },
@@ -1316,11 +1356,13 @@ const CARD_SECTIONS_DEF = [
 const SECTION_IDS = new Set(CARD_SECTIONS_DEF.map(sec => sec.id));
 const SECTION_BY_ID = new Map(CARD_SECTIONS_DEF.map(sec => [sec.id, sec]));
 
+// Aqui eu busco o nome bonitinho da seção pelo id.
 function getSectionLabel(id) {
   if (!id) return "";
   return SECTION_BY_ID.get(id)?.label || id;
 }
 
+// Aqui eu tento descobrir a seção de um indicador olhando tanto a linha quanto a relação produto → seção.
 function resolveSectionMetaFromRow(row) {
   if (!row) return { id: "", label: "" };
   const prodMeta = row.produtoId ? PRODUTO_TO_FAMILIA.get(row.produtoId) : null;
@@ -1334,6 +1376,7 @@ function resolveSectionMetaFromRow(row) {
   return { id: sectionId, label: label || sectionId };
 }
 
+// Aqui eu garanto que cada linha tenha uma família associada, buscando informações extras quando necessário.
 function resolveFamilyMetaFromRow(row) {
   if (!row) return { id: "", label: "" };
   const prodMeta = row.produtoId ? PRODUTO_TO_FAMILIA.get(row.produtoId) : null;
@@ -1356,7 +1399,7 @@ function resolveFamilyMetaFromRow(row) {
   return { id: familiaId, label: familiaLabel };
 }
 
-/* Índice produto → seção/meta */
+/* Aqui eu monto um índice de produto para descobrir família/seção sem ficar recalculando */
 const PRODUCT_INDEX = (() => {
   const map = new Map();
   CARD_SECTIONS_DEF.forEach(sec => {
@@ -1387,8 +1430,8 @@ function replaceCampaignUnitData(rows = []) {
   CAMPAIGN_UNIT_DATA.length = 0;
   const source = Array.isArray(rows) && rows.length ? rows : DEFAULT_CAMPAIGN_UNIT_DATA;
   source.forEach(item => {
-    const dataISO = parseISODate(item.data);
-    let competencia = parseISODate(item.competencia);
+    const dataISO = converterDataISO(item.data);
+    let competencia = converterDataISO(item.competencia);
     const resolvedData = dataISO || "";
     if (!competencia && resolvedData) {
       competencia = `${resolvedData.slice(0, 7)}-01`;
@@ -1633,7 +1676,7 @@ function filterCampaignUnits(sprint, filters = getFilterValues()) {
 }
 
 function campaignStatusMatches(score, statusFilter = "todos") {
-  const normalized = normalizeStatusKey(statusFilter) || "todos";
+  const normalized = normalizarChaveStatus(statusFilter) || "todos";
   if (normalized === "todos") return true;
   const elegivel = score.finalStatus === "Parabéns" || score.finalStatus === "Elegível";
   if (normalized === "atingidos") return elegivel;
@@ -1740,9 +1783,12 @@ function buildCampaignRankingContext(sprint) {
   return { unitResults, aggregated, levelInfo };
 }
 
-/* ===== Datas (UTC) ===== */
+/* ===== Aqui eu concentro tudo que mexe com datas e horários em UTC ===== */
+// Aqui eu gero o primeiro dia do mês atual em formato ISO.
 function firstDayOfMonthISO(d=new Date()){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`; }
+// Aqui eu gero a data de hoje em ISO (aaaa-mm-dd).
 function todayISO(d=new Date()){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+// Aqui eu defino o período padrão que uso ao abrir o painel.
 function getDefaultPeriodRange(){
   const now = new Date();
   return {
@@ -1750,6 +1796,7 @@ function getDefaultPeriodRange(){
     end: todayISO(now),
   };
 }
+// Aqui eu calculo o período que alimenta os gráficos mensais da visão executiva.
 function getExecutiveMonthlyPeriod(){
   const today = todayISO();
   const datasetMax = AVAILABLE_DATE_MAX || "";
@@ -1765,9 +1812,13 @@ function getExecutiveMonthlyPeriod(){
   }
   return { start, end };
 }
+// Aqui eu formato uma data ISO para o padrão BR.
 function formatBRDate(iso){ if(!iso) return ""; const [y,m,day]=iso.split("-"); return `${day}/${m}/${y}`; }
+// Aqui eu converto uma data ISO para um Date em UTC.
 function dateUTCFromISO(iso){ const [y,m,d]=iso.split("-").map(Number); return new Date(Date.UTC(y,m-1,d)); }
+// Aqui eu faço o caminho inverso: Date UTC para string ISO.
 function isoFromUTCDate(d){ return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`; }
+// Aqui eu conto quantos dias úteis existem entre duas datas (inclusive).
 function businessDaysBetweenInclusive(startISO,endISO){
   if(!startISO || !endISO) return 0;
   let s = dateUTCFromISO(startISO), e = dateUTCFromISO(endISO);
@@ -1778,6 +1829,7 @@ function businessDaysBetweenInclusive(startISO,endISO){
   }
   return cnt;
 }
+// Aqui eu calculo quantos dias úteis ainda faltam a partir de hoje até o fim de um período.
 function businessDaysRemainingFromToday(startISO,endISO){
   if(!startISO || !endISO) return 0;
   const today = todayISO();
@@ -1788,12 +1840,14 @@ function businessDaysRemainingFromToday(startISO,endISO){
   return businessDaysBetweenInclusive(isoFromUTCDate(startCount), endISO);
 }
 
-/* ===== Helpers de métrica ===== */
+/* ===== Aqui eu deixo funções auxiliares para métricas e números ===== */
+// Aqui eu converto qualquer valor para número sem deixar NaN escapar.
 function toNumber(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 }
 
+// Aqui eu fujo de problemas de XSS escapando HTML sempre que crio strings manualmente.
 const escapeHTML = (value = "") => String(value).replace(/[&<>"']/g, (ch) => ({
   "&":"&amp;",
   "<":"&lt;",
@@ -1802,6 +1856,7 @@ const escapeHTML = (value = "") => String(value).replace(/[&<>"']/g, (ch) => ({
   "'":"&#39;"
 }[ch]));
 
+// Aqui eu deixo um formatador genérico para exibir números grandes com sufixo (mil, milhão...).
 function formatNumberWithSuffix(value, { currency = false } = {}) {
   const n = toNumber(value);
   if (!Number.isFinite(n)) return currency ? fmtBRL.format(0) : fmtINT.format(0);
@@ -1831,6 +1886,7 @@ function formatNumberWithSuffix(value, { currency = false } = {}) {
   return `${sign}${formatted} ${label}`;
 }
 
+// Aqui eu reaproveito o formatador para mostrar números grandes sem estourar layout.
 function formatIntReadable(value){
   return formatNumberWithSuffix(value, { currency: false });
 }
@@ -1878,18 +1934,21 @@ function makeRandomForMetric(metric){
   return { meta, realizado, variavelMeta };
 }
 
-/* ===== API / MOCK ===== */
+/* ===== Aqui eu centralizo o carregamento de dados (API ou CSV local) ===== */
+// Aqui eu faço uma chamada GET simples contra a API com tratamento básico de erro.
 async function apiGet(path, params){
   const qs = params ? `?${new URLSearchParams(params).toString()}` : "";
   const r = await fetch(`${API_URL}${path}${qs}`); if(!r.ok) throw new Error("Falha ao carregar dados");
   return r.json();
 }
+// Aqui eu faço todo o processo de montar os dados consolidados (fatos + metas + campanhas) usados nas telas.
 async function getData(){
   const period = state.period || { start:firstDayOfMonthISO(), end: todayISO() };
 
   const calendarioByDate = new Map(DIM_CALENDARIO.map(entry => [entry.data, entry]));
   const calendarioByCompetencia = new Map(DIM_CALENDARIO.map(entry => [entry.competencia, entry]));
 
+  // Aqui eu gero linhas sintéticas das campanhas para reaproveitar no ranking e nos simuladores.
   const buildCampanhaFacts = () => {
     const campanhaFacts = [];
     CAMPAIGN_SPRINTS.forEach(sprint => {
@@ -2030,8 +2089,8 @@ async function getData(){
       const base = baseByRegistro.get(registroId) || {};
       if (!registroId || !base.registroId) return null;
 
-      let dataISO = pickFirstFilled(source.data, base.data, source.competencia, base.competencia);
-      let competencia = pickFirstFilled(source.competencia, base.competencia);
+      let dataISO = pegarPrimeiroPreenchido(source.data, base.data, source.competencia, base.competencia);
+      let competencia = pegarPrimeiroPreenchido(source.competencia, base.competencia);
       if (!competencia && dataISO) {
         competencia = `${String(dataISO).slice(0, 7)}-01`;
       }
@@ -2322,8 +2381,8 @@ async function getData(){
   };
 }
 
-/* ===== Sidebar retrátil (criada por JS, sem CSS injetado) ===== */
-/* ===== Estado ===== */
+/* ===== Aqui eu monto a sidebar retrátil direto via JS, sem depender do CSS ===== */
+/* ===== Aqui eu guardo e manipulo o estado geral da aplicação ===== */
 const state = {
   _dataset:null,
   _rankingRaw:[],
@@ -2451,7 +2510,7 @@ const contractSuggestState = { items: [], highlight: -1, open: false, term: "", 
 let contractSuggestDocBound = false;
 let contractSuggestPanelBound = false;
 
-/* ===== Utils UI ===== */
+/* ===== Aqui eu junto utilidades de interface que reaproveito em várias telas ===== */
 function injectStyles(){
   if(document.getElementById("dynamic-styles")) return;
   const style = document.createElement("style");
@@ -2503,7 +2562,7 @@ function injectStyles(){
   ["#view-cards", "#view-table"].forEach(sel => $(sel)?.classList.add("view-panel"));
 }
 
-/* ===== Popover de data ===== */
+/* ===== Aqui eu trato o popover de data para facilitar a seleção de período ===== */
 function openDatePopover(anchor){
   closeDatePopover();
 
@@ -2565,7 +2624,7 @@ function closeDatePopover(){
   state.datePopover = null;
 }
 
-/* ===== Botão “Limpar filtros” ===== */
+/* ===== Aqui eu configuro o botão de limpar filtros e mantenho o fluxo claro ===== */
 function wireClearFiltersButton() {
   const btn = $("#btn-limpar");
   if (!btn || btn.dataset.wired === "1") return;
@@ -2855,7 +2914,7 @@ function initMobileCarousel(){
   };
 }
 
-/* ===== Avançado ===== */
+/* ===== Aqui eu descrevo as opções avançadas de filtro que ficam escondidas ===== */
 function ensureStatusFilterInAdvanced() {
   const adv = $("#advanced-filters");
   if (!adv) return;
@@ -2884,7 +2943,7 @@ function ensureStatusFilterInAdvanced() {
   if (gStart) gStart.remove();
 }
 
-/* ===== Chips (tabela) + Toolbar ===== */
+/* ===== Aqui eu monto os chips da tabela e a toolbar com as ações rápidas ===== */
 function ensureChipBarAndToolbar() {
   if ($("#table-controls")) return;
   const card = $("#table-section"); if (!card) return;
@@ -2943,7 +3002,7 @@ function setActiveChip(viewId) {
   }
 }
 
-/* ===== “Filtros aplicados” ===== */
+/* ===== Aqui eu mostro o resumo dos filtros aplicados para o usuário não se perder ===== */
 function renderAppliedFilters() {
   const bar = $("#applied-bar"); if (!bar) return;
   const vals = getFilterValues();
@@ -3011,7 +3070,7 @@ function renderAppliedFilters() {
     const statusEntry = getStatusEntry(vals.status);
     const statusLabel = statusEntry?.nome
       || $("#f-status-kpi")?.selectedOptions?.[0]?.text
-      || getStatusLabelFromKey(vals.status);
+      || obterRotuloStatus(vals.status);
     push("Status", statusLabel, () => $("#f-status-kpi").selectedIndex = 0);
   }
 
@@ -3094,7 +3153,7 @@ function getHierarchySelectionFromDOM(){
   HIERARCHY_FIELDS_DEF.forEach(field => {
     const select = $(field.select);
     if (!select) return;
-    const value = sanitizeText(select.value);
+    const value = limparTexto(select.value);
     values[field.key] = value || field.defaultValue;
   });
   return values;
@@ -3104,10 +3163,10 @@ function hierarchyRowMatchesField(row, field, value){
   if (!field) return true;
   const def = HIERARCHY_FIELD_MAP.get(field);
   if (!def) return true;
-  const normalizedValue = sanitizeText(value);
+  const normalizedValue = limparTexto(value);
   if (!normalizedValue || normalizedValue === def.defaultValue) return true;
-  const rowId = sanitizeText(row[def.idKey]);
-  const rowLabel = sanitizeText(row[def.labelKey]);
+  const rowId = limparTexto(row[def.idKey]);
+  const rowLabel = limparTexto(row[def.labelKey]);
   return normalizedValue === rowId || normalizedValue === rowLabel;
 }
 
@@ -3126,9 +3185,9 @@ function buildHierarchyOptions(fieldKey, selection, rows){
   const options = [];
 
   const pushOption = (value, label) => {
-    const safeValue = sanitizeText(value);
+    const safeValue = limparTexto(value);
     if (!safeValue || seen.has(safeValue)) return;
-    const safeLabel = sanitizeText(label) || safeValue;
+    const safeLabel = limparTexto(label) || safeValue;
     options.push({ value: safeValue, label: safeLabel });
     seen.add(safeValue);
   };
@@ -3153,7 +3212,7 @@ function buildHierarchyOptions(fieldKey, selection, rows){
 }
 
 function setSelectOptions(select, options, desiredValue, defaultValue){
-  const current = sanitizeText(desiredValue);
+  const current = limparTexto(desiredValue);
   select.innerHTML = "";
   options.forEach(opt => {
     const option = document.createElement("option");
@@ -3183,14 +3242,14 @@ function refreshHierarchyCombos(opts = {}){
 function adjustHierarchySelection(selection, changedField){
   const def = HIERARCHY_FIELD_MAP.get(changedField);
   if (!def) return selection;
-  const value = sanitizeText(selection[changedField]);
+  const value = limparTexto(selection[changedField]);
   const effective = value || def.defaultValue;
   selection[changedField] = effective;
 
   const setIf = (key, next) => {
     if (!next) return;
     const meta = HIERARCHY_FIELD_MAP.get(key);
-    const normalized = sanitizeText(next);
+    const normalized = limparTexto(next);
     if (!meta) return;
     selection[key] = normalized || meta.defaultValue;
   };
@@ -3239,7 +3298,7 @@ function handleHierarchySelectionChange(changedField){
   refreshHierarchyCombos({ selection });
 }
 
-/* ===== Filtros superiores ===== */
+/* ===== Aqui eu organizo os filtros superiores (diretoria, agência etc.) ===== */
 function ensureSegmentoField() {
   if ($("#f-segmento")) return;
   const filters = $(".filters");
@@ -3254,7 +3313,7 @@ function getFilterValues() {
   const val = (sel) => $(sel)?.value || "";
   const statusSelect = $("#f-status-kpi");
   const statusOption = statusSelect?.selectedOptions?.[0] || null;
-  const statusKey = statusOption?.dataset.statusKey || normalizeStatusKey(statusSelect?.value) || (statusSelect?.value || "");
+  const statusKey = statusOption?.dataset.statusKey || normalizarChaveStatus(statusSelect?.value) || (statusSelect?.value || "");
   const statusCodigo = statusOption?.dataset.statusCodigo || statusOption?.value || "";
   const statusId = statusOption?.dataset.statusId || statusCodigo || "";
   return {
@@ -3273,7 +3332,7 @@ function getFilterValues() {
   };
 }
 
-/* ===== Busca por contrato ===== */
+/* ===== Aqui eu construo a busca por contrato com autocomplete ===== */
 function rowMatchesSearch(r, term) {
   if (!term) return true;
   const t = term.toLowerCase();
@@ -3281,7 +3340,7 @@ function rowMatchesSearch(r, term) {
   return contracts.some(c => (c.id || "").toLowerCase().includes(t));
 }
 
-/* ===== Filtro base ===== */
+/* ===== Aqui eu aplico o filtro base que decide o que aparece em cada visão ===== */
 function filterRowsExcept(rows, except = {}, opts = {}) {
   const f = getFilterValues();
   const {
@@ -3320,7 +3379,7 @@ function filterRowsExcept(rows, except = {}, opts = {}) {
     const okDt  = (!startISO || !rowDate || rowDate >= startISO) && (!endISO || !rowDate || rowDate <= endISO);
 
     const ating = r.meta ? (r.realizado / r.meta) : 0;
-    const statusKey = normalizeStatusKey(f.status) || "todos";
+    const statusKey = normalizarChaveStatus(f.status) || "todos";
     let okStatus = true;
     if (statusKey === "atingidos") {
       okStatus = ating >= 1;
@@ -3348,7 +3407,7 @@ function autoSnapViewToFilters() {
   if (snap && state.tableView !== snap) { state.tableView = snap; setActiveChip(snap); }
 }
 
-/* ===== Árvore da tabela ===== */
+/* ===== Aqui eu monto a árvore da tabela detalhada ===== */
 function ensureContracts(r) {
   if (r._contracts) return r._contracts;
   const n = 2 + Math.floor(Math.random() * 3), arr = [];
@@ -3761,7 +3820,7 @@ async function commitContractSearch(rawTerm, opts = {}) {
   }
 }
 
-/* ===== UI ===== */
+/* ===== Aqui eu cuido das interações gerais de UI que não se encaixaram em outro bloco ===== */
 function initCombos() {
   ensureSegmentoField();
 
@@ -3787,8 +3846,8 @@ function initCombos() {
     items.forEach(item => {
       const rawValue = valueGetter(item);
       const rawLabel = labelGetter(item);
-      const value = sanitizeText(rawValue);
-      const label = sanitizeText(rawLabel) || value;
+      const value = limparTexto(rawValue);
+      const label = limparTexto(rawLabel) || value;
       if (!value || seen.has(value)) return;
       seen.add(value);
       list.push({ value, label });
@@ -3909,7 +3968,7 @@ function bindEvents() {
     t.addEventListener("click", () => {
       if (t.classList.contains("is-active")) return;
       const view = t.dataset.view;
-      setActiveTab(view);
+      definirAbaAtiva(view);
       if (view === "table") switchView("table");
       else if (view === "ranking") switchView("ranking");
       else if (view === "exec") switchView("exec");
@@ -4019,7 +4078,7 @@ function reorderFiltersUI() {
 
 
 
-/* ===== Loader overlay ===== */   // <- COLE AQUI O BLOCO INTEIRO
+/* ===== Aqui eu controlo o overlay de carregamento para indicar processamento ===== */   // <- COLE AQUI O BLOCO INTEIRO
 function ensureLoader(){
   if (document.getElementById('__loader')) return;
   const el = document.createElement('div');
@@ -4049,7 +4108,7 @@ async function withSpinner(fn, text='Carregando…'){
   try { await fn(); } finally { hideLoader(); }
 }
 
-/* ===== Chat widget (flutuante) ===== */
+/* ===== Aqui eu monto o widget de chat flutuante e seus eventos ===== */
 function ensureChatWidget(){
   if (document.getElementById("chat-widget")) return;
 
@@ -4196,7 +4255,7 @@ function ensureChatWidget(){
 
 
 
-/* ===== Troca de view (com spinner) ===== */
+/* ===== Aqui eu gerencio a troca entre as abas principais mostrando um spinner decente ===== */
 async function switchView(next) {
   const label =
     next === "table"     ? "Montando detalhamento…" :
@@ -4205,7 +4264,7 @@ async function switchView(next) {
     next === "campanhas" ? "Abrindo campanhas…" :
                            "Carregando…";
 
-  setActiveTab(next);
+  definirAbaAtiva(next);
 
   await withSpinner(async () => {
     const views = { cards:"#view-cards", table:"#view-table", ranking:"#view-ranking", exec:"#view-exec", campanhas:"#view-campanhas" };
@@ -4238,7 +4297,7 @@ async function switchView(next) {
 
 
 
-/* ===== Resumo (Indicadores / Pontos) ===== */
+/* ===== Aqui eu monto o resumo com os indicadores e pontos principais ===== */
 function hitbarClass(p){ return p<50 ? "hitbar--low" : (p<100 ? "hitbar--warn" : "hitbar--ok"); }
 function renderResumoKPI(summary, context = {}) {
   const {
@@ -4337,7 +4396,7 @@ function renderResumoKPI(summary, context = {}) {
   triggerBarAnimation(kpi.querySelectorAll('.hitbar'), shouldAnimateResumo);
   if (resumoAnim) resumoAnim.kpiKey = nextResumoKey;
 }
-/* ===== Tooltip dos cards ===== */
+/* ===== Aqui eu cuido do tooltip dos cards para explicar cada indicador ===== */
 function buildCardTooltipHTML(item) {
   const start = state.period.start, end = state.period.end;
   const diasTotais     = businessDaysBetweenInclusive(start, end);
@@ -4449,10 +4508,10 @@ function bindBadgeTooltip(card){
   wireTipGlobalsOnce();
 }
 
-/* ===== Cards por seção ===== */
+/* ===== Aqui eu gero os cards de cada seção/família com métricas e metas ===== */
 function getStatusFilter(){
   const raw = $("#f-status-kpi")?.value;
-  return normalizeStatusKey(raw) || "todos";
+  return normalizarChaveStatus(raw) || "todos";
 }
 function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
   const productMeta = new Map();
@@ -4813,7 +4872,7 @@ function renderFamilias(sections, summary){
     });
   });
 }
-/* ===== Abas extras ===== */
+/* ===== Aqui eu preparo comportamentos extras das abas quando surgirem novas ===== */
 function ensureExtraTabs(){
   const tabs = document.querySelector(".tabs"); 
   if(!tabs) return;
@@ -4834,7 +4893,7 @@ function ensureExtraTabs(){
   }
 }
 
-/* ===== Estilos adicionais da executiva (injetados por JS) ===== */
+/* ===== Aqui eu injeto estilos extras da visão executiva direto via JS ===== */
 function ensureExecStyles(){
   if (document.getElementById("exec-enhanced-styles")) return;
   const s = document.createElement("style");
@@ -4856,7 +4915,7 @@ function ensureExecStyles(){
   document.head.appendChild(s);
 }
 
-/* ===== Visão Executiva ===== */
+/* ===== Aqui eu construo toda a visão executiva com gráficos, rankings e heatmap ===== */
 function createExecutiveView(){
   ensureExecStyles();
 
@@ -5212,7 +5271,7 @@ function buildExecMonthlyLines(container, dataset){
     </svg>`;
 }
 
-/* ===== Render principal da Visão Executiva ===== */
+/* ===== Aqui eu orquestro o render principal da visão executiva ===== */
 function renderExecutiveView(){
   const host = document.getElementById("view-exec"); 
   if(!host) return;
@@ -5709,8 +5768,8 @@ function renderExecHeatmapMeta(hm, rows, period){
   hm.innerHTML = html;
 }
 
-/* ===== Ranking ===== */
-/* ===== Campanhas ===== */
+/* ===== Aqui eu calculo e exibo os rankings de cada nível ===== */
+/* ===== Aqui eu trato toda a lógica das campanhas e simuladores ===== */
 function currentSprintConfig(){
   if (!Array.isArray(CAMPAIGN_SPRINTS) || !CAMPAIGN_SPRINTS.length) return null;
   const id = state.campanhas?.sprintId;
@@ -6577,7 +6636,7 @@ function renderRanking(){
   hostTbl.appendChild(tbl);
 }
 
-/* ===== Tabela em árvore (Detalhamento) ===== */
+/* ===== Aqui eu renderizo a tabela em árvore usada no detalhamento ===== */
 function renderTreeTable() {
   ensureChipBarAndToolbar();
 
@@ -6841,7 +6900,7 @@ function collapseAllRows(){
   });
 }
 
-/* ===== Tooltip simples (para .has-ellipsis com title) ===== */
+/* ===== Aqui eu crio um tooltip simples para qualquer campo com elipse ===== */
 function enableSimpleTooltip(){
   let tip = document.getElementById("__tip");
   if(!tip){
@@ -6913,7 +6972,7 @@ function enableSimpleTooltip(){
   window.addEventListener('scroll', hide, {passive:true});
 }
 
-/* ===== Refresh (carrega dados e repinta) ===== */
+/* ===== Aqui eu faço o refresh geral: carrego dados e redesenho tudo ===== */
 async function refresh(){
   try{
     const dataset = await getData();
@@ -6958,7 +7017,7 @@ async function refresh(){
 
 
 
-/* ===== CSV loader tolerante (codificação e separador) ===== */
+/* ===== Aqui eu escrevi um loader de CSV que aguenta diferentes codificações e separadores ===== */
 async function loadCSVAuto(url) {
   // Busca como binário para poder detectar a codificação.
   const res = await fetch(url);
@@ -6994,7 +7053,7 @@ async function loadCSVAuto(url) {
 
 
 
-/* ===== Boot ===== */
+/* ===== Aqui eu disparo o boot do painel assim que a página carrega ===== */
 (async function(){
   ensureLoader();
   enableSimpleTooltip();

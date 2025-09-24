@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-  <!-- TOPBAR -->
+  <!-- Aqui eu montei a topbar com as informações do usuário logado -->
   <header class="topbar">
     <div class="topbar__left">
       <div class="logo">
@@ -60,7 +60,7 @@
 
 
   <main class="container">
-    <!-- CARD DE FILTROS -->
+    <!-- Aqui eu organizei o card com todos os filtros principais -->
     <section class="card card--filters">
       <button id="btn-fechar-filtros" class="filters__close" type="button" aria-label="Fechar filtros">
         <i class="ti ti-x" aria-hidden="true"></i>
@@ -128,7 +128,7 @@
         </button>
       </div>
 
-      <!-- Filtros avançados (slider) -->
+      <!-- Aqui eu deixei os filtros avançados escondidos no slider -->
       <div id="advanced-filters" class="adv" aria-hidden="true">
         <div class="adv__grid">
           <div class="filters__group">
@@ -147,7 +147,7 @@
             <label>Família de produtos</label>
             <select id="f-familia" class="input"></select>
           </div>
-          <!-- Grupo de produtos REMOVIDO -->
+          <!-- Aqui eu removi o grupo de produtos porque virou redundante -->
           <div class="filters__group">
             <label>Produto</label>
             <select id="f-produto" class="input"></select>
@@ -164,7 +164,7 @@
       </div>
     </section>
 
-    <!-- TABS -->
+    <!-- Aqui eu montei o controle de abas principais -->
     <section class="tabs">
       <button class="tab is-active" data-view="cards" aria-label="Resumo">
         <span class="tab-icon"><i class="ti ti-dashboard" aria-hidden="true"></i></span>
@@ -191,12 +191,12 @@
       </div>
     </section>
 
-    <!-- VIEW: RESUMO (só cards) -->
+    <!-- Aqui eu apresento a visão de resumo só com cards -->
     <section id="view-cards">
       <div id="grid-familias" class="cards-grid"></div>
     </section>
 
-    <!-- VIEW: DETALHAMENTO (tabela) -->
+    <!-- Aqui eu apresento a visão de detalhamento com a tabela em árvore -->
     <section id="view-table" class="hidden">
       <section id="table-section" class="card card--table">
         <header class="card__header">
@@ -212,7 +212,7 @@
       </section>
     </section>
 
-    <!-- VIEW: VISÃO EXECUTIVA -->
+    <!-- Aqui eu apresento a visão executiva com gráficos e rankings -->
     <section id="view-exec" class="hidden view-panel">
       <section class="card card--exec">
         <header class="card__header exec-head">
@@ -285,7 +285,7 @@
       </section>
     </section>
 
-    <!-- VIEW: CAMPANHAS -->
+    <!-- Aqui eu apresento a visão de campanhas e simuladores -->
     <section id="view-campanhas" class="hidden view-panel">
       <section class="card card--campanhas">
         <header class="card__header camp-header">

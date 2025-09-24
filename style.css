@@ -1,11 +1,12 @@
-﻿/* =========================================================
-   POBJ â€¢ style.css (v2.2 compacto + impressÃ£o A4)
-   - Sidebar fixa + scroll sÃ³ no miolo
-   - Cards/tabelas/filtros compactados
-   - GrÃ¡ficos com alturas menores (tela + print)
+/* =========================================================
+   POBJ • style.css (v2.2 compacto + impressão A4)
+   Aqui eu deixei um resumo rápido do que esse tema entrega:
+   - Sidebar fixa com scroll só no conteúdo
+   - Cards/tabelas/filtros mais compactos
+   - Gráficos com altura amigável tanto na tela quanto no PDF
    ========================================================= */
 
-/* ---------- Tokens ---------- */
+/* ---------- Aqui eu defino tokens de cor e espaçamento ---------- */
 :root{
   --brand:#b30000;
   --brand-dark:#8f0000;
@@ -25,7 +26,7 @@
   --topbar-h:56px;
 }
 
-/* ---------- Base ---------- */
+/* ---------- Aqui eu ajusto os estilos base do layout ---------- */
 *{ box-sizing:border-box; }
 html,body{ height:100%; }
 body{
