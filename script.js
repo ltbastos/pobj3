@@ -2966,10 +2966,11 @@ function renderResumoKPI(summary, context = {}) {
     const fillTarget = pct100.toFixed(2);
     const atgTitle = buildTitle("Atingidos", fmtType, atingidos, visibleAting);
     const totTitle = buildTitle("Total", fmtType, total, visibleTotal);
+    const iconMarkup = iconClass ? `<span class="kpi-icon"><i class="${iconClass}"></i></span>` : "";
     return `
       <div class="kpi-pill">
         <div class="kpi-strip__main">
-          <span class="kpi-icon"><i class="${iconClass}"></i></span>
+          ${iconMarkup}
           <div class="kpi-strip__text">
             <span class="kpi-strip__label" title="${titulo}">${titulo}</span>
             <div class="kpi-strip__stats">
