@@ -1812,10 +1812,11 @@ function firstDayOfMonthISO(d=new Date()){ return `${d.getFullYear()}-${String(d
 function todayISO(d=new Date()){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 // Aqui eu defino o período padrão que uso ao abrir o painel.
 function getDefaultPeriodRange(){
-  const now = new Date();
+  const capISO = AVAILABLE_DATE_MAX || todayISO();
+  const bounds = getMonthBoundsForISO(capISO);
   return {
-    start: firstDayOfMonthISO(now),
-    end: todayISO(now),
+    start: bounds.start,
+    end: capISO,
   };
 }
 // Aqui eu descubro os limites (início e fim) do mês referente a uma data ISO qualquer.
@@ -1874,10 +1875,14 @@ function getAccumulatedViewMonths(view){
 function computeAccumulatedPeriod(view = state.accumulatedView || "mensal", referenceEndISO = ""){
   const today = todayISO();
   const datasetMax = AVAILABLE_DATE_MAX || "";
-  const cap = datasetMax && datasetMax < today ? datasetMax : today;
+  const cap = datasetMax || today;
   let endISO = referenceEndISO || state.period?.end || cap;
   if (!endISO) endISO = cap;
-  if (endISO > cap) endISO = cap;
+  if (datasetMax && endISO > datasetMax) {
+    endISO = datasetMax;
+  } else if (!datasetMax && endISO > today) {
+    endISO = today;
+  }
   let endDate = dateUTCFromISO(endISO);
   if (!(endDate instanceof Date) || Number.isNaN(endDate?.getTime?.())) {
     endDate = dateUTCFromISO(cap);
@@ -2210,120 +2215,6 @@ function makeRandomForMetric(metric){
   return { meta, realizado, variavelMeta };
 }
 
-// Aqui eu gero linhas extras sintéticas para que qualquer filtro mostre cenários completos.
-function expandFactRowsForCoverage(rows = []){
-  if (!Array.isArray(rows) || !rows.length) return rows;
-  const existing = new Map();
-  rows.forEach(row => { if (row?.registroId) existing.set(row.registroId, true); });
-  const expanded = [...rows];
-  const sampleByProduct = new Map();
-  rows.forEach(row => {
-    const prodId = row?.produtoId || row?.produto || row?.id_indicador;
-    if (!prodId) return;
-    if (!sampleByProduct.has(prodId)) sampleByProduct.set(prodId, row);
-  });
-  if (!sampleByProduct.size) return rows;
-
-  const datasetCap = AVAILABLE_DATE_MAX || rows.reduce((acc, row) => {
-    const data = row?.data || row?.competencia || "";
-    if (!data) return acc;
-    return (!acc || data > acc) ? data : acc;
-  }, "") || todayISO();
-  const capDate = dateUTCFromISO(datasetCap);
-  const monthKeys = [];
-  for (let i = 0; i < 9; i += 1) {
-    const cursor = new Date(Date.UTC(capDate.getUTCFullYear(), capDate.getUTCMonth() - i, 1));
-    const key = `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, "0")}`;
-    if (!monthKeys.includes(key)) monthKeys.push(key);
-  }
-  const ratios = [0.62, 0.83, 0.98, 1.12];
-
-  sampleByProduct.forEach(sample => {
-    const prodId = sample.produtoId || sample.produto || sample.id_indicador;
-    const prodNome = sample.produtoNome || sample.produto || sample.ds_indicador || prodId;
-    const peso = Number(sample.peso) || 1;
-    const qtdBase = Math.max(1, Math.round(sample.qtd || sample.quantidade || 12));
-    const variavelMetaBase = Math.max(80, Math.round(sample.variavelMeta || sample.meta || 120_000));
-    const baseMeta = Math.max(1_000, Math.round(sample.meta || sample.meta_mens || sample.meta_acum || sample.realizado || 10_000));
-    const carteira = sample.carteira || `Carteira ${prodNome}`;
-    const canal = sample.canalVenda || "Agência física";
-    const tipoVenda = sample.tipoVenda || "Venda consultiva";
-    const modalidade = sample.modalidadePagamento || "À vista";
-    monthKeys.forEach((monthKey, monthIndex) => {
-      const [anoStr, mesStr] = monthKey.split("-");
-      const ano = Number(anoStr);
-      const mes = Number(mesStr);
-      const lastDay = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
-      ratios.forEach((ratio, ratioIndex) => {
-        const registroId = `SYN-${prodId}-${monthKey.replace(/-/g, "")}-${monthIndex}${ratioIndex}`;
-        if (existing.has(registroId)) return;
-        const day = Math.min(lastDay, 5 + (ratioIndex * 6));
-        const dataISO = `${monthKey}-${String(day).padStart(2, "0")}`;
-        const competencia = `${monthKey}-01`;
-        const metaMens = Math.max(500, Math.round(baseMeta * (0.9 + (monthIndex * 0.03))));
-        const realizadoMens = Math.max(0, Math.round(metaMens * ratio));
-        const metaAcum = Math.max(metaMens, Math.round(metaMens * (monthIndex + 1)));
-        const realizadoAcum = Math.max(realizadoMens, Math.round(metaAcum * Math.min(1.25, ratio + 0.08)));
-        const variavelMeta = Math.max(60, Math.round(variavelMetaBase * (0.85 + (ratioIndex * 0.08))));
-        const variavelReal = Math.max(40, Math.round(variavelMeta * Math.min(1.2, ratio + 0.1)));
-        const qtd = Math.max(1, Math.round(qtdBase * (0.7 + (ratioIndex * 0.2))));
-        const ating = metaMens ? (realizadoMens / metaMens) : ratio;
-        const pontos = Math.round(Math.max(0, ating) * peso);
-
-        const clone = {
-          registroId,
-          segmento: sample.segmento,
-          segmentoId: sample.segmentoId,
-          diretoria: sample.diretoria,
-          diretoriaNome: sample.diretoriaNome,
-          gerenciaRegional: sample.gerenciaRegional,
-          gerenciaNome: sample.gerenciaNome,
-          regional: sample.regional,
-          agencia: sample.agencia,
-          agenciaNome: sample.agenciaNome,
-          agenciaCodigo: sample.agenciaCodigo,
-          gerenteGestao: sample.gerenteGestao,
-          gerenteGestaoNome: sample.gerenteGestaoNome,
-          gerente: sample.gerente,
-          gerenteNome: sample.gerenteNome,
-          secaoId: sample.secaoId,
-          secao: sample.secao,
-          secaoNome: sample.secaoNome,
-          familiaId: sample.familiaId,
-          familia: sample.familia,
-          familiaNome: sample.familiaNome,
-          carteira,
-          canalVenda: canal,
-          tipoVenda,
-          modalidadePagamento: modalidade,
-          prodOrSub: sample.prodOrSub || prodNome,
-          subproduto: sample.subproduto || prodNome,
-          data: dataISO,
-          competencia,
-          realizado: realizadoMens,
-          real_mens: realizadoMens,
-          real_acum: realizadoAcum,
-          meta: metaMens,
-          meta_mens: metaMens,
-          meta_acum: metaAcum,
-          qtd,
-          peso,
-          pontos,
-          variavelMeta,
-          variavelReal,
-          ating,
-          atingVariavel: variavelMeta ? (variavelReal / variavelMeta) : 0,
-        };
-        aplicarIndicadorAliases(clone, prodId, prodNome);
-        expanded.push(clone);
-        existing.set(registroId, true);
-      });
-    });
-  });
-
-  return expanded;
-}
-
 /* ===== Aqui eu centralizo o carregamento de dados (API ou CSV local) ===== */
 // Aqui eu faço uma chamada GET simples contra a API com tratamento básico de erro.
 async function apiGet(path, params){
@@ -2472,7 +2363,6 @@ async function getData(){
       return base;
     });
 
-    factRows = expandFactRowsForCoverage(factRows);
     if (FACT_VARIAVEL.length) {
       const variavelIds = new Set(FACT_VARIAVEL.map(row => row?.registroId || row?.registroid));
       const novosVariavel = factRows.filter(row => row?.registroId && !variavelIds.has(row.registroId)).map(row => ({
@@ -4926,15 +4816,22 @@ function initCombos() {
 
   const compareLabels = (a, b) => String(a.label || "").localeCompare(String(b.label || ""), "pt-BR", { sensitivity: "base" });
   const dedupeOptions = (items, valueGetter, labelGetter) => {
-    const seen = new Set();
+    const seenValues = new Set();
+    const seenLabels = new Set();
     const list = [];
     items.forEach(item => {
       const rawValue = valueGetter(item);
       const rawLabel = labelGetter(item);
-      const value = limparTexto(rawValue);
-      const label = limparTexto(rawLabel) || value;
-      if (!value || seen.has(value)) return;
-      seen.add(value);
+      const value = limparTexto(rawValue) || limparTexto(rawLabel);
+      const label = rawLabel != null && rawLabel !== ""
+        ? String(rawLabel).trim()
+        : (value || "");
+      if (!value || !label) return;
+      const valueKey = value.toLowerCase();
+      const labelKey = label.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      if (seenValues.has(valueKey) || seenLabels.has(labelKey)) return;
+      seenValues.add(valueKey);
+      seenLabels.add(labelKey);
       list.push({ value, label });
     });
     list.sort(compareLabels);
@@ -6882,10 +6779,10 @@ function renderExecHeatmapMeta(hm, rows, period){
       } else if (delta === 0) {
         cls += " hm-ok";
         text = `0.0%`;
-      } else if (delta <= 10) {
+      } else if (delta <= 5) {
         cls += " hm-ok";
         text = `+${delta.toFixed(1)}%`;
-      } else if (delta <= 20) {
+      } else if (delta <= 10) {
         cls += " hm-warn";
         text = `+${delta.toFixed(1)}%`;
       } else {
