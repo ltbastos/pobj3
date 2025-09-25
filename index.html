@@ -1,208 +1,351 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <!--
-    =====================================================================
-    POBJ • Painel Didático (HTML)
-    ---------------------------------------------------------------------
-    • Este arquivo descreve SOMENTE a estrutura da página.
-    • O visual está em style.css e o comportamento em script.js.
-    • Sempre que adicionar um novo campo na tela, deixe um comentário
-      explicando o motivo. Isso ajuda quando você voltar aqui no futuro.
-    =====================================================================
-  -->
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Painel POBJ • Monitoramento Simplificado</title>
-  <link rel="icon" type="image/png" href="img/pobj.png" sizes="32x32" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
-    rel="stylesheet"
-  />
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>POBJ Produções</title>
+  <link rel="icon" type="image/png" href="img/pobj.png" sizes="32x32">
+  <link rel="icon" type="image/png" href="img/pobj.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="img/pobj.png" sizes="180x180">
+  <link rel="shortcut icon" href="img/pobj.png">
+
+
+
+  <link href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-  <!-- ================================================================ -->
-  <!-- CABEÇALHO PRINCIPAL: identifica o painel e dá contexto imediato. -->
-  <!-- Se precisar colocar o logo da área, substitua o texto "POBJ".    -->
-  <!-- ================================================================ -->
-  <header class="cabecalho" role="banner">
-    <div class="cabecalho__marca" aria-hidden="true">POBJ</div>
-    <div class="cabecalho__texto">
-      <h1>Painel de Acompanhamento do POBJ</h1>
-      <p>
-        Esta visão resume como as agências estão performando. Leia os
-        comentários espalhados pelo HTML antes de alterar algo.
-      </p>
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="topbar__left">
+      <div class="logo">
+        <span class="logo__mark" aria-hidden="true"></span>
+        <span class="logo__text">Bradesco</span>
+      </div>
+    </div>
+
+    <div class="topbar__right">
+      <div class="userbox">
+        <button class="userbox__trigger" id="btn-user-menu" type="button" aria-haspopup="true" aria-expanded="false">
+          <img class="userbox__avatar" src="https://i.pravatar.cc/80?img=12" alt="Foto do usuário"/>
+          <span class="userbox__name">X Burguer</span>
+          <i class="ti ti-chevron-down" aria-hidden="true"></i>
+        </button>
+        <div class="userbox__menu" id="user-menu" role="menu" aria-hidden="true">
+          <span class="userbox__menu-title">Links úteis</span>
+          <button class="userbox__menu-item" type="button" data-action="omega">Omega</button>
+          <button class="userbox__menu-item" type="button" data-action="portal">Portal PJ</button>
+          <div class="userbox__submenu">
+            <button class="userbox__menu-item userbox__menu-item--has-sub" type="button" data-submenu="manuais" aria-expanded="false">
+              Manuais
+              <i class="ti ti-chevron-right" aria-hidden="true"></i>
+            </button>
+            <div class="userbox__submenu-list" id="user-submenu-manuais" hidden>
+              <button class="userbox__menu-item" type="button" data-action="manual1">Manual 1</button>
+              <button class="userbox__menu-item" type="button" data-action="manual2">Manual 2</button>
+            </div>
+          </div>
+          <button class="userbox__menu-item" type="button" data-action="mapao">Mapão de Oportunidades</button>
+          <hr class="userbox__divider"/>
+          <button class="userbox__menu-item userbox__menu-item--logout" type="button" data-action="logout">
+            <i class="ti ti-logout-2" aria-hidden="true"></i>
+            <span>Sair</span>
+          </button>
+        </div>
+      </div>
     </div>
   </header>
 
-  <!-- ================================================================ -->
-  <!-- CONTEÚDO PRINCIPAL: tudo que o usuário interage está aqui.       -->
-  <!-- As seções estão em blocos independentes para facilitar manutenções. -->
-  <!-- ================================================================ -->
-  <main class="principal">
-    <!-- -------------------------------------------------------------- -->
-    <!-- BLOCO DE FILTROS                                                -->
-    <!-- -------------------------------------------------------------- -->
-    <section class="bloco bloco--filtros" aria-labelledby="titulo-filtros">
-      <header class="bloco__cabecalho">
-        <div class="bloco__intro">
-          <h2 id="titulo-filtros">Filtros rápidos</h2>
-          <p class="texto-ajuda">
-            Use os campos abaixo para limitar a visão. Nenhum campo é obrigatório,
-            mas quanto mais dados você informar, mais focado fica o resultado.
-          </p>
+
+  <main class="container">
+    <!-- CARD DE FILTROS -->
+    <section class="card card--filters">
+      <button id="btn-fechar-filtros" class="filters__close" type="button" aria-label="Fechar filtros">
+        <i class="ti ti-x" aria-hidden="true"></i>
+      </button>
+      <header class="card__header">
+        <div class="filters-hero">
+          <div class="title-subtitle">
+            <h2>POBJ Produções</h2>
+            <p class="muted">Acompanhe dados atualizados de performance.</p>
+          </div>
+          <div id="mobile-carousel" class="mobile-carousel" aria-label="Destaques do painel">
+            <div class="mobile-carousel__track">
+              <article class="mobile-carousel__slide is-active" data-slide="0">
+                <div class="mobile-carousel__content">
+                  <h4 class="mobile-carousel__title">Sprint PJ em foco</h4>
+                  <p class="mobile-carousel__desc">Veja metas e elegibilidade da campanha atual em segundos.</p>
+                </div>
+              </article>
+              <article class="mobile-carousel__slide" data-slide="1">
+                <div class="mobile-carousel__content">
+                  <h4 class="mobile-carousel__title">Simuladores ágeis</h4>
+                  <p class="mobile-carousel__desc">Projete cenários da equipe ou individuais com ajustes rápidos.</p>
+                </div>
+              </article>
+              <article class="mobile-carousel__slide" data-slide="2">
+                <div class="mobile-carousel__content">
+                  <h4 class="mobile-carousel__title">Ranking personalizado</h4>
+                  <p class="mobile-carousel__desc">Compare sua posição preservando os dados dos demais.</p>
+                </div>
+              </article>
+            </div>
+            <div class="mobile-carousel__dots" role="tablist" aria-label="Navegação do carrossel">
+              <button type="button" class="mobile-carousel__dot" data-slide-to="0" aria-label="Ver destaque da sprint" aria-current="true"></button>
+              <button type="button" class="mobile-carousel__dot" data-slide-to="1" aria-label="Ver destaque dos simuladores"></button>
+              <button type="button" class="mobile-carousel__dot" data-slide-to="2" aria-label="Ver destaque do ranking"></button>
+            </div>
+          </div>
         </div>
-        <button id="botao-limpar" class="botao botao--limpar" type="button">
-          Limpar filtros
+      </header>
+
+      <div class="filters">
+        <div class="filters__group">
+          <label>Diretoria</label>
+          <select id="f-diretoria" class="input"></select>
+        </div>
+        <div class="filters__group">
+          <label>Regional</label>
+          <select id="f-gerencia" class="input"></select>
+        </div>
+        <div class="filters__group">
+          <label>Gerente</label>
+          <select id="f-gerente" class="input"></select>
+        </div>
+        <div class="filters__actions">
+          <button id="btn-consultar" class="btn btn--primary">
+            <i class="ti ti-search"></i> Consultar
+          </button>
+          <button id="btn-limpar" class="btn"><i class="ti ti-x"></i> Limpar filtros</button>
+        </div>
+      </div>
+
+      <div class="filters__more filters__more--center">
+        <button id="btn-abrir-filtros" class="btn btn--link btn--info" aria-expanded="false">
+          <i class="ti ti-chevron-down"></i> Abrir filtros
         </button>
-      </header>
+      </div>
 
-      <!--
-        FORMULÁRIO: os IDs são usados pelo JavaScript.
-        Sempre mantenha um label claro por campo para garantir acessibilidade.
-      -->
-      <form class="filtros" id="form-filtros">
-        <div class="grupo-campo">
-          <label for="filtro-diretoria">Diretoria</label>
-          <select id="filtro-diretoria" class="campo" data-placeholder="Todas as diretorias">
-            <option value="">Todas as diretorias</option>
-          </select>
+      <!-- Filtros avançados (slider) -->
+      <div id="advanced-filters" class="adv" aria-hidden="true">
+        <div class="adv__grid">
+          <div class="filters__group">
+            <label>Agência</label>
+            <select id="f-agencia" class="input"></select>
+          </div>
+          <div class="filters__group">
+            <label>Gerente de gestão</label>
+            <select id="f-ggestao" class="input"></select>
+          </div>
+          <div class="filters__group">
+            <label>Seção</label>
+            <select id="f-secao" class="input"></select>
+          </div>
+          <div class="filters__group">
+            <label>Família de produtos</label>
+            <select id="f-familia" class="input"></select>
+          </div>
+          <!-- Grupo de produtos REMOVIDO -->
+          <div class="filters__group">
+            <label>Produto</label>
+            <select id="f-produto" class="input"></select>
+          </div>
+          <div class="filters__group">
+            <label>Status dos indicadores</label>
+            <select id="f-status-kpi" class="input">
+              <option value="todos" selected>Todos</option>
+              <option value="atingidos">Atingidos</option>
+              <option value="nao">Não atingidos</option>
+            </select>
+          </div>
         </div>
-
-        <div class="grupo-campo">
-          <label for="filtro-regional">Regional</label>
-          <select id="filtro-regional" class="campo" data-placeholder="Todas as regionais">
-            <option value="">Todas as regionais</option>
-          </select>
-        </div>
-
-        <div class="grupo-campo">
-          <label for="filtro-gerente">Gerente</label>
-          <select id="filtro-gerente" class="campo" data-placeholder="Todos os gerentes">
-            <option value="">Todos os gerentes</option>
-          </select>
-        </div>
-
-        <div class="grupo-campo">
-          <label for="filtro-status">Status da meta</label>
-          <select id="filtro-status" class="campo" data-placeholder="Todos os status">
-            <option value="">Todos os status</option>
-          </select>
-        </div>
-
-        <div class="grupo-campo grupo-campo--pesquisa">
-          <label for="filtro-pesquisa">Busca rápida</label>
-          <input
-            id="filtro-pesquisa"
-            class="campo"
-            type="search"
-            placeholder="Nome da agência ou do gerente"
-          />
-        </div>
-
-        <div class="botoes-form">
-          <button class="botao botao--principal" type="submit">Aplicar filtros</button>
-        </div>
-      </form>
-    </section>
-
-    <!-- -------------------------------------------------------------- -->
-    <!-- BLOCO DE CARDS: resumo automático do que está filtrado.        -->
-    <!-- -------------------------------------------------------------- -->
-    <section class="bloco" aria-labelledby="titulo-resumo">
-      <header class="bloco__cabecalho bloco__cabecalho--simples">
-        <div class="bloco__intro">
-          <h2 id="titulo-resumo">Resumo dos indicadores</h2>
-          <p class="texto-ajuda">
-            Estes cartões mudam conforme os filtros. Sempre confira o texto
-            menor em cada card para entender o que o número representa.
-          </p>
-        </div>
-      </header>
-      <div class="painel-cartoes" id="area-cartoes">
-        <!-- Os cards são montados pelo script.js -->
       </div>
     </section>
 
-    <!-- -------------------------------------------------------------- -->
-    <!-- BLOCO DA TABELA: detalha cada agência respeitando os filtros.  -->
-    <!-- -------------------------------------------------------------- -->
-    <section class="bloco" aria-labelledby="titulo-tabela">
-      <header class="bloco__cabecalho bloco__cabecalho--simples">
-        <div class="bloco__intro">
-          <h2 id="titulo-tabela">Detalhamento por agência</h2>
-          <p class="texto-ajuda">
-            Colunas e ordem podem ser alteradas livremente. Se criar uma nova coluna,
-            comente no HTML e ajuste a função <code>montarLinha</code> em script.js.
-          </p>
-        </div>
-        <span class="texto-ajuda" id="contador-registros"></span>
-      </header>
-
-      <div class="tabela-container">
-        <table class="tabela" aria-describedby="titulo-tabela">
-          <thead>
-            <tr>
-              <!-- Cabeçalhos claros ajudam quem imprime ou exporta -->
-              <th scope="col">Diretoria</th>
-              <th scope="col">Regional</th>
-              <th scope="col">Agência</th>
-              <th scope="col">Gerente</th>
-              <th scope="col">Meta (R$)</th>
-              <th scope="col">Realizado (R$)</th>
-              <th scope="col">Atingimento</th>
-              <th scope="col">Status da meta</th>
-            </tr>
-          </thead>
-          <tbody id="corpo-tabela">
-            <!-- As linhas são desenhadas automaticamente em script.js -->
-          </tbody>
-        </table>
+    <!-- TABS -->
+    <section class="tabs">
+      <button class="tab is-active" data-view="cards" aria-label="Resumo">
+        <span class="tab-icon"><i class="ti ti-dashboard" aria-hidden="true"></i></span>
+        <span class="tab-label">Resumo</span>
+      </button>
+      <button class="tab" data-view="table" aria-label="Detalhamento">
+        <span class="tab-icon"><i class="ti ti-list-tree" aria-hidden="true"></i></span>
+        <span class="tab-label">Detalhes</span>
+      </button>
+      <button class="tab" data-view="ranking" aria-label="Ranking">
+        <span class="tab-icon"><i class="ti ti-trophy" aria-hidden="true"></i></span>
+        <span class="tab-label">Ranking</span>
+      </button>
+      <button class="tab" data-view="exec" aria-label="Visão executiva">
+        <span class="tab-icon"><i class="ti ti-chart-line" aria-hidden="true"></i></span>
+        <span class="tab-label">V. Exec.</span>
+      </button>
+      <button class="tab" data-view="campanhas" aria-label="Campanhas">
+        <span class="tab-icon"><i class="ti ti-speakerphone" aria-hidden="true"></i></span>
+        <span class="tab-label">Campanhas</span>
+      </button>
+      <div class="tabs__aside">
+        <small class="muted"><span id="lbl-atualizacao"></span></small>
       </div>
-
-      <p class="texto-ajuda tabela-legenda">
-        Lembre-se: estes números são fictícios. Troque pela sua base real quando necessário.
-      </p>
     </section>
 
-    <!-- -------------------------------------------------------------- -->
-    <!-- BLOCO DE DICAS: lembretes para quem vai manter o projeto.      -->
-    <!-- -------------------------------------------------------------- -->
-    <section class="bloco" aria-labelledby="titulo-dicas">
-      <header class="bloco__cabecalho bloco__cabecalho--simples">
-        <h2 id="titulo-dicas">Guia rápido para manutenção futura</h2>
-      </header>
-      <ul class="lista-dicas">
-        <li>
-          Para alterar cores ou tamanhos, ajuste o bloco de variáveis no início
-          do arquivo <strong>style.css</strong>.
-        </li>
-        <li>
-          Os dados de exemplo e toda a lógica dos filtros estão em <strong>script.js</strong>,
-          dentro das funções <code>prepararRegistrosBase</code> e <code>aplicarFiltros</code>.
-        </li>
-        <li>
-          Se precisar acrescentar um filtro, crie o campo aqui no formulário e depois
-          use o mesmo ID para buscar o valor dentro do JavaScript.
-        </li>
-        <li>
-          A tabela aceita qualquer quantidade de colunas. Basta repetir a estrutura
-          &lt;th&gt; no cabeçalho e incluir a célula correspondente em <code>montarLinha</code>.
-        </li>
-      </ul>
+    <!-- VIEW: RESUMO (só cards) -->
+    <section id="view-cards">
+      <div id="grid-familias" class="cards-grid"></div>
+    </section>
+
+    <!-- VIEW: DETALHAMENTO (tabela) -->
+    <section id="view-table" class="hidden">
+      <section id="table-section" class="card card--table">
+        <header class="card__header">
+          <h3>Detalhamento</h3>
+          <div class="card__actions">
+            <div class="card__search-autocomplete">
+              <input id="busca" class="input input--sm" type="search" placeholder="Contrato (Ex.: CT-2025-001234)" autocomplete="off" aria-autocomplete="list" aria-expanded="false" aria-owns="contract-suggest"/>
+              <div id="contract-suggest" class="contract-suggest" role="listbox" aria-label="Sugestões de contratos" hidden></div>
+            </div>
+          </div>
+        </header>
+        <div id="gridRanking"></div>
+      </section>
+    </section>
+
+    <!-- VIEW: VISÃO EXECUTIVA -->
+    <section id="view-exec" class="hidden view-panel">
+      <section class="card card--exec">
+        <header class="card__header exec-head">
+          <div class="title-subtitle">
+            <h3>Visão executiva</h3>
+            <div class="muted" id="exec-context"></div>
+          </div>
+          <div class="exec-head__actions">
+            <button id="btn-export-onepage" class="btn btn--ghost btn--sm" type="button">
+              <i class="ti ti-file-type-pdf" aria-hidden="true"></i>
+              <span>Exportar PDF</span>
+            </button>
+          </div>
+        </header>
+
+        <div id="exec-kpis" class="exec-kpis"></div>
+
+        <section class="exec-panel exec-chart">
+          <div class="exec-h">
+            <span id="exec-chart-title">Evolução mensal por seção</span>
+          </div>
+          <div id="exec-chart" class="chart" role="img" aria-label="Linhas mensais de atingimento por seção"></div>
+          <div id="exec-chart-legend" class="chart-legend"></div>
+        </section>
+
+        <div class="exec-grid">
+          <div class="exec-row exec-row--rank">
+            <div class="exec-row__title" id="exec-rank-title">Desempenho por unidade</div>
+            <div class="exec-row__grid">
+              <section class="exec-panel exec-panel--rank" id="exec-rank-top-panel">
+                <div class="exec-h"><span class="exec-panel__title">Top 5</span></div>
+                <div id="exec-rank-top" class="rank-mini"></div>
+              </section>
+              <section class="exec-panel exec-panel--rank" id="exec-rank-bottom-panel">
+                <div class="exec-h"><span class="exec-panel__title">Bottom 5</span></div>
+                <div id="exec-rank-bottom" class="rank-mini"></div>
+              </section>
+            </div>
+          </div>
+
+          <div class="exec-row exec-row--status">
+            <div class="exec-row__title" id="exec-status-title">Status das unidades</div>
+            <div class="exec-row__grid exec-row__grid--status">
+              <section class="exec-panel exec-panel--status" data-status="hit">
+                <div class="exec-h"><span class="status-card__title">Atingidas</span></div>
+                <div id="exec-status-hit" class="list-mini"></div>
+              </section>
+              <section class="exec-panel exec-panel--status" data-status="quase">
+                <div class="exec-h"><span class="status-card__title">Quase lá</span></div>
+                <div id="exec-status-quase" class="list-mini"></div>
+              </section>
+              <section class="exec-panel exec-panel--status" data-status="longe">
+                <div class="exec-h"><span class="status-card__title">Longe</span></div>
+                <div id="exec-status-longe" class="list-mini"></div>
+              </section>
+            </div>
+          </div>
+
+          <section class="exec-panel exec-panel--scroll">
+            <div class="exec-h exec-h--heatmap">
+              <span id="exec-heatmap-title">Heatmap</span>
+              <div class="segmented seg-mini" id="exec-heatmap-toggle" role="tablist" aria-label="Modo do heatmap">
+                <button type="button" class="seg-btn is-active" data-hm="secoes">Seções</button>
+                <button type="button" class="seg-btn" data-hm="meta">Meta</button>
+              </div>
+            </div>
+            <div id="exec-heatmap" class="hm"></div>
+          </section>
+        </div>
+      </section>
+    </section>
+
+    <!-- VIEW: CAMPANHAS -->
+    <section id="view-campanhas" class="hidden view-panel">
+      <section class="card card--campanhas">
+        <header class="card__header camp-header">
+          <div class="title-subtitle">
+            <h3>Campanhas</h3>
+            <p class="muted" id="camp-cycle"></p>
+          </div>
+          <div class="camp-header__controls">
+            <label for="campanha-sprint" class="muted">Selecione a campanha</label>
+            <select id="campanha-sprint" class="input input--sm"></select>
+          </div>
+        </header>
+
+        <div class="camp-hero">
+          <div class="camp-hero__info">
+            <p id="camp-note"></p>
+            <div class="camp-period">
+              <i class="ti ti-calendar-stats" aria-hidden="true"></i>
+              <span id="camp-period"></span>
+            </div>
+          </div>
+          <div class="camp-hero__stats" id="camp-headline"></div>
+        </div>
+
+        <div class="camp-kpi-grid" id="camp-kpis"></div>
+      </section>
+
+      <section class="card card--camp-sims">
+        <header class="card__header">
+          <div class="title-subtitle">
+            <h4>Simuladores da sprint</h4>
+            <p class="muted">Projete rapidamente o resultado da equipe ou de um gerente ajustando o atingimento de cada indicador.</p>
+          </div>
+        </header>
+        <div class="sim-grid">
+          <article id="sim-equipe" class="sim-card"></article>
+          <article id="sim-individual" class="sim-card"></article>
+        </div>
+        <p class="sim-footnote muted">Cada indicador respeita o intervalo de 0% a 150% para cálculo de pontos. Valores acima disso são desconsiderados.</p>
+      </section>
+
+      <section class="card card--camp-ranking">
+        <header class="card__header">
+          <div class="title-subtitle">
+            <h4>Ranking da campanha</h4>
+            <p class="muted" id="camp-ranking-desc">Acompanhe a performance das regionais e a elegibilidade frente aos critérios mínimos.</p>
+          </div>
+        </header>
+        <div id="camp-ranking"></div>
+      </section>
     </section>
   </main>
 
-  <!-- Rodapé discreto para colocar versão do painel ou créditos internos. -->
-  <footer class="rodape">
-    <small>Painel POBJ • Exemplo comentado – atualizado em 2024</small>
-  </footer>
+  <div id="filters-backdrop" class="filters-backdrop" hidden></div>
 
-  <!-- O JavaScript só é carregado no final para agilizar a abertura da página. -->
+  <footer class="footer">
+    <span>Bradesco POBJ • v1.0 </span>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
