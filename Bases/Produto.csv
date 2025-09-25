@@ -1,4 +1,4 @@
-﻿id_secao,secao,id_familia,familia,id_produto,produto
+id_secao,secao,id_familia,familia,id_indicador,ds_indicador
 1,Financeiro,2,Recuperacao de Vencidos Ate 59 dias,2,Recuperacao de Vencidos Ate 59 dias
 1,Financeiro,3,Recuperacao de Vencidos Acima 59 dias,3,Recuperacao de Vencidos Acima 59 dias
 1,Financeiro,4,Recuperacao de Credito,5,Recuperacao de Credito LP Total

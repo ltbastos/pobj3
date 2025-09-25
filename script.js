@@ -163,6 +163,36 @@ function simplificarTexto(value){
 
 const DEFAULT_SELECTION_MARKERS = new Set(["", "todos", "todas", "todes", "all"]);
 
+// Aqui eu vou manter um catálogo de aliases dos indicadores para conseguir resolver filtros por nome, código ou subproduto.
+const CARD_ALIAS_INDEX = new Map(); // cardId -> Set(alias)
+const CARD_SLUG_TO_ID = new Map();  // slug -> cardId
+const CARD_ID_SET = new Set();      // conjunto rápido dos ids oficiais
+const SUBPRODUTO_TO_INDICADOR = new Map(); // slug do subproduto -> cardId
+
+function registrarAliasIndicador(cardId, alias){
+  const seguroId = limparTexto(cardId);
+  if (!seguroId) return;
+  CARD_ID_SET.add(seguroId);
+  const slug = simplificarTexto(alias);
+  if (!slug) return;
+  let aliases = CARD_ALIAS_INDEX.get(seguroId);
+  if (!aliases){
+    aliases = new Set();
+    CARD_ALIAS_INDEX.set(seguroId, aliases);
+  }
+  if (!aliases.has(slug)) aliases.add(slug);
+  CARD_SLUG_TO_ID.set(slug, seguroId);
+}
+
+function resolverIndicadorPorAlias(valor){
+  const texto = limparTexto(valor);
+  if (!texto) return "";
+  if (CARD_ID_SET.has(texto)) return texto;
+  const slug = simplificarTexto(texto);
+  if (CARD_SLUG_TO_ID.has(slug)) return CARD_SLUG_TO_ID.get(slug);
+  return "";
+}
+
 function selecaoPadrao(value){
   return DEFAULT_SELECTION_MARKERS.has(simplificarTexto(value));
 }
@@ -294,14 +324,25 @@ function pegarPrimeiroPreenchido(...values) {
 function aplicarIndicadorAliases(target = {}, idBruto = "", nomeBruto = "") {
   const idTexto = limparTexto(idBruto || "");
   const nomeTexto = limparTexto(nomeBruto || "");
-  const indicadorId = idTexto || nomeTexto;
-  const indicadorNome = nomeTexto || indicadorId;
-  target.id_indicador = indicadorId;
+  const resolvedCard = resolverIndicadorPorAlias(idTexto) || resolverIndicadorPorAlias(nomeTexto);
+  if (resolvedCard) {
+    registrarAliasIndicador(resolvedCard, idTexto);
+    registrarAliasIndicador(resolvedCard, nomeTexto);
+  }
+  const indicadorCodigo = idTexto || resolvedCard || nomeTexto;
+  const indicadorNome = nomeTexto || resolvedCard || indicadorCodigo;
+  if (resolvedCard && !idTexto) {
+    registrarAliasIndicador(resolvedCard, indicadorCodigo);
+  }
+  target.id_indicador = indicadorCodigo;
   target.ds_indicador = indicadorNome;
-  target.indicadorId = indicadorId;
+  target.indicadorId = indicadorCodigo;
   target.indicadorNome = indicadorNome;
-  target.produtoId = indicadorId;
+  target.produtoId = resolvedCard || indicadorCodigo;
   target.produtoNome = indicadorNome;
+  if (resolvedCard && indicadorCodigo && indicadorCodigo !== resolvedCard) {
+    target.indicadorCodigo = indicadorCodigo;
+  }
   return target;
 }
 
@@ -1549,6 +1590,13 @@ const CARD_SECTIONS_DEF = [
   ]},
 ];
 
+CARD_SECTIONS_DEF.forEach(sec => {
+  sec.items.forEach(item => {
+    registrarAliasIndicador(item.id, item.id);
+    registrarAliasIndicador(item.id, item.nome);
+  });
+});
+
 const SECTION_IDS = new Set(CARD_SECTIONS_DEF.map(sec => sec.id));
 const SECTION_BY_ID = new Map(CARD_SECTIONS_DEF.map(sec => [sec.id, sec]));
 
@@ -1672,13 +1720,14 @@ CAMPAIGN_UNIT_DATA.forEach(unit => {
   }
   if (!unit.familiaNome && unit.familia) unit.familiaNome = unit.familia;
   if (!unit.subproduto) unit.subproduto = "";
+  if (unit.subproduto) registrarAliasIndicador(unit.produtoId, unit.subproduto);
 });
 const CAMPAIGN_SPRINTS = [
   {
     id: "sprint-pj-2025",
     label: "Sprint PJ 2025",
-    cycle: "Sprint PJ • Setembro 2025",
-    period: { start: "2025-09-01", end: "2025-09-20" },
+    cycle: "Sprint PJ • Setembro a Dezembro 2025",
+    period: { start: "2025-09-01", end: "2025-12-31" },
     note: "Projete cenários e acompanhe apenas as unidades visíveis nos filtros atuais.",
     headStats: [
       { label: "Meta mínima", value: "100 pts" },
@@ -4424,8 +4473,8 @@ function ensureSelectSearchGlobalListeners(){
   if (SELECT_SEARCH_GLOBAL_LISTENERS) return;
   document.addEventListener("click", (ev) => {
     SELECT_SEARCH_REGISTRY.forEach(data => {
-      if (data.panel.contains(ev.target) || data.input === ev.target) return;
-      data.panel.hidden = true;
+      if (data.wrapper?.contains(ev.target)) return;
+      if (typeof data.hidePanel === "function") data.hidePanel();
     });
   });
   SELECT_SEARCH_GLOBAL_LISTENERS = true;
@@ -4438,19 +4487,38 @@ function ensureSelectSearch(select){
   const labelText = limparTexto(group.querySelector("label")?.textContent) || "opção";
   const wrapper = document.createElement("div");
   wrapper.className = "select-search";
-  wrapper.innerHTML = `
-    <input type="search" class="input input--xs select-search__input" placeholder="Pesquisar ${labelText.toLowerCase()}" aria-label="Pesquisar ${labelText}">
-    <div class="select-search__panel" role="listbox" aria-label="Sugestões de ${labelText}" hidden></div>`;
-  group.insertBefore(wrapper, select);
+  select.parentNode.insertBefore(wrapper, select);
+  wrapper.appendChild(select);
 
-  const input = wrapper.querySelector("input");
-  const panel = wrapper.querySelector(".select-search__panel");
-  const data = { select, input, panel, options: [] };
+  const panel = document.createElement("div");
+  panel.className = "select-search__panel";
+  panel.setAttribute("role", "listbox");
+  panel.setAttribute("aria-label", `Sugestões de ${labelText}`);
+  panel.hidden = true;
+  panel.innerHTML = `
+    <div class="select-search__box">
+      <input type="search" class="input input--xs select-search__input" placeholder="Pesquisar ${labelText.toLowerCase()}" aria-label="Pesquisar ${labelText}">
+    </div>
+    <div class="select-search__results"></div>`;
+  wrapper.appendChild(panel);
+
+  const input = panel.querySelector("input");
+  const list = panel.querySelector(".select-search__results");
+  const hidePanel = () => {
+    panel.hidden = true;
+    wrapper.classList.remove("is-open");
+  };
+  const showPanel = () => {
+    panel.hidden = false;
+    wrapper.classList.add("is-open");
+    updateSelectSearchResults(select, { limit: 12, forceAll: true });
+    window.requestAnimationFrame(() => input.focus());
+  };
+
+  const data = { select, input, panel, list, options: [], wrapper, hidePanel, showPanel };
   SELECT_SEARCH_DATA.set(select, data);
   SELECT_SEARCH_REGISTRY.add(data);
   ensureSelectSearchGlobalListeners();
-
-  const hidePanel = () => { panel.hidden = true; };
 
   input.addEventListener("input", () => updateSelectSearchResults(select));
   input.addEventListener("focus", () => updateSelectSearchResults(select));
@@ -4460,16 +4528,14 @@ function ensureSelectSearch(select){
       hidePanel();
     }
     if (ev.key === "Enter") {
-      const first = panel.querySelector(".select-search__item");
+      const first = list.querySelector(".select-search__item");
       if (first) {
         ev.preventDefault();
         first.click();
       }
     }
   });
-  input.addEventListener("blur", () => {
-    setTimeout(hidePanel, 120);
-  });
+  input.addEventListener("blur", () => setTimeout(hidePanel, 120));
 
   panel.addEventListener("mousedown", (ev) => ev.preventDefault());
   panel.addEventListener("click", (ev) => {
@@ -4480,11 +4546,21 @@ function ensureSelectSearch(select){
     hidePanel();
   });
 
+  select.addEventListener("mousedown", (ev) => {
+    ev.preventDefault();
+    if (panel.hidden) showPanel(); else hidePanel();
+  });
+  select.addEventListener("keydown", (ev) => {
+    if (["ArrowDown", "ArrowUp", " ", "Enter"].includes(ev.key)) {
+      ev.preventDefault();
+      showPanel();
+    }
+  });
   select.addEventListener("change", () => {
     const meta = SELECT_SEARCH_DATA.get(select);
     if (!meta) return;
     meta.input.value = "";
-    meta.panel.hidden = true;
+    meta.hidePanel();
   });
 
   select.dataset.searchBound = "1";
@@ -4498,28 +4574,28 @@ function storeSelectSearchOptions(select, options){
     label: opt.label,
     aliases: Array.isArray(opt.aliases) ? opt.aliases.map(item => limparTexto(item)) : []
   }));
-  data.panel.hidden = true;
-  data.panel.innerHTML = "";
+  if (data.list) data.list.innerHTML = "";
+  if (typeof data.hidePanel === "function") data.hidePanel();
 }
 
 function syncSelectSearchInput(select){
   const data = SELECT_SEARCH_DATA.get(select);
   if (!data) return;
   data.input.value = "";
-  data.panel.hidden = true;
+  if (typeof data.hidePanel === "function") data.hidePanel();
 }
 
-function updateSelectSearchResults(select){
+function updateSelectSearchResults(select, opts = {}){
   const data = SELECT_SEARCH_DATA.get(select);
   if (!data) return;
-  const { input, panel, options } = data;
+  const { input, panel, list, options } = data;
   if (!options || !options.length) {
     panel.hidden = true;
-    panel.innerHTML = "";
+    if (list) list.innerHTML = "";
     return;
   }
   const term = simplificarTexto(input.value);
-  const base = options.slice(1);
+  const base = options.slice();
   const matches = base.filter(opt => {
     if (!term) return true;
     if (simplificarTexto(opt.label).includes(term)) return true;
@@ -4530,15 +4606,16 @@ function updateSelectSearchResults(select){
   if (!finalList.length) {
     if (!term) {
       panel.hidden = true;
-      panel.innerHTML = "";
+      if (list) list.innerHTML = "";
       return;
     }
-    panel.innerHTML = `<div class="select-search__empty">Nenhum resultado encontrado</div>`;
+    if (list) list.innerHTML = `<div class="select-search__empty">Nenhum resultado encontrado</div>`;
     panel.hidden = false;
     return;
   }
-  const rows = finalList.map(opt => `<button type="button" class="select-search__item" data-value="${escapeHTML(opt.value)}">${escapeHTML(opt.label)}</button>`).join("\n");
-  panel.innerHTML = rows;
+  const limit = Number.isFinite(opts.limit) ? opts.limit : 10;
+  const rows = finalList.slice(0, limit).map(opt => `<button type="button" class="select-search__item" data-value="${escapeHTML(opt.value)}">${escapeHTML(opt.label)}</button>`).join("\n");
+  if (list) list.innerHTML = rows;
   panel.hidden = false;
 }
 
@@ -4554,7 +4631,7 @@ function aplicarSelecaoBusca(select, rawValue){
     if (!fallback) select.selectedIndex = 0;
   }
   data.input.value = "";
-  data.panel.hidden = true;
+  if (typeof data.hidePanel === "function") data.hidePanel();
   select.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
@@ -5240,7 +5317,9 @@ function initCombos() {
         const prodSecao = meta?.sectionId || familiaMeta?.secaoId || "";
         if (prodSecao !== filtroSecao) return;
       }
-      options.push({ value: prod.id, label: prod.nome || prod.id });
+      const aliasSet = CARD_ALIAS_INDEX.get(prod.id);
+      const aliases = aliasSet ? Array.from(aliasSet) : [];
+      options.push({ value: prod.id, label: prod.nome || prod.id, aliases });
       added.add(prod.id);
     };
     if (!familiaId || familiaId === "Todas") {
@@ -5899,6 +5978,7 @@ function getStatusFilter(){
   return normalizarChaveStatus(raw) || "todos";
 }
 function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
+  SUBPRODUTO_TO_INDICADOR.clear();
   const productMeta = new Map();
   CARD_SECTIONS_DEF.forEach(sec => {
     sec.items.forEach(item => {
@@ -5968,6 +6048,29 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
     if (row.data && row.data > agg.ultimaAtualizacao) {
       agg.ultimaAtualizacao = row.data;
     }
+
+    const aliasCandidates = [
+      row.id_indicador,
+      row.ds_indicador,
+      row.produtoId,
+      row.produtoNome,
+      row.produto,
+      row.prodOrSub,
+    ];
+    if (!agg.aliases) agg.aliases = new Set();
+    aliasCandidates.forEach(val => {
+      const texto = limparTexto(val);
+      if (!texto) return;
+      agg.aliases.add(texto);
+      registrarAliasIndicador(agg.id, texto);
+    });
+    const subprodutoTexto = limparTexto(row.subproduto || row.subProduto || "");
+    if (subprodutoTexto) {
+      if (!agg.subProdutos) agg.subProdutos = new Set();
+      agg.subProdutos.add(subprodutoTexto);
+      registrarAliasIndicador(agg.id, subprodutoTexto);
+      SUBPRODUTO_TO_INDICADOR.set(simplificarTexto(subprodutoTexto), agg.id);
+    }
   });
 
   const sections = [];
@@ -6006,6 +6109,8 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
       };
       aplicarIndicadorAliases(cardBase, agg.id, agg.nome);
       cardBase.prodOrSub = agg.produtoNome || agg.nome || agg.id;
+      if (agg.aliases) cardBase.aliases = Array.from(agg.aliases);
+      if (agg.subProdutos) cardBase.subProdutos = Array.from(agg.subProdutos);
       return cardBase;
     }).filter(Boolean);
     if (items.length) {
@@ -6069,6 +6174,8 @@ function renderFamilias(sections, summary){
   const secaoFilterId = $("#f-secao")?.value || "Todas";
   const familiaFilterId = $("#f-familia")?.value || "Todas";
   const produtoFilterId = $("#f-produto")?.value || "Todos";
+  const produtoFilterSlug = simplificarTexto(produtoFilterId);
+  const produtoFilterResolved = produtoFilterSlug ? (SUBPRODUTO_TO_INDICADOR.get(produtoFilterSlug) || resolverIndicadorPorAlias(produtoFilterId)) : resolverIndicadorPorAlias(produtoFilterId);
 
   let atingidosVisiveis = 0;
   let pontosAtingidosVisiveis = 0;
@@ -6093,7 +6200,10 @@ function renderFamilias(sections, summary){
 
     const itemsFiltered = sec.items.filter(it=>{
       const okStatus = status === "atingidos" ? it.atingido : (status === "nao" ? !it.atingido : true);
-      const okProduto = (produtoFilterId === "Todos" || produtoFilterId === "Todas" || it.id === produtoFilterId);
+      const aliasList = [it.id, it.nome, it.produtoNome, it.ds_indicador, it.prodOrSub, it.aliases || [], it.subProdutos || []];
+      const okProduto = (produtoFilterId === "Todos" || produtoFilterId === "Todas")
+        || matchesSelection(produtoFilterId, aliasList)
+        || (produtoFilterResolved && (it.id === produtoFilterResolved || matchesSelection(produtoFilterResolved, aliasList)));
       const okFamilia = !applyFamiliaFilter
         || it.familiaId === familiaFilterId
         || it.familiaLabel === familiaFilterId
@@ -7809,6 +7919,15 @@ function renderCampanhasView(){
     const start = sprint.period?.start ? formatBRDate(sprint.period.start) : "";
     const end = sprint.period?.end ? formatBRDate(sprint.period.end) : "";
     periodEl.textContent = start && end ? `De ${start} até ${end}` : "Período não informado";
+  }
+
+  const validityEl = document.getElementById("camp-validity");
+  if (validityEl) {
+    const start = sprint.period?.start ? formatBRDate(sprint.period.start) : "";
+    const end = sprint.period?.end ? formatBRDate(sprint.period.end) : "";
+    validityEl.textContent = start && end
+      ? `Vigência da campanha: de ${start} até ${end}`
+      : "Vigência não informada";
   }
 
   const headline = document.getElementById("camp-headline");

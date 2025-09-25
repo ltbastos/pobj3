@@ -1,4 +1,4 @@
-Registro ID;Produto ID;Produto Nome;Familia ID;Familia Nome;Data;Competencia;Variavel Meta;Variavel Real
+Registro ID;id_indicador;ds_indicador;Familia ID;Familia Nome;Data;Competencia;Variavel Meta;Variavel Real
 REG-001-2025-01;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-01-05;2025-01-01;105600;88704
 REG-002-2025-01;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-01-06;2025-01-01;79200;66528
 REG-003-2025-01;portab_prev;Portabilidade de Previdência Privada;captacao;CAPTAÇÃO;2025-01-07;2025-01-01;62700;52668
@@ -152,3 +152,30 @@ REG-014-2025-09;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;
 REG-015-2025-09;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-09-19;2025-09-01;61000;51240
 REG-016-2025-09;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-09-20;2025-09-01;56000;47040
 REG-017-2025-09;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-09-21;2025-09-01;52000;43680
+SAL-001-2025-01;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-01-06;2025-01-01;94050;96872
+SAL-002-2025-02;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-02-06;2025-02-01;98340;101290
+SAL-003-2025-03;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-03-06;2025-03-01;103125;106219
+SAL-004-2025-01;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-01-06;2025-01-01;50960;52489
+SAL-005-2025-02;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-02-06;2025-02-01;53480;55084
+SAL-006-2025-03;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-03-06;2025-03-01;57400;59122
+SAL-007-2025-01;cartoes;Cartões;ligadas;LIGADAS;2025-01-06;2025-01-01;52480;54054
+SAL-008-2025-02;cartoes;Cartões;ligadas;LIGADAS;2025-02-06;2025-02-01;55040;56691
+SAL-009-2025-03;cartoes;Cartões;ligadas;LIGADAS;2025-03-06;2025-03-01;58240;59987
+BH-001-2025-01;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-01-06;2025-01-01;96600;99498
+BH-002-2025-02;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-02-06;2025-02-01;101660;104710
+BH-003-2025-03;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-03-06;2025-03-01;108560;111817
+BH-004-2025-01;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-01-06;2025-01-01;36490;37585
+BH-005-2025-02;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-02-06;2025-02-01;38540;39696
+BH-006-2025-03;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-03-06;2025-03-01;41410;42652
+BH-007-2025-01;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-01-06;2025-01-01;20300;20909
+BH-008-2025-02;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-02-06;2025-02-01;22400;23072
+BH-009-2025-03;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-03-06;2025-03-01;25200;25956
+POA-001-2025-01;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-01-06;2025-01-01;46020;47401
+POA-002-2025-02;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-02-06;2025-02-01;48360;49811
+POA-003-2025-03;conquista_qualif_pj;Conquista Qualificada Gerenciado PJ;clientes;CLIENTES;2025-03-06;2025-03-01;50700;52221
+POA-004-2025-01;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-01-06;2025-01-01;37800;38934
+POA-005-2025-02;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-02-06;2025-02-01;39600;40788
+POA-006-2025-03;conquista_folha;Conquista de Clientes Folha de Pagamento;clientes;CLIENTES;2025-03-06;2025-03-01;41760;43013
+POA-007-2025-01;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-01-06;2025-01-01;30600;31518
+POA-008-2025-02;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-02-06;2025-02-01;31960;32919
+POA-009-2025-03;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-03-06;2025-03-01;33660;34670
