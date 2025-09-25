@@ -179,3 +179,15 @@ POA-006-2025-03;conquista_folha;Conquista de Clientes Folha de Pagamento;cliente
 POA-007-2025-01;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-01-06;2025-01-01;30600;31518
 POA-008-2025-02;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-02-06;2025-02-01;31960;32919
 POA-009-2025-03;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-03-06;2025-03-01;33660;34670
+MAN-001-2025-09;captacao_bruta;Captação Bruta;captacao;CAPTAÇÃO;2025-09-12;2025-09-01;86000;82000
+MAN-002-2025-09;prod_credito_pj;Produção de Crédito PJ;credito;CRÉDITO;2025-09-14;2025-09-01;150000;142000
+MAN-003-2025-09;rec_credito;Recuperação de Crédito;financeiro;FINANCEIRO;2025-09-10;2025-09-01;82000;78000
+FLO-001-2025-09;captacao_liquida;Captação Líquida;captacao;CAPTAÇÃO;2025-09-13;2025-09-01;72000;69000
+FLO-002-2025-09;rotativo_pj_vol;Limite Rotativo PJ (Volume);credito;CRÉDITO;2025-09-16;2025-09-01;112000;108500
+FLO-003-2025-09;seguros;Seguros;ligadas;LIGADAS;2025-09-18;2025-09-01;73000;71200
+GOI-001-2025-09;bradesco_expresso;Bradesco Expresso;clientes;CLIENTES;2025-09-15;2025-09-01;53000;51200
+GOI-002-2025-09;sucesso_equipe_credito;Sucesso de Equipe Crédito;produtividade;PRODUTIVIDADE;2025-09-17;2025-09-01;64000;61200
+GOI-003-2025-09;rec_vencidos_59;Recuperação de Vencidos até 59 dias;financeiro;FINANCEIRO;2025-09-11;2025-09-01;48000;46200
+CAM-001-2025-09;centralizacao;Centralização de Caixa;captacao;CAPTAÇÃO;2025-09-09;2025-09-01;136000;131500
+CAM-002-2025-09;rotativo_pj_qtd;Limite Rotativo PJ (Quantidade);credito;CRÉDITO;2025-09-19;2025-09-01;102000;99000
+CAM-003-2025-09;consorcios;Consórcios;ligadas;LIGADAS;2025-09-22;2025-09-01;67000;64500

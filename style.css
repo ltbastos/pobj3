@@ -1313,6 +1313,8 @@ select.input{
 .camp-validity{ font-size:13px; color:var(--muted); font-weight:500; }
 .camp-period{ display:inline-flex; align-items:center; gap:8px; font-weight:700; color:#111827; }
 .camp-period i{ color:var(--brand); font-size:16px; }
+.camp-period--validity{ font-weight:500; color:var(--muted); }
+.camp-period--validity .camp-validity{ font-weight:500; }
 
 .camp-hero__stats{ flex:1 1 200px; display:grid; grid-template-columns:repeat(auto-fit, minmax(140px,1fr)); gap:12px; }
 .camp-hero__stat{ background:#fff; border:1px solid rgba(179,0,0,.12); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:4px; box-shadow:0 10px 24px rgba(179,0,0,.08); }

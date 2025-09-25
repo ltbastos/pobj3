@@ -874,7 +874,18 @@ function normalizarLinhasProdutos(rows){
       familiaNome,
       familiaId,
     };
-    return aplicarIndicadorAliases(base, produtoId, produtoNome);
+    const resultado = aplicarIndicadorAliases(base, produtoId, produtoNome);
+    const familiaAlias = resolverIndicadorPorAlias(familiaNome) || resolverIndicadorPorAlias(familiaId);
+    if (familiaAlias) {
+      const candidatos = [produtoNome, produtoId];
+      candidatos.forEach(alias => {
+        const texto = limparTexto(alias);
+        if (!texto) return;
+        registrarAliasIndicador(familiaAlias, texto);
+        SUBPRODUTO_TO_INDICADOR.set(simplificarTexto(texto), familiaAlias);
+      });
+    }
+    return resultado;
   }).filter(row => row.familiaId && row.produtoId);
 }
 
@@ -883,6 +894,7 @@ function montarDadosProdutos(rows){
   const famMap = new Map();
   const byFamilia = new Map();
   PRODUTO_TO_FAMILIA = new Map();
+  SUBPRODUTO_TO_INDICADOR.clear();
 
   rows.forEach(row => {
     const familiaId = row.familiaId;
@@ -1673,7 +1685,11 @@ const DEFAULT_CAMPAIGN_UNIT_DATA = [
   { id: "sd-capital", diretoria: "DR 02", diretoriaNome: "Sudeste", gerenciaRegional: "GR 03", regional: "Regional São Paulo", gerenteGestao: "GG 03", agenciaCodigo: "Ag 1004", agencia: "Agência 1004 • Avenida Paulista", segmento: "Negócios", produtoId: "cartoes", subproduto: "À vista", gerente: "Gerente 4", gerenteNome: "Bruno Garcia", carteira: "Carteira Capital", linhas: 105.6, cash: 102.4, conquista: 100.2, atividade: true, data: "2025-09-18" },
   { id: "sc-curitiba", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 04", regional: "Regional Curitiba", gerenteGestao: "GG 02", agenciaCodigo: "Ag 1003", agencia: "Agência 1003 • Curitiba Batel", segmento: "MEI", produtoId: "seguros", subproduto: "Aplicação", gerente: "Gerente 5", gerenteNome: "Carla Menezes", carteira: "Carteira Curitiba", linhas: 109.6, cash: 101.2, conquista: 98.5, atividade: true, data: "2025-09-11" },
   { id: "sc-litoral", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 04", regional: "Regional Curitiba", gerenteGestao: "GG 02", agenciaCodigo: "Ag 1003", agencia: "Agência 1003 • Curitiba Batel", segmento: "MEI", produtoId: "bradesco_expresso", subproduto: "Resgate", gerente: "Gerente 5", gerenteNome: "Carla Menezes", carteira: "Carteira Litoral", linhas: 95.4, cash: 90.1, conquista: 92.8, atividade: true, data: "2025-09-07" },
-  { id: "sc-vale", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 04", regional: "Regional Curitiba", gerenteGestao: "GG 02", agenciaCodigo: "Ag 1003", agencia: "Agência 1003 • Curitiba Batel", segmento: "MEI", produtoId: "rec_credito", subproduto: "À vista", gerente: "Gerente 5", gerenteNome: "Carla Menezes", carteira: "Carteira Vale", linhas: 120.2, cash: 115.6, conquista: 110.4, atividade: true, data: "2025-09-17" }
+  { id: "sc-vale", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 04", regional: "Regional Curitiba", gerenteGestao: "GG 02", agenciaCodigo: "Ag 1003", agencia: "Agência 1003 • Curitiba Batel", segmento: "MEI", produtoId: "rec_credito", subproduto: "À vista", gerente: "Gerente 5", gerenteNome: "Carla Menezes", carteira: "Carteira Vale", linhas: 120.2, cash: 115.6, conquista: 110.4, atividade: true, data: "2025-09-17" },
+  { id: "nn-manaus", diretoria: "DR 01", diretoriaNome: "Norte & Nordeste", gerenciaRegional: "GR 05", regional: "Regional Manaus", gerenteGestao: "GG 05", agenciaCodigo: "Ag 2001", agencia: "Agência 2001 • Manaus Centro", segmento: "Negócios", produtoId: "captacao_bruta", subproduto: "Aplicação", gerente: "Lara Costa", gerenteNome: "Lara Costa", carteira: "Carteira Amazônia", linhas: 119.4, cash: 111.8, conquista: 103.2, atividade: true, data: "2025-09-12" },
+  { id: "sc-floripa", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 06", regional: "Regional Florianópolis", gerenteGestao: "GG 06", agenciaCodigo: "Ag 2002", agencia: "Agência 2002 • Florianópolis Beira-Mar", segmento: "Empresas", produtoId: "rotativo_pj_vol", subproduto: "Volume", gerente: "Sofia Martins", gerenteNome: "Sofia Martins", carteira: "Carteira Litoral", linhas: 108.6, cash: 116.3, conquista: 105.5, atividade: true, data: "2025-09-16" },
+  { id: "sc-goiania", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 07", regional: "Regional Goiânia", gerenteGestao: "GG 07", agenciaCodigo: "Ag 2003", agencia: "Agência 2003 • Goiânia Setor Bueno", segmento: "MEI", produtoId: "bradesco_expresso", subproduto: "Expresso", gerente: "Tiago Andrade", gerenteNome: "Tiago Andrade", carteira: "Carteira Centro-Oeste", linhas: 102.5, cash: 94.2, conquista: 97.1, atividade: true, data: "2025-09-15" },
+  { id: "sd-campinas", diretoria: "DR 02", diretoriaNome: "Sudeste", gerenciaRegional: "GR 05", regional: "Regional Campinas", gerenteGestao: "GG 05", agenciaCodigo: "Ag 2004", agencia: "Agência 2004 • Campinas Tech", segmento: "Negócios", produtoId: "centralizacao", subproduto: "Cash", gerente: "Eduardo Freitas", gerenteNome: "Eduardo Freitas", carteira: "Carteira Inovação", linhas: 123.1, cash: 129.4, conquista: 111.7, atividade: true, data: "2025-09-09" }
 ];
 DEFAULT_CAMPAIGN_UNIT_DATA.forEach(unit => aplicarIndicadorAliases(unit, unit.produtoId, unit.produtoNome || unit.produtoId));
 
@@ -4716,7 +4732,7 @@ function ensureSegmentoField() {
   const actions = filters.querySelector(".filters__actions");
   const wrap = document.createElement("div");
   wrap.className = "filters__group";
-  wrap.innerHTML = `<label>Segmento</label><select id="f-segmento" class="input" data-search="true"></select>`;
+  wrap.innerHTML = `<label>Segmento</label><select id="f-segmento" class="input"></select>`;
   filters.insertBefore(wrap, actions);
 }
 function getFilterValues() {
@@ -5248,6 +5264,16 @@ function initCombos() {
     if (arr.some(opt => opt.value === current)) {
       el.value = current;
     }
+    if (el.dataset.search === "true") {
+      ensureSelectSearch(el);
+      const options = arr.map(opt => ({
+        value: opt.value,
+        label: opt.label,
+        aliases: Array.isArray(opt.aliases) ? opt.aliases : [],
+      }));
+      storeSelectSearchOptions(el, options);
+      syncSelectSearchInput(el);
+    }
   };
 
   const compareLabels = (a, b) => String(a.label || "").localeCompare(String(b.label || ""), "pt-BR", { sensitivity: "base" });
@@ -5295,14 +5321,19 @@ function initCombos() {
   );
   fill("#f-secao", secaoOptions);
 
-  const familiaOptionsRaw = [{ value: "Todas", label: "Todas" }].concat(
+  const familiaOptionsRaw = [{ value: "Todas", label: "Todas", aliases: ["Todas"] }].concat(
     dedupeOptions(
       FAMILIA_DATA,
       f => f?.id,
       f => f?.nome || f?.id
     )
   );
-  const familiaOptions = familiaOptionsRaw.filter(opt => opt.value === "Todas" || !SECTION_IDS.has(opt.value));
+  const familiaOptions = familiaOptionsRaw
+    .filter(opt => opt.value === "Todas" || !SECTION_IDS.has(opt.value))
+    .map(opt => ({
+      ...opt,
+      aliases: Array.isArray(opt.aliases) ? opt.aliases : [opt.label, opt.value],
+    }));
   fill("#f-familia", familiaOptions);
 
   const buildProdutoOptions = (familiaId, secaoId) => {
@@ -5318,8 +5349,13 @@ function initCombos() {
         if (prodSecao !== filtroSecao) return;
       }
       const aliasSet = CARD_ALIAS_INDEX.get(prod.id);
-      const aliases = aliasSet ? Array.from(aliasSet) : [];
-      options.push({ value: prod.id, label: prod.nome || prod.id, aliases });
+      const aliasList = new Set(Array.isArray(prod.aliases) ? prod.aliases : []);
+      if (aliasSet instanceof Set) {
+        aliasSet.forEach(item => aliasList.add(item));
+      }
+      aliasList.add(prod.id);
+      if (prod.nome) aliasList.add(prod.nome);
+      options.push({ value: prod.id, label: prod.nome || prod.id, aliases: Array.from(aliasList) });
       added.add(prod.id);
     };
     if (!familiaId || familiaId === "Todas") {
@@ -7872,6 +7908,24 @@ function renderCampaignRanking(container, sprint, options = {}){
   state.animations.campanhas.ranking = nextRanking;
 }
 
+function formatCampaignValidity(period) {
+  const startISO = period?.start ? converterDataISO(period.start) : "";
+  const endISO = period?.end ? converterDataISO(period.end) : "";
+  if (!startISO && !endISO) return "";
+  const startDate = startISO ? dateUTCFromISO(startISO) : null;
+  const endDate = endISO ? dateUTCFromISO(endISO) : null;
+  const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "long" });
+  const endFormatter = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  const capitalize = (txt) => txt ? txt.charAt(0).toUpperCase() + txt.slice(1) : "";
+  const startLabelRaw = startDate ? monthFormatter.format(startDate) : (startISO ? formatBRDate(startISO) : "");
+  const startLabel = capitalize(startLabelRaw);
+  const endLabel = endDate ? endFormatter.format(endDate) : (endISO ? formatBRDate(endISO) : "");
+  if (startLabel && endLabel) return `Vigência da campanha: de ${startLabel} até ${endLabel}`;
+  if (startLabel) return `Vigência da campanha a partir de ${startLabel}`;
+  if (endLabel) return `Vigência da campanha até ${endLabel}`;
+  return "";
+}
+
 function renderCampanhasView(){
   const host = document.getElementById("view-campanhas");
   if (!host) return;
@@ -7916,18 +7970,17 @@ function renderCampanhasView(){
 
   const periodEl = document.getElementById("camp-period");
   if (periodEl) {
-    const start = sprint.period?.start ? formatBRDate(sprint.period.start) : "";
-    const end = sprint.period?.end ? formatBRDate(sprint.period.end) : "";
-    periodEl.textContent = start && end ? `De ${start} até ${end}` : "Período não informado";
+    const start = state.period?.start ? formatBRDate(state.period.start) : "";
+    const end = state.period?.end ? formatBRDate(state.period.end) : "";
+    periodEl.textContent = start && end
+      ? `Período filtrado: de ${start} até ${end}`
+      : "Período filtrado não informado";
   }
 
   const validityEl = document.getElementById("camp-validity");
   if (validityEl) {
-    const start = sprint.period?.start ? formatBRDate(sprint.period.start) : "";
-    const end = sprint.period?.end ? formatBRDate(sprint.period.end) : "";
-    validityEl.textContent = start && end
-      ? `Vigência da campanha: de ${start} até ${end}`
-      : "Vigência não informada";
+    const validityText = formatCampaignValidity(sprint.period || {});
+    validityEl.textContent = validityText || "Vigência não informada";
   }
 
   const headline = document.getElementById("camp-headline");
