@@ -4853,6 +4853,10 @@ function ensureContracts(r) {
   if (r._contracts) return r._contracts;
   const n = 2 + Math.floor(Math.random() * 3), arr = [];
   const periodYear = Number((state.period?.start || todayISO()).slice(0,4)) || new Date().getFullYear();
+  const totalPeso = Math.max(0, toNumber(r.peso ?? r.pontosMeta ?? 0));
+  const totalPontos = Math.max(0, toNumber(r.pontosBrutos ?? r.pontos ?? r.pontosCumpridos ?? 0));
+  let pesoDistribuido = 0;
+  let pontosDistribuidos = 0;
   for (let i = 0; i < n; i++) {
     const id = `CT-${periodYear}-${String(Math.floor(1e6 + Math.random() * 9e6)).padStart(7, "0")}`;
     const valor = Math.round((r.realizado / n) * (0.6 + Math.random() * 0.9)),
@@ -4874,6 +4878,12 @@ function ensureContracts(r) {
       dataCancelamento = isoFromUTCDate(cancelDateUTC);
       motivoCancelamento = MOTIVOS_CANCELAMENTO[Math.floor(Math.random() * MOTIVOS_CANCELAMENTO.length)];
     }
+    const restantes = n - i;
+    const pesoShare = restantes === 1 ? Math.max(0, totalPeso - pesoDistribuido) : (totalPeso / n);
+    pesoDistribuido += pesoShare;
+    const pontosShareBrutos = restantes === 1 ? Math.max(0, totalPontos - pontosDistribuidos) : (totalPontos / n);
+    pontosDistribuidos += pontosShareBrutos;
+    const pontosShare = Math.max(0, Math.min(pesoShare, pontosShareBrutos));
     arr.push({
       id,
       produto: r.produto,
@@ -4884,6 +4894,10 @@ function ensureContracts(r) {
       meta,
       ating: meta ? (valor / meta) : 0,
       data: r.data,
+      peso: pesoShare,
+      pontosMeta: pesoShare,
+      pontos: pontosShare,
+      pontosBrutos: pontosShareBrutos,
       canalVenda,
       tipoVenda,
       modalidadePagamento,
@@ -4927,8 +4941,11 @@ function buildTree(list, startKey) {
     const realizado = arr.reduce((a,b)=>a+(b.realizado||0),0),
           meta      = arr.reduce((a,b)=>a+(b.meta||0),0),
           qtd       = arr.reduce((a,b)=>a+(b.qtd||0),0),
-          data      = arr.reduce((mx,b)=> b.data>mx?b.data:mx, "0000-00-00");
-    return { realizado, meta, qtd, ating: meta? realizado/meta : 0, data };
+          data      = arr.reduce((mx,b)=> b.data>mx?b.data:mx, "0000-00-00"),
+          peso      = arr.reduce((a,b)=>a+Math.max(0, toNumber(b.peso ?? b.pontosMeta ?? 0)),0),
+          pontosBr  = arr.reduce((a,b)=>a+Math.max(0, toNumber(b.pontosBrutos ?? b.pontos ?? 0)),0);
+    const pontos = Math.max(0, Math.min(peso, pontosBr));
+    return { realizado, meta, qtd, ating: meta? realizado/meta : 0, data, peso, pontos, pontosMeta: peso, pontosBrutos: pontosBr };
   }
 
   function buildDetailGroups(arr){
@@ -5012,6 +5029,7 @@ function buildTree(list, startKey) {
       const labelText = resolveTreeLabel(levelKey, subset, k);
       return {
         type:"grupo", level, label:labelText, realizado:a.realizado, meta:a.meta, qtd:a.qtd, ating:a.ating, data:a.data,
+        peso:a.peso, pontos:a.pontos, pontosMeta:a.pontosMeta, pontosBrutos:a.pontosBrutos,
         breadcrumb:[labelText], detailGroups: [],
         children: next ? buildLevel(subset, next, level+1) : []
       };
@@ -5869,6 +5887,9 @@ function renderResumoKPI(summary, context = {}) {
   };
 
   const buildCard = (titulo, iconClass, atingidos, total, fmtType, visibleAting = null, visibleTotal = null, options = {}) => {
+    const labelText = options.labelText || titulo;
+    const labelTitle = escapeHTML(labelText);
+    const labelHtml = options.labelHTML || escapeHTML(labelText);
     const pctRaw = total ? (atingidos / total) * 100 : 0;
     const pct100 = Math.max(0, Math.min(100, pctRaw));
     const hbClass = hitbarClass(pctRaw);
@@ -5887,7 +5908,7 @@ function renderResumoKPI(summary, context = {}) {
         <div class="kpi-strip__main">
           <span class="kpi-icon"><i class="${iconClass}"></i></span>
           <div class="kpi-strip__text">
-            <span class="kpi-strip__label" title="${titulo}">${titulo}</span>
+            <span class="kpi-strip__label" title="${labelTitle}">${labelHtml}</span>
             <div class="kpi-strip__stats">
               <span class="kpi-stat" title="${atgTitle}">Atg: <strong>${formatDisplay(fmtType, atingidos)}</strong></span>
               <span class="kpi-stat" title="${totTitle}">Total: <strong>${formatDisplay(fmtType, total)}</strong></span>
@@ -5906,7 +5927,19 @@ function renderResumoKPI(summary, context = {}) {
   kpi.innerHTML = [
     buildCard("Indicadores", "ti ti-list-check", indicadoresAtingidos, indicadoresTotal, "int", visibleItemsHitCount),
     buildCard("Pontos", "ti ti-medal", pontosAtingidos, pontosTotal, "pts", visiblePointsHit),
-    buildCard("Variável", "ti ti-cash", varRealBase, varTotalBase, "brl", visibleVarAtingido, visibleVarMeta)
+    buildCard(
+      "Variável Estimada",
+      "ti ti-cash",
+      varRealBase,
+      varTotalBase,
+      "brl",
+      visibleVarAtingido,
+      visibleVarMeta,
+      {
+        labelText: "Variável Estimada",
+        labelHTML: 'Variável <span class="kpi-label-emphasis">Estimada</span>'
+      }
+    )
   ].join("");
 
   triggerBarAnimation(kpi.querySelectorAll('.hitbar'), shouldAnimateResumo);
