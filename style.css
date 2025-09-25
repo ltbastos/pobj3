@@ -387,6 +387,7 @@ select.input{
 .filters__group label{ font-size:12px; color:var(--muted); display:block; margin-bottom:6px; }
 .filters__group{ display:flex; flex-direction:column; gap:6px; }
 .select-search{ position:relative; }
+.select-search.is-open{ z-index:2200; }
 .select-search select{ width:100%; }
 .select-search.is-open select{ border-color:#2563eb; box-shadow:var(--ring); }
 .select-search__panel{
@@ -398,7 +399,7 @@ select.input{
   border:1px solid var(--stroke);
   border-radius:12px;
   box-shadow:var(--shadow);
-  z-index:1800;
+  z-index:2600;
   padding:10px 10px 8px;
   display:flex;
   flex-direction:column;
@@ -448,7 +449,7 @@ select.input{
 
 /* Filtros avanÃ§ados (slider) */
 .adv{ max-height:0; overflow:hidden; transition:max-height .35s ease; }
-.adv.is-open{ max-height:600px; }
+.adv.is-open{ max-height:600px; overflow:visible; }
 .adv__grid{ display:grid; grid-template-columns:repeat(3, minmax(240px,1fr)); gap:12px; align-items:end; padding-top:8px; }
 
 .card--filters{ position:relative; overflow:visible; }
