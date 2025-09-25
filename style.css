@@ -404,6 +404,7 @@ select.input{
   flex-direction:column;
   gap:8px;
 }
+.select-search__panel[hidden]{ display:none !important; }
 .select-search__box{ display:flex; }
 .select-search__input{ padding:8px 10px; border-radius:10px; border:1px solid var(--stroke); background:#fff; color:var(--text); width:100%; }
 .select-search__input:focus{ outline:none; box-shadow:var(--ring); border-color:#cbd5e1; }
