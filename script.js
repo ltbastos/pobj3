@@ -2197,12 +2197,14 @@ const DETAIL_SUBTABLE_COLUMNS = [
 
 // Aqui eu montei os metadados das colunas da tabela principal para poder ligar/desligar conforme a visão escolhida.
 const DETAIL_COLUMNS = [
-  { id: "quantidade",    label: "Quantidade",       cellClass: "",        render: renderDetailQtyCell },
-  { id: "realizado",     label: "Realizado (R$)",   cellClass: "",        render: renderDetailRealizadoCell },
-  { id: "meta",          label: "Meta (R$)",        cellClass: "",        render: renderDetailMetaCell },
-  { id: "atingimento_v", label: "Atingimento (R$)", cellClass: "",        render: renderDetailAchievementValueCell },
-  { id: "atingimento_p", label: "Atingimento (%)",  cellClass: "",        render: renderDetailAchievementPercentCell },
-  { id: "data",          label: "Data",             cellClass: "",        render: renderDetailDateCellFromNode },
+  { id: "quantidade",    label: "Quantidade",          cellClass: "", render: renderDetailQtyCell },
+  { id: "realizado",     label: "Realizado (R$)",      cellClass: "", render: renderDetailRealizadoCell },
+  { id: "meta",          label: "Meta (R$)",           cellClass: "", render: renderDetailMetaCell },
+  { id: "atingimento_v", label: "Atingimento (R$)",    cellClass: "", render: renderDetailAchievementValueCell },
+  { id: "atingimento_p", label: "Atingimento (%)",     cellClass: "", render: renderDetailAchievementPercentCell },
+  { id: "pontos",        label: "Pontos (pts)",        cellClass: "", render: renderDetailPointsCell },
+  { id: "peso",          label: "Peso (pts)",          cellClass: "", render: renderDetailPesoCell },
+  { id: "data",          label: "Data",                cellClass: "", render: renderDetailDateCellFromNode },
 ];
 const DETAIL_DEFAULT_VIEW = {
   id: "default",
@@ -2254,6 +2256,18 @@ function renderDetailAchievementValueCell(node = {}){
 function renderDetailAchievementPercentCell(node = {}){
   const ratio = Number(node.ating || 0);
   return renderDetailAchievementPercent(ratio);
+}
+
+function renderDetailPointsCell(node = {}){
+  const pontos = Math.max(0, toNumber(node.pontos ?? node.pontosCumpridos ?? 0));
+  const formatted = formatPoints(pontos, { withUnit: true });
+  return `<span title="${formatted}">${formatted}</span>`;
+}
+
+function renderDetailPesoCell(node = {}){
+  const peso = Math.max(0, toNumber(node.peso ?? node.pontosMeta ?? 0));
+  const formatted = formatPoints(peso, { withUnit: true });
+  return `<span title="${formatted}">${formatted}</span>`;
 }
 
 function renderDetailDateCellFromNode(node = {}){
@@ -7966,15 +7980,6 @@ function renderCampanhasView(){
       ? ` Exibindo ${fmtINT.format(visibleUnits)} ${pluralLabel} filtradas.`
       : " Nenhuma unidade encontrada para o filtro atual.";
     noteEl.textContent = `${base}${suffix}`.trim();
-  }
-
-  const periodEl = document.getElementById("camp-period");
-  if (periodEl) {
-    const start = state.period?.start ? formatBRDate(state.period.start) : "";
-    const end = state.period?.end ? formatBRDate(state.period.end) : "";
-    periodEl.textContent = start && end
-      ? `Período filtrado: de ${start} até ${end}`
-      : "Período filtrado não informado";
   }
 
   const validityEl = document.getElementById("camp-validity");
