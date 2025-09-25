@@ -398,7 +398,7 @@ select.input{
   border:1px solid var(--stroke);
   border-radius:12px;
   box-shadow:var(--shadow);
-  z-index:1200;
+  z-index:1800;
   padding:10px 10px 8px;
   display:flex;
   flex-direction:column;
@@ -450,6 +450,8 @@ select.input{
 .adv{ max-height:0; overflow:hidden; transition:max-height .35s ease; }
 .adv.is-open{ max-height:600px; }
 .adv__grid{ display:grid; grid-template-columns:repeat(3, minmax(240px,1fr)); gap:12px; align-items:end; padding-top:8px; }
+
+.card--filters{ position:relative; overflow:visible; }
 
 @media (max-width: 900px){
   .card--filters{ position:relative; overflow:hidden; }
