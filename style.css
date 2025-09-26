@@ -856,6 +856,14 @@ select.input{
 /* =========================================================
    Tabela em Ã¡rvore (Detalhamento)
    ========================================================= */
+#gridRanking{
+  overflow-x:auto;
+  width:100%;
+  max-width:100%;
+}
+#gridRanking table{
+  min-width:720px;
+}
 .tree-table{
   width:100%; border-collapse:separate; border-spacing:0;
   background:#fff; border:1px solid var(--stroke); border-radius:14px; overflow:hidden;
@@ -1027,7 +1035,7 @@ select.input{
 .rk-control{ display:flex; flex-direction:column; gap:4px; min-width:180px; }
 .rk-control label{ font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#64748b; }
 .rk-product-controls{ display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; }
-.rk-product-controls .segmented{ margin-top:22px; }
+.rk-product-controls .segmented{ margin-top:0; }
 .rk-controls{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .segmented{ display:inline-flex; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:10px; padding:3px; }
 .seg-btn{ border:0; background:transparent; padding:6px 10px; border-radius:8px; cursor:pointer; font-weight:700; color:#475569; }
@@ -1750,7 +1758,6 @@ select.input{
   .rk-head{ flex-direction:column; align-items:stretch; }
   .rk-head__controls{ align-items:stretch; }
   .rk-product-controls{ align-items:stretch; }
-  .rk-product-controls .segmented{ margin-top:0; }
 }
 
 body.has-modal-open{ overflow:hidden; }

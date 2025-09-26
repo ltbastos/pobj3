@@ -2210,7 +2210,7 @@ const DETAIL_COLUMNS = [
   { id: "pontos",        label: "Pontos (pts)",        cellClass: "", render: renderDetailPointsCell, sortType: "number", getValue: (node = {}) => toNumber(node.pontos ?? node.pontosCumpridos) },
   { id: "peso",          label: "Peso (pts)",          cellClass: "", render: renderDetailPesoCell, sortType: "number", getValue: (node = {}) => toNumber(node.peso ?? node.pontosMeta) },
   { id: "data",          label: "Data",                cellClass: "", render: renderDetailDateCellFromNode, sortType: "date", getValue: (node = {}) => node.data || "" },
-  { id: "meta_diaria",   label: "Meta diária (R$)",    cellClass: "", render: renderDetailMetaDiariaCell, sortType: "number", getValue: (node = {}) => toNumber(node.metaDiaria) },
+  { id: "meta_diaria",   label: "Meta diária total (R$)",    cellClass: "", render: renderDetailMetaDiariaCell, sortType: "number", getValue: (node = {}) => toNumber(node.metaDiaria) },
   { id: "referencia_hoje", label: "Referência para hoje (R$)", cellClass: "", render: renderDetailReferenciaHojeCell, sortType: "number", getValue: (node = {}) => toNumber(node.referenciaHoje) },
   { id: "meta_diaria_necessaria", label: "Meta diária necessária (R$)", cellClass: "", render: renderDetailMetaDiariaNecessariaCell, sortType: "number", getValue: (node = {}) => toNumber(node.metaDiariaNecessaria) },
   { id: "projecao",      label: "Projeção (R$)",       cellClass: "", render: renderDetailProjecaoCell, sortType: "number", getValue: (node = {}) => toNumber(node.projecao) },
@@ -8247,10 +8247,6 @@ function createRankingView(){
             </select>
           </div>
           <div class="rk-product-controls" id="rk-product-wrapper" hidden>
-            <div class="rk-control">
-              <label for="rk-product" class="muted">Produto</label>
-              <select id="rk-product" class="input input--sm"></select>
-            </div>
             <div class="segmented seg-mini" id="rk-product-mode" role="group" aria-label="Modo do ranking por produto">
               <button type="button" class="seg-btn" data-mode="melhores">Melhores</button>
               <button type="button" class="seg-btn" data-mode="piores">Piores</button>
@@ -8265,16 +8261,10 @@ function createRankingView(){
   main.appendChild(section);
 
   const typeSelect = section.querySelector('#rk-type');
-  const productSelect = section.querySelector('#rk-product');
   const modeGroup = section.querySelector('#rk-product-mode');
 
   typeSelect?.addEventListener('change', () => {
     state.rk.type = typeSelect.value;
-    renderRanking();
-  });
-
-  productSelect?.addEventListener('change', () => {
-    state.rk.product = productSelect.value;
     renderRanking();
   });
 
@@ -8351,7 +8341,6 @@ function renderRanking(){
 
   const typeSelect = document.getElementById("rk-type");
   const productWrapper = document.getElementById("rk-product-wrapper");
-  const productSelect = document.getElementById("rk-product");
   const modeGroup = document.getElementById("rk-product-mode");
 
   const level = deriveRankingLevelFromFilters();
@@ -8388,48 +8377,72 @@ function renderRanking(){
       });
     }
 
-    const productMap = new Map();
-    rowsBase.forEach(row => {
-      const id = row.produtoId || row.prodOrSub || row.produto || row.subproduto;
-      if (!id || productMap.has(id)) return;
-      const label = row.produtoNome || row.prodOrSub || row.subproduto || row.produto || id;
-      productMap.set(id, label);
-    });
-    const productOptions = Array.from(productMap.entries())
-      .sort((a,b) => a[1].localeCompare(b[1], 'pt-BR', { sensitivity: 'base' }));
+    const filters = getFilterValues();
+    const hasProductFilter = !selecaoPadrao(filters.produtoId);
+    const hasFamilyFilter = !selecaoPadrao(filters.familiaId);
+    state.rk.product = hasProductFilter ? filters.produtoId : "";
 
-    if (productSelect) {
-      productSelect.innerHTML = productOptions.map(([value, label]) => `
-        <option value="${escapeHTML(value)}">${escapeHTML(label)}</option>`).join("");
-    }
+    const selectLabel = (selector, value) => {
+      if (!value || selecaoPadrao(value)) return "";
+      const select = document.querySelector(selector);
+      if (!select) return "";
+      const options = Array.from(select.options || []);
+      const desired = limparTexto(value);
+      const match = options.find(opt => limparTexto(opt.value) === desired);
+      return match?.textContent?.trim() || "";
+    };
 
-    if (!productOptions.length) {
-      hostSum.innerHTML = `<div class="rk-badges"><span class="rk-badge">Sem produtos disponíveis para os filtros atuais.</span></div>`;
-      hostTbl.innerHTML = `<p class="rk-empty">Ajuste os filtros para visualizar o ranking por produto.</p>`;
+    const productLabelFromRow = (row = {}) => row?.produtoNome || row?.prodOrSub || row?.subproduto || row?.produto || "";
+    const familyLabelFromRow = (row = {}) => row?.familiaNome || row?.familia || "";
+
+    const hasAnyProductData = rowsBase.some(row =>
+      Boolean(row?.produtoId || row?.prodOrSub || row?.produto || row?.subproduto)
+    );
+    if (!hasAnyProductData) {
+      const badges = [
+        `<span class="rk-badge"><strong>Nível:</strong> ${nivelNome}</span>`,
+        `<span class="rk-badge"><strong>Modo:</strong> ${mode === 'piores' ? 'Piores resultados' : 'Melhores resultados'}</span>`
+      ];
+      hostSum.innerHTML = `<div class="rk-badges">${badges.join("")}</div>`;
+      hostTbl.innerHTML = `<p class="rk-empty">Sem dados disponíveis para o ranking por produto com os filtros atuais.</p>`;
       return;
     }
 
-    let selectedProductId = state.rk.product && productMap.has(state.rk.product)
-      ? state.rk.product
-      : productOptions[0][0];
-    if (state.rk.product !== selectedProductId) state.rk.product = selectedProductId;
-    if (productSelect && productSelect.value !== selectedProductId) {
-      productSelect.value = selectedProductId;
-    }
-    const selectedProductLabel = productMap.get(selectedProductId) || selectedProductId;
+    let contextBadge = "";
+    let emptyMessage = "Sem dados disponíveis para o contexto selecionado.";
+    let filteredRows = rowsBase.slice();
 
-    const filteredRows = rowsBase.filter(row =>
-      matchesSelection(selectedProductId, row.produtoId, row.prodOrSub, row.produtoNome, row.subproduto)
-    );
+    if (hasProductFilter) {
+      filteredRows = filteredRows.filter(row =>
+        matchesSelection(filters.produtoId, row.produtoId, row.prodOrSub, row.produtoNome, row.subproduto, row.produto)
+      );
+      const label = selectLabel('#f-produto', filters.produtoId)
+        || productLabelFromRow(filteredRows.find(row => productLabelFromRow(row)))
+        || filters.produtoId;
+      contextBadge = `<span class="rk-badge"><strong>Produto:</strong> ${escapeHTML(label || filters.produtoId)}</span>`;
+      emptyMessage = "Ainda não há dados para o produto selecionado.";
+    } else if (hasFamilyFilter) {
+      filteredRows = filteredRows.filter(row =>
+        matchesSelection(filters.familiaId, row.familiaId, row.familia, row.familiaNome)
+      );
+      const label = selectLabel('#f-familia', filters.familiaId)
+        || familyLabelFromRow(filteredRows.find(row => familyLabelFromRow(row)))
+        || filters.familiaId;
+      contextBadge = `<span class="rk-badge"><strong>Família:</strong> ${escapeHTML(label || filters.familiaId)}</span>`;
+      emptyMessage = "Ainda não há dados para a família selecionada.";
+    } else {
+      contextBadge = `<span class="rk-badge"><strong>Contexto:</strong> Todos os produtos</span>`;
+      emptyMessage = "Sem dados disponíveis para o ranking selecionado.";
+    }
 
     if (!filteredRows.length) {
       summaryBadges = [
         `<span class="rk-badge"><strong>Nível:</strong> ${nivelNome}</span>`,
-        `<span class="rk-badge"><strong>Produto:</strong> ${escapeHTML(selectedProductLabel)}</span>`,
+        contextBadge,
         `<span class="rk-badge"><strong>Modo:</strong> ${mode === 'piores' ? 'Piores resultados' : 'Melhores resultados'}</span>`
-      ];
-      hostSum.innerHTML = `<div class="rk-badges">${summaryBadges.join("")}</div>`;
-      hostTbl.innerHTML = `<p class="rk-empty">Ainda não há dados para o produto selecionado.</p>`;
+      ].filter(Boolean);
+      hostSum.innerHTML = summaryBadges.length ? `<div class="rk-badges">${summaryBadges.join("")}</div>` : "";
+      hostTbl.innerHTML = `<p class="rk-empty">${emptyMessage}</p>`;
       return;
     }
 
@@ -8446,7 +8459,7 @@ function renderRanking(){
     summaryBadges = [
       `<span class="rk-badge"><strong>Nível:</strong> ${nivelNome}</span>`,
       typeof myRankFull === "number" ? `<span class="rk-badge"><strong>Posição:</strong> ${fmtINT.format(myRankFull)}</span>` : "",
-      `<span class="rk-badge"><strong>Produto:</strong> ${escapeHTML(selectedProductLabel)}</span>`,
+      contextBadge,
       `<span class="rk-badge"><strong>Modo:</strong> ${mode === 'piores' ? 'Piores resultados' : 'Melhores resultados'}</span>`,
       `<span class="rk-badge"><strong>Quantidade de participantes:</strong> ${fmtINT.format(data.length)}</span>`,
     ].filter(Boolean);
@@ -8454,7 +8467,6 @@ function renderRanking(){
     if (modeGroup) {
       modeGroup.querySelectorAll('.seg-btn').forEach(btn => btn.classList.remove('is-active'));
     }
-    if (productSelect) productSelect.innerHTML = "";
 
     data = aggRanking(rowsBase, level);
     data.sort((a,b)=> (b.p_acum - a.p_acum));
