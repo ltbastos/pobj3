@@ -3091,6 +3091,16 @@ const state = {
     designerMessage: "",
   },
 
+  opportunities:{
+    open:false,
+    node:null,
+    lineage:[],
+    baseFilters:new Map(),
+    selectedLevel:"prodsub",
+    filtered:[],
+    trail:[],
+  },
+
   animations:{
     resumo:{
       kpiKey:null,
@@ -3103,6 +3113,585 @@ const state = {
     },
   }
 };
+
+/* ===== Leads propensos (oportunidades) ===== */
+const OPPORTUNITY_LEVEL_SEQUENCE = ["diretoria","gerencia","agencia","gGestao","gerente","secao","familia","prodsub"];
+const OPPORTUNITY_LEVEL_ORDER = new Map(OPPORTUNITY_LEVEL_SEQUENCE.map((key, index) => [key, index]));
+const OPPORTUNITY_LEVEL_OPTIONS = [
+  { key:"prodsub", label:"Indicador" },
+  { key:"familia", label:"Família" },
+  { key:"secao", label:"Seção" },
+  { key:"gerente", label:"Gerente" },
+  { key:"gGestao", label:"Gerente de gestão" },
+  { key:"agencia", label:"Agência" },
+  { key:"gerencia", label:"Regional" },
+  { key:"diretoria", label:"Diretoria" },
+];
+const OPPORTUNITY_LEVEL_LABELS = {
+  diretoria:"Diretoria",
+  gerencia:"Regional",
+  agencia:"Agência",
+  gGestao:"Gerente de gestão",
+  gerente:"Gerente",
+  secao:"Seção",
+  familia:"Família",
+  prodsub:"Indicador",
+  contrato:"Contrato",
+};
+const OPPORTUNITY_DIMENSION_FIELD = {
+  diretoria:"diretoria",
+  gerencia:"gerenciaRegional",
+  agencia:"agencia",
+  gGestao:"gerenteGestao",
+  gerente:"gerente",
+  secao:"secaoId",
+  familia:"familia",
+  prodsub:"prodOrSub",
+};
+
+const LEAD_COMPANY_POOL = [
+  "Grupo Horizonte Logística",
+  "Sol Nascente Engenharia",
+  "Delta Foods Industrial",
+  "Atlas Tecnologia Integrada",
+  "Nova Mare Transportes",
+  "Aliança Farma Distribuidora",
+  "Vetor Energia Sustentável",
+  "União Serrana Têxtil",
+  "Planalto Data Services",
+  "Veredas Consultoria Corporativa",
+  "Orion Máquinas Pesadas",
+  "Cidade Alta Construções",
+  "Cativa Hotelaria & Eventos",
+  "Lumis Telecomunicações",
+  "Prime Atlântico Comércio Exterior",
+  "Camino Verde Agronegócios",
+  "Marfim Segurança Patrimonial",
+  "Ponte Nova Soluções Contábeis",
+  "Rede Armazém Norte",
+  "Aurora Digital Banking",
+  "Império Moveleiro Brasil",
+  "Serra Azul Papelaria Corporativa",
+  "Céu Aberto Aviação Executiva",
+  "Vanguarda Sistemas Financeiros"
+];
+const LEAD_CONTACT_CHANNELS = ["Telefone","WhatsApp","E-mail","Visita presencial","Videochamada"];
+const LEAD_CONTACT_OUTCOMES = [
+  "Retorno agendado",
+  "Negociação em andamento",
+  "Cliente pediu proposta",
+  "Sem contato - deixou recado",
+  "Interesse alto no produto"
+];
+const LEAD_CONTACT_USERS = [
+  "Marina Prado",
+  "Thiago Azevedo",
+  "Fernanda Mota",
+  "Ricardo Fontes",
+  "Larissa Galvão",
+  "Paulo Mendes",
+  "Camila Ribeiro",
+  "Júlio Santana",
+  "Beatriz Antunes",
+  "André Figueiredo"
+];
+const LEAD_COMMENTS = [
+  "Cliente demonstrou interesse em ampliar limite após revisão do fluxo de caixa.",
+  "Necessita simulação personalizada com base no faturamento projetado para o 4º trimestre.",
+  "Aguardando documentação complementar para avançar com a análise de crédito.",
+  "Solicitou retorno após reunião do conselho administrativo na próxima semana.",
+  "Prospect reforçou urgência na linha de capital de giro devido a novo contrato.",
+  "Indicou possibilidade de cross-sell com serviços de folha e seguros empresariais.",
+  "Cliente deseja migrar relacionamento principal e pediu condições diferenciadas.",
+  "Pedido de proposta enviado por e-mail com prazo de resposta até sexta-feira.",
+  "Necessário envolver especialista de cash management para próxima abordagem.",
+  "Solicitou visita técnica para apresentação do pacote de soluções digitais.",
+  "Diretoria financeira alinhada, aguardando aprovação do jurídico interno.",
+  "Lead reativado por recomendação de parceiro estratégico regional."
+];
+
+let OPPORTUNITY_LEADS = [];
+let opportunityModalBound = false;
+
+function ensureOpportunityDataset(){
+  if (!OPPORTUNITY_LEADS.length) {
+    OPPORTUNITY_LEADS = buildOpportunityLeads(state._rankingRaw);
+  }
+  return OPPORTUNITY_LEADS;
+}
+
+function rebuildOpportunityLeads(rows = state._rankingRaw){
+  try {
+    OPPORTUNITY_LEADS = buildOpportunityLeads(rows);
+  } catch (err) {
+    console.warn("Falha ao gerar leads propensos:", err);
+    OPPORTUNITY_LEADS = [];
+  }
+}
+
+function buildOpportunityLeads(rows = []){
+  const source = Array.isArray(rows) && rows.length ? rows : CAMPAIGN_UNIT_DATA;
+  const dataset = [];
+  const combos = new Map();
+  const managerPools = new Map();
+  const used = new Set();
+  let companyCursor = 0;
+  const baseDateISO = state.period?.end || todayISO();
+  const TOTAL_LIMIT = 180;
+  const POOL_SIZE = 4;
+
+  const ensureManagerPool = (managerKey) => {
+    if (!managerPools.has(managerKey)) {
+      const pool = [];
+      for (let i = 0; i < POOL_SIZE; i++) {
+        pool.push(LEAD_COMPANY_POOL[companyCursor % LEAD_COMPANY_POOL.length]);
+        companyCursor += 1;
+      }
+      managerPools.set(managerKey, pool);
+    }
+    return managerPools.get(managerKey);
+  };
+
+  const makeKey = (empresa, produtoId, agencia, gerente) => {
+    return [empresa || "", produtoId || "", agencia || "", gerente || ""].join("|");
+  };
+
+  for (const row of source) {
+    if (!row) continue;
+    const productKey = row.prodOrSub || row.produtoId || row.produto;
+    if (!productKey) continue;
+
+    const familiaMeta = resolveFamilyMetaFromRow(row);
+    const secaoMeta = resolveSectionMetaFromRow(row);
+    const diretoria = row.diretoria || row.diretoriaNome || "";
+    const gerencia = row.gerenciaRegional || row.regional || "";
+    const agencia = row.agencia || row.agenciaNome || "";
+    const agenciaNome = row.agenciaNome || row.agencia || agencia;
+    const ggestao = row.gerenteGestao || row.gerenteGestaoNome || "";
+    const ggestaoNome = row.gerenteGestaoNome || row.gerenteGestao || ggestao;
+    const gerente = row.gerente || row.gerenteNome || "";
+    const gerenteNome = row.gerenteNome || row.gerente || gerente;
+
+    const managerKey = [diretoria, gerencia, agencia, ggestao, gerente].map(v => v || "").join("|");
+    const companies = ensureManagerPool(managerKey);
+    const bucketKey = [managerKey, familiaMeta.id || familiaMeta.label || "", productKey].join("|");
+    const bucket = combos.get(bucketKey) || { count: 0 };
+    if (bucket.count >= companies.length) {
+      combos.set(bucketKey, bucket);
+      continue;
+    }
+
+    const companyName = companies[bucket.count % companies.length];
+    const dedupeKey = makeKey(companyName, productKey, agencia, gerente);
+    if (used.has(dedupeKey)) {
+      bucket.count += 1;
+      combos.set(bucketKey, bucket);
+      continue;
+    }
+
+    const historySeed = dataset.length + bucket.count;
+    const historico = buildLeadHistory(baseDateISO, historySeed);
+    const lastContact = historico[0] || {};
+    const comentario = LEAD_COMMENTS[historySeed % LEAD_COMMENTS.length];
+    const dataBase = shiftISODate(baseDateISO, -(historySeed % 7));
+    const familiaId = familiaMeta.id || familiaMeta.label || "";
+    const familiaNome = familiaMeta.label || familiaMeta.id || familiaId;
+    const secaoId = secaoMeta.id || familiaId;
+    const secaoNome = secaoMeta.label || secaoId;
+    const produtoNome = row.produtoNome || PRODUCT_INDEX.get(row.produtoId || productKey)?.name || productKey;
+    const diretoriaNome = row.diretoriaNome || diretoria;
+    const regionalNome = row.regional || row.gerenciaNome || gerencia;
+    const metaBase = toNumber(row.meta ?? row.metaMensal ?? row.metaMes ?? 0);
+    const realizado = toNumber(row.realizado ?? row.real_mens ?? 0);
+    const baseValor = metaBase > 0 ? metaBase : (realizado > 0 ? realizado * 1.25 : 60000);
+    const fator = 1.05 + (bucket.count * 0.08) + ((dataset.length % 5) * 0.03);
+    const creditRaw = Math.max(25000, baseValor * fator);
+    const creditoPreAprovado = Math.round(creditRaw / 5000) * 5000;
+
+    const lead = {
+      id: makeLeadId(companyName, productKey, dataset.length + 1),
+      empresa: companyName,
+      segmento: row.segmento || secaoNome || "Empresas",
+      diretoria,
+      diretoriaNome,
+      gerenciaRegional: gerencia,
+      regional: regionalNome,
+      agencia,
+      agenciaNome,
+      gerenteGestao: ggestao,
+      gerenteGestaoNome: ggestaoNome,
+      gerente,
+      gerenteNome,
+      secaoId,
+      secaoNome,
+      familia: familiaId,
+      familiaNome,
+      prodOrSub: productKey,
+      produtoId: row.produtoId || productKey,
+      produtoNome,
+      dataBase,
+      historico,
+      ultimoComentario: comentario,
+      ultimoUsuario: lastContact.usuario || LEAD_CONTACT_USERS[(historySeed + 3) % LEAD_CONTACT_USERS.length],
+      ultimoContatoData: lastContact.data || dataBase,
+      creditoPreAprovado,
+      score: 0.6 + ((historySeed % 9) / 15),
+    };
+
+    dataset.push(lead);
+    used.add(dedupeKey);
+    bucket.count += 1;
+    combos.set(bucketKey, bucket);
+    if (dataset.length >= TOTAL_LIMIT) break;
+  }
+
+  if (!dataset.length) {
+    for (let i = 0; i < Math.min(12, LEAD_COMPANY_POOL.length); i++) {
+      const historico = buildLeadHistory(baseDateISO, i);
+      dataset.push({
+        id: makeLeadId(LEAD_COMPANY_POOL[i], "captacao_bruta", i + 1),
+        empresa: LEAD_COMPANY_POOL[i],
+        segmento: "Empresas",
+        diretoria: "DR 01",
+        diretoriaNome: "Diretoria Norte & Nordeste",
+        gerenciaRegional: "GR 01",
+        regional: "Regional Fortaleza",
+        agencia: "Ag 1001",
+        agenciaNome: "Agência 1001 • Fortaleza Centro",
+        gerenteGestao: "GG 01",
+        gerenteGestaoNome: "Gerente geral 01",
+        gerente: "Gerente 1",
+        gerenteNome: "Ana Lima",
+        secaoId: "captacao",
+        secaoNome: "Captação",
+        familia: "captacao",
+        familiaNome: "Captação",
+        prodOrSub: "captacao_bruta",
+        produtoId: "captacao_bruta",
+        produtoNome: "Captação Bruta",
+        dataBase: shiftISODate(baseDateISO, -i),
+        historico,
+        ultimoComentario: LEAD_COMMENTS[i % LEAD_COMMENTS.length],
+        ultimoUsuario: historico[0]?.usuario || LEAD_CONTACT_USERS[i % LEAD_CONTACT_USERS.length],
+        ultimoContatoData: historico[0]?.data,
+        creditoPreAprovado: 80000 + (i * 7500),
+        score: 0.65 + (i % 4) * 0.05,
+      });
+    }
+  }
+
+  return dataset.sort((a, b) => (b.creditoPreAprovado || 0) - (a.creditoPreAprovado || 0));
+}
+
+function makeLeadId(name, prodKey, index){
+  const base = simplificarTexto(name).replace(/\s+/g, "-") || "lead";
+  const prod = simplificarTexto(prodKey).replace(/\s+/g, "-") || "produto";
+  return `lead-${base.slice(0,18)}-${prod.slice(0,18)}-${index}`;
+}
+
+function buildLeadHistory(baseISO, seed = 0){
+  const base = dateUTCFromISO(baseISO || todayISO());
+  const anchor = base instanceof Date && !Number.isNaN(base) ? base : dateUTCFromISO(todayISO());
+  const history = [];
+  for (let i = 0; i < 3; i++) {
+    const dt = new Date(anchor);
+    const offset = (seed % 5) * 2 + i * 3 + 1;
+    dt.setUTCDate(dt.getUTCDate() - offset);
+    const data = isoFromUTCDate(dt);
+    const canal = LEAD_CONTACT_CHANNELS[(seed + i) % LEAD_CONTACT_CHANNELS.length];
+    const resultado = LEAD_CONTACT_OUTCOMES[(seed + i) % LEAD_CONTACT_OUTCOMES.length];
+    const usuario = LEAD_CONTACT_USERS[(seed + i) % LEAD_CONTACT_USERS.length];
+    history.push({ data, canal, resultado, usuario });
+  }
+  history.sort((a, b) => (a.data > b.data ? -1 : 1));
+  return history;
+}
+
+function shiftISODate(baseISO, delta = 0){
+  const base = dateUTCFromISO(baseISO || todayISO());
+  if (!(base instanceof Date) || Number.isNaN(base)) return baseISO;
+  base.setUTCDate(base.getUTCDate() + delta);
+  return isoFromUTCDate(base);
+}
+
+function defaultOpportunityLevel(lineage = []){
+  const valid = new Set(OPPORTUNITY_LEVEL_OPTIONS.map(opt => opt.key));
+  for (let i = lineage.length - 1; i >= 0; i--) {
+    const key = lineage[i]?.levelKey;
+    if (valid.has(key)) return key;
+  }
+  return "prodsub";
+}
+
+function sanitizeOpportunityLevel(levelKey){
+  const valid = new Set(OPPORTUNITY_LEVEL_OPTIONS.map(opt => opt.key));
+  if (valid.has(levelKey)) return levelKey;
+  return defaultOpportunityLevel(state.opportunities?.lineage || []);
+}
+
+function opportunityFilterKeysForLevel(levelKey){
+  const targetIndex = OPPORTUNITY_LEVEL_ORDER.has(levelKey)
+    ? OPPORTUNITY_LEVEL_ORDER.get(levelKey)
+    : OPPORTUNITY_LEVEL_ORDER.get("prodsub");
+  if (targetIndex == null) return [];
+  return OPPORTUNITY_LEVEL_SEQUENCE.filter(key => (OPPORTUNITY_LEVEL_ORDER.get(key) ?? Infinity) <= targetIndex);
+}
+
+function leadMatchesDimension(lead = {}, levelKey, expected){
+  if (!expected) return true;
+  const normalizedExpected = simplificarTexto(expected);
+  if (!normalizedExpected) return true;
+  const field = OPPORTUNITY_DIMENSION_FIELD[levelKey];
+  const check = (value) => simplificarTexto(value) === normalizedExpected;
+  if (field && check(lead[field])) return true;
+  switch (levelKey) {
+    case "diretoria": return check(lead.diretoriaNome);
+    case "gerencia": return check(lead.regional);
+    case "agencia": return check(lead.agenciaNome);
+    case "gGestao": return check(lead.gerenteGestaoNome);
+    case "gerente": return check(lead.gerenteNome);
+    case "secao": return check(lead.secaoNome);
+    case "familia": return check(lead.familiaNome);
+    case "prodsub": return check(lead.produtoNome);
+    default: return false;
+  }
+}
+
+function filterOpportunityLeads(levelKey, dataset = [], baseFilters = new Map()){
+  const keys = opportunityFilterKeysForLevel(levelKey);
+  return dataset.filter(lead => keys.every(key => {
+    const expected = baseFilters instanceof Map ? baseFilters.get(key) : null;
+    if (!expected) return true;
+    return leadMatchesDimension(lead, key, expected);
+  }));
+}
+
+function renderLeadHistoryList(history = []){
+  if (!Array.isArray(history) || !history.length) {
+    return `<span class="lead-comment__meta">Sem registros</span>`;
+  }
+  return `<ul class="lead-history">${history.slice(0, 3).map(entry => {
+    const data = formatBRDate(entry?.data) || "—";
+    const canal = escapeHTML(entry?.canal || "—");
+    const status = escapeHTML(entry?.resultado || "");
+    return `<li class="lead-history__item"><span class="lead-history__date">${data}</span><span class="lead-history__channel">${canal}</span><span class="lead-history__status">${status}</span></li>`;
+  }).join("")}</ul>`;
+}
+
+function renderLeadComment(lead = {}){
+  const comment = limparTexto(lead?.ultimoComentario) ? escapeHTML(lead.ultimoComentario) : "Sem comentários registrados.";
+  const usuario = lead?.ultimoUsuario ? escapeHTML(lead.ultimoUsuario) : "—";
+  const data = lead?.ultimoContatoData ? formatBRDate(lead.ultimoContatoData) : "";
+  const meta = data ? `${usuario} • ${data}` : usuario;
+  return `<div class="lead-comment"><p class="lead-comment__text">${comment}</p><span class="lead-comment__meta">${meta}</span></div>`;
+}
+
+function renderOpportunityTable(leads = []){
+  const rows = leads.map(lead => {
+    const empresaHtml = `<div class="lead-company"><strong>${escapeHTML(lead.empresa || "—")}</strong>${lead.segmento ? `<span>${escapeHTML(lead.segmento)}</span>` : ""}${lead.agenciaNome ? `<small>${escapeHTML(lead.agenciaNome)}</small>` : ""}</div>`;
+    const produtoHtml = `<div class="lead-product"><strong>${escapeHTML(lead.produtoNome || lead.prodOrSub || "—")}</strong>${lead.familiaNome ? `<small>${escapeHTML(lead.familiaNome)}</small>` : ""}</div>`;
+    const dataBaseLabel = formatBRDate(lead.dataBase) || "—";
+    const historicoHtml = renderLeadHistoryList(lead.historico);
+    const comentarioHtml = renderLeadComment(lead);
+    const responsavel = escapeHTML(lead.ultimoUsuario || "—");
+    const responsavelMeta = lead.ultimoContatoData ? `<span class="lead-comment__meta">${formatBRDate(lead.ultimoContatoData)}</span>` : "";
+    const credito = fmtBRL.format(lead.creditoPreAprovado || 0);
+    return `<tr>
+      <td>${empresaHtml}</td>
+      <td>${produtoHtml}</td>
+      <td>${escapeHTML(dataBaseLabel)}</td>
+      <td>${historicoHtml}</td>
+      <td>${comentarioHtml}</td>
+      <td><div class="lead-responsavel"><strong>${responsavel}</strong>${responsavelMeta}</div></td>
+      <td><span class="lead-credit">${credito}</span></td>
+    </tr>`;
+  }).join("");
+  return `<div class="lead-table-wrapper">
+    <table class="lead-table">
+      <thead>
+        <tr>
+          <th>Empresa</th>
+          <th>Produto propenso</th>
+          <th>Data-base</th>
+          <th>Histórico de contatos</th>
+          <th>Comentário recente</th>
+          <th>Responsável</th>
+          <th>Crédito pré-aprovado</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+function renderOpportunityModal(){
+  const modal = document.getElementById("leads-modal");
+  if (!modal || !state.opportunities.open) return;
+
+  const dataset = ensureOpportunityDataset();
+  const level = sanitizeOpportunityLevel(state.opportunities.selectedLevel);
+  state.opportunities.selectedLevel = level;
+
+  const lineage = Array.isArray(state.opportunities.lineage) ? state.opportunities.lineage : [];
+  const baseFilters = state.opportunities.baseFilters instanceof Map ? state.opportunities.baseFilters : new Map();
+  const filtered = filterOpportunityLeads(level, dataset, baseFilters);
+  state.opportunities.filtered = filtered;
+
+  const subtitleEl = modal.querySelector("#leads-modal-subtitle");
+  const contextWrap = modal.querySelector("#leads-modal-context");
+  const summaryEl = modal.querySelector("#leads-modal-summary");
+  const listWrap = modal.querySelector("#leads-modal-list");
+  const levelSelect = modal.querySelector("#leads-modal-level");
+
+  if (levelSelect) {
+    levelSelect.value = level;
+  }
+
+  const levelLabel = OPPORTUNITY_LEVEL_LABELS[level] || "Contexto";
+  const lineageMap = new Map(lineage.map(entry => [entry.levelKey, entry]));
+  const focusEntry = lineageMap.get(level) || lineage[lineage.length - 1] || null;
+  const focusLabel = focusEntry ? (focusEntry.label || focusEntry.value || "") : "";
+
+  if (subtitleEl) {
+    if (focusEntry && focusLabel) {
+      subtitleEl.textContent = `${levelLabel} selecionado: ${focusLabel}. Ajuste o nível para ampliar ou detalhar os leads propensos.`;
+    } else {
+      subtitleEl.textContent = "Empresas com maior propensão dentro do contexto atual. Ajuste o nível para ampliar ou detalhar os leads.";
+    }
+  }
+
+  if (contextWrap) {
+    if (lineage.length) {
+      contextWrap.innerHTML = lineage
+        .map(entry => {
+          const label = entry?.label || entry?.value || "";
+          if (!label) return "";
+          const levelText = OPPORTUNITY_LEVEL_LABELS[entry.levelKey] || entry.levelKey || "";
+          return `<span class="lead-context-badge"><strong>${escapeHTML(levelText)}:</strong> ${escapeHTML(label)}</span>`;
+        })
+        .filter(Boolean)
+        .join("");
+    } else {
+      contextWrap.innerHTML = `<p class="lead-empty">Contexto geral do funil selecionado.</p>`;
+    }
+  }
+
+  if (summaryEl) {
+    const totalCredit = filtered.reduce((acc, lead) => acc + (lead.creditoPreAprovado || 0), 0);
+    const countLabel = filtered.length === 1 ? "1 lead propenso" : `${fmtINT.format(filtered.length)} leads propensos`;
+    summaryEl.innerHTML = `<strong>${countLabel}</strong> no nível <strong>${levelLabel}</strong> • Crédito pré-aprovado total: <strong>${fmtBRL.format(totalCredit)}</strong>`;
+  }
+
+  if (listWrap) {
+    if (!filtered.length) {
+      listWrap.innerHTML = `<p class="lead-empty">Nenhum lead propenso encontrado para o nível selecionado com os filtros atuais.</p>`;
+    } else {
+      listWrap.innerHTML = renderOpportunityTable(filtered);
+    }
+  }
+}
+
+function setOpportunityLevel(levelKey){
+  const modal = document.getElementById("leads-modal");
+  if (!modal || !state.opportunities.open) return;
+  const sanitized = sanitizeOpportunityLevel(levelKey);
+  if (state.opportunities.selectedLevel === sanitized) return;
+  state.opportunities.selectedLevel = sanitized;
+  renderOpportunityModal();
+}
+
+function closeOpportunityModal(){
+  const modal = document.getElementById("leads-modal");
+  if (!modal) return;
+  modal.classList.remove("is-open");
+  modal.setAttribute("aria-hidden", "true");
+  modal.hidden = true;
+  document.body.classList.remove("has-modal-open");
+  state.opportunities.open = false;
+  state.opportunities.node = null;
+  state.opportunities.lineage = [];
+  state.opportunities.baseFilters = new Map();
+  state.opportunities.filtered = [];
+  state.opportunities.selectedLevel = "prodsub";
+  state.opportunities.trail = [];
+}
+
+function openOpportunityModal(detail = {}){
+  setupOpportunityModal();
+  const modal = document.getElementById("leads-modal");
+  if (!modal) return;
+
+  ensureOpportunityDataset();
+
+  const node = detail?.node || {};
+  const lineage = Array.isArray(detail?.lineage)
+    ? detail.lineage.map(entry => ({ ...entry }))
+    : Array.isArray(node?.lineage)
+      ? node.lineage.map(entry => ({ ...entry }))
+      : [];
+
+  const baseFilters = new Map();
+  lineage.forEach(entry => {
+    if (entry?.levelKey && entry.value != null && entry.value !== "") {
+      baseFilters.set(entry.levelKey, entry.value);
+    }
+  });
+
+  state.opportunities.open = true;
+  state.opportunities.node = node;
+  state.opportunities.lineage = lineage;
+  state.opportunities.baseFilters = baseFilters;
+  state.opportunities.trail = Array.isArray(detail?.trail) ? [...detail.trail] : [];
+  state.opportunities.selectedLevel = sanitizeOpportunityLevel(defaultOpportunityLevel(lineage));
+
+  modal.hidden = false;
+  modal.setAttribute("aria-hidden", "false");
+  modal.classList.add("is-open");
+  document.body.classList.add("has-modal-open");
+
+  const panel = modal.querySelector(".leads-modal__panel");
+  if (panel && !panel.hasAttribute("tabindex")) panel.setAttribute("tabindex", "-1");
+
+  renderOpportunityModal();
+
+  requestAnimationFrame(() => {
+    panel?.focus({ preventScroll: true });
+  });
+}
+
+function setupOpportunityModal(){
+  if (opportunityModalBound) return;
+  const modal = document.getElementById("leads-modal");
+  if (!modal) return;
+
+  const levelSelect = modal.querySelector("#leads-modal-level");
+  if (levelSelect) {
+    levelSelect.innerHTML = OPPORTUNITY_LEVEL_OPTIONS
+      .map(opt => `<option value="${escapeHTML(opt.key)}">${escapeHTML(opt.label)}</option>`)
+      .join("");
+    levelSelect.addEventListener("change", (event) => {
+      setOpportunityLevel(event.target.value);
+    });
+  }
+
+  modal.querySelectorAll("[data-leads-close]").forEach(btn => {
+    btn.addEventListener("click", closeOpportunityModal);
+  });
+
+  modal.addEventListener("click", (event) => {
+    if (event.target?.hasAttribute?.("data-leads-close")) closeOpportunityModal();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (!state.opportunities.open) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeOpportunityModal();
+    }
+  });
+
+  opportunityModalBound = true;
+}
 
 hydrateDetailViewsFromStorage();
 
@@ -5118,7 +5707,7 @@ function buildTree(list, startKey) {
     }).sort((a,b)=> (b.realizado||0) - (a.realizado||0));
   }
 
-  function buildLevel(arr, levelKey, level){
+  function buildLevel(arr, levelKey, level, lineage = []){
     if (levelKey === "contrato") {
       return arr.flatMap(r => ensureContracts(r).map(c => {
         const detailGroups = buildDetailGroups([c]);
@@ -5130,6 +5719,9 @@ function buildTree(list, startKey) {
           modalidade: detailBase.modalidade
         } : null;
         const diariaContrato = diasTotais > 0 ? (c.meta / diasTotais) : 0;
+        const entryMeta = { levelKey, groupField: "contrato", value: c.id, label: c.id };
+        const nextLineage = [...lineage, entryMeta];
+        const breadcrumb = nextLineage.map(item => item.label || item.value).filter(Boolean);
         return {
           type:"contrato",
           level,
@@ -5145,14 +5737,11 @@ function buildTree(list, startKey) {
           projecao: diasDecorridos > 0 ? (c.realizado / Math.max(diasDecorridos, 1)) * diasTotais : c.realizado,
           detail,
           detailGroups,
-          breadcrumb:[
-            c.prodOrSub,
-            r.gerenteNome || r.gerente,
-            r.gerenteGestaoNome || r.gerenteGestao,
-            r.agenciaNome || r.agencia,
-            r.regional || r.gerenciaNome || r.gerenciaRegional,
-            r.diretoriaNome || r.diretoria
-          ].filter(Boolean),
+          levelKey,
+          groupField:"contrato",
+          groupValue:c.id,
+          lineage: nextLineage.map(item => ({ ...item })),
+          breadcrumb,
           children:[]
         };
       }));
@@ -5161,16 +5750,24 @@ function buildTree(list, startKey) {
     return group(arr, mapKey).map(([k, subset]) => {
       const a = agg(subset), next = NEXT[levelKey];
       const labelText = resolveTreeLabel(levelKey, subset, k);
+      const entryMeta = { levelKey, groupField: mapKey, value: k, label: labelText };
+      const nextLineage = [...lineage, entryMeta];
+      const breadcrumb = nextLineage.map(item => item.label || item.value).filter(Boolean);
       return {
         type:"grupo", level, label:labelText, realizado:a.realizado, meta:a.meta, qtd:a.qtd, ating:a.ating, data:a.data,
         peso:a.peso, pontos:a.pontos, pontosMeta:a.pontosMeta, pontosBrutos:a.pontosBrutos,
         metaDiaria:a.metaDiaria, referenciaHoje:a.referenciaHoje, metaDiariaNecessaria:a.metaDiariaNecessaria, projecao:a.projecao,
-        breadcrumb:[labelText], detailGroups: [],
-        children: next ? buildLevel(subset, next, level+1) : []
+        breadcrumb,
+        detailGroups: [],
+        levelKey,
+        groupField: mapKey,
+        groupValue: k,
+        lineage: nextLineage.map(item => ({ ...item })),
+        children: next ? buildLevel(subset, next, level+1, nextLineage) : []
       };
     });
   }
-  return buildLevel(list, startKey, 0);
+  return buildLevel(list, startKey, 0, []);
 }
 
 function getContractSearchInput(){
@@ -8540,6 +9137,8 @@ function openDetailOpportunities(node = {}, trail = []){
     label: node?.label || "",
     type: node?.type || "",
     level: node?.level ?? null,
+    levelKey: node?.levelKey || "",
+    lineage: Array.isArray(node?.lineage) ? node.lineage.map(entry => ({ ...entry })) : [],
   };
   try {
     document.dispatchEvent(new CustomEvent("detail:open-opportunities", { detail }));
@@ -8547,6 +9146,7 @@ function openDetailOpportunities(node = {}, trail = []){
     console.warn("Não foi possível notificar oportunidades personalizadas:", err);
   }
   console.info("Detalhamento — oportunidades", detail);
+  openOpportunityModal(detail);
 }
 
 function renderTreeTable() {
@@ -8922,6 +9522,7 @@ async function refresh(){
     state._rankingRaw = (state.facts?.dados && state.facts.dados.length)
       ? state.facts.dados
       : (dataset.ranking || []);
+    rebuildOpportunityLeads(state._rankingRaw);
     updateContractAutocomplete();
 
     const right = document.getElementById("lbl-atualizacao");
@@ -9008,6 +9609,7 @@ async function loadCSVAuto(url) {
   wireClearFiltersButton();
   ensureStatusFilterInAdvanced();
   reorderFiltersUI();
+  setupOpportunityModal();
   await refresh();
   ensureChatWidget();
 })();

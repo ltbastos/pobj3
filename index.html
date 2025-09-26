@@ -343,6 +343,31 @@
     </section>
   </main>
 
+  <div id="leads-modal" class="leads-modal" hidden aria-hidden="true">
+    <div class="leads-modal__overlay" data-leads-close></div>
+    <div class="leads-modal__panel" role="dialog" aria-modal="true" aria-labelledby="leads-modal-title" aria-describedby="leads-modal-subtitle">
+      <header class="leads-modal__head">
+        <div>
+          <span class="leads-modal__eyebrow">Oportunidades</span>
+          <h4 id="leads-modal-title">Leads propensos</h4>
+          <p id="leads-modal-subtitle" class="leads-modal__subtitle"></p>
+        </div>
+        <button type="button" class="icon-btn leads-modal__close" data-leads-close aria-label="Fechar painel de leads">
+          <i class="ti ti-x"></i>
+        </button>
+      </header>
+      <div id="leads-modal-context" class="leads-modal__context"></div>
+      <section class="leads-modal__controls">
+        <label class="leads-modal__label" for="leads-modal-level">Ver leads considerando</label>
+        <select id="leads-modal-level" class="input input--sm"></select>
+      </section>
+      <section id="leads-modal-summary" class="leads-modal__summary"></section>
+      <section class="leads-modal__body">
+        <div id="leads-modal-list" class="leads-modal__table"></div>
+      </section>
+    </div>
+  </div>
+
   <div id="detail-designer" class="detail-designer" hidden aria-hidden="true">
     <div class="detail-designer__overlay" data-designer-close></div>
     <div class="detail-designer__panel" role="dialog" aria-modal="true" aria-labelledby="detail-designer-title">
