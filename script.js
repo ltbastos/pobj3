@@ -2197,19 +2197,38 @@ const DETAIL_SUBTABLE_COLUMNS = [
 
 // Aqui eu montei os metadados das colunas da tabela principal para poder ligar/desligar conforme a visão escolhida.
 const DETAIL_COLUMNS = [
-  { id: "quantidade",    label: "Quantidade",          cellClass: "", render: renderDetailQtyCell },
-  { id: "realizado",     label: "Realizado (R$)",      cellClass: "", render: renderDetailRealizadoCell },
-  { id: "meta",          label: "Meta (R$)",           cellClass: "", render: renderDetailMetaCell },
-  { id: "atingimento_v", label: "Atingimento (R$)",    cellClass: "", render: renderDetailAchievementValueCell },
-  { id: "atingimento_p", label: "Atingimento (%)",     cellClass: "", render: renderDetailAchievementPercentCell },
-  { id: "pontos",        label: "Pontos (pts)",        cellClass: "", render: renderDetailPointsCell },
-  { id: "peso",          label: "Peso (pts)",          cellClass: "", render: renderDetailPesoCell },
-  { id: "data",          label: "Data",                cellClass: "", render: renderDetailDateCellFromNode },
+  { id: "quantidade",    label: "Quantidade",          cellClass: "", render: renderDetailQtyCell, sortType: "number", getValue: (node = {}) => toNumber(node.qtd) },
+  { id: "realizado",     label: "Realizado (R$)",      cellClass: "", render: renderDetailRealizadoCell, sortType: "number", getValue: (node = {}) => toNumber(node.realizado) },
+  { id: "meta",          label: "Meta (R$)",           cellClass: "", render: renderDetailMetaCell, sortType: "number", getValue: (node = {}) => toNumber(node.meta) },
+  { id: "atingimento_v", label: "Atingimento (R$)",    cellClass: "", render: renderDetailAchievementValueCell, sortType: "number", getValue: (node = {}) => {
+    const realizado = toNumber(node.realizado);
+    const meta = toNumber(node.meta);
+    if (meta > 0) return Math.max(0, Math.min(realizado, meta));
+    return Math.max(0, realizado);
+  } },
+  { id: "atingimento_p", label: "Atingimento (%)",     cellClass: "", render: renderDetailAchievementPercentCell, sortType: "number", getValue: (node = {}) => Number(node.ating || 0) },
+  { id: "pontos",        label: "Pontos (pts)",        cellClass: "", render: renderDetailPointsCell, sortType: "number", getValue: (node = {}) => toNumber(node.pontos ?? node.pontosCumpridos) },
+  { id: "peso",          label: "Peso (pts)",          cellClass: "", render: renderDetailPesoCell, sortType: "number", getValue: (node = {}) => toNumber(node.peso ?? node.pontosMeta) },
+  { id: "data",          label: "Data",                cellClass: "", render: renderDetailDateCellFromNode, sortType: "date", getValue: (node = {}) => node.data || "" },
+  { id: "meta_diaria",   label: "Meta diária (R$)",    cellClass: "", render: renderDetailMetaDiariaCell, sortType: "number", getValue: (node = {}) => toNumber(node.metaDiaria) },
+  { id: "referencia_hoje", label: "Referência para hoje (R$)", cellClass: "", render: renderDetailReferenciaHojeCell, sortType: "number", getValue: (node = {}) => toNumber(node.referenciaHoje) },
+  { id: "meta_diaria_necessaria", label: "Meta diária necessária (R$)", cellClass: "", render: renderDetailMetaDiariaNecessariaCell, sortType: "number", getValue: (node = {}) => toNumber(node.metaDiariaNecessaria) },
+  { id: "projecao",      label: "Projeção (R$)",       cellClass: "", render: renderDetailProjecaoCell, sortType: "number", getValue: (node = {}) => toNumber(node.projecao) },
+];
+const DETAIL_DEFAULT_COLUMNS = [
+  "quantidade",
+  "realizado",
+  "meta",
+  "atingimento_v",
+  "atingimento_p",
+  "pontos",
+  "peso",
+  "data",
 ];
 const DETAIL_DEFAULT_VIEW = {
   id: "default",
   name: "Visão padrão",
-  columns: DETAIL_COLUMNS.map(col => col.id),
+  columns: [...DETAIL_DEFAULT_COLUMNS],
 };
 const DETAIL_MAX_CUSTOM_VIEWS = 5;
 const DETAIL_VIEW_STORAGE_KEY = "pobj3:detailViews";
@@ -2274,6 +2293,30 @@ function renderDetailDateCellFromNode(node = {}){
   return renderDetailDateCell(node.data);
 }
 
+function renderDetailCurrencyValue(amount){
+  const value = toNumber(amount);
+  const rounded = Math.round(value);
+  const full = fmtBRL.format(rounded);
+  const display = formatBRLReadable(value);
+  return `<span title="${full}">${display}</span>`;
+}
+
+function renderDetailMetaDiariaCell(node = {}){
+  return renderDetailCurrencyValue(node.metaDiaria);
+}
+
+function renderDetailReferenciaHojeCell(node = {}){
+  return renderDetailCurrencyValue(node.referenciaHoje);
+}
+
+function renderDetailMetaDiariaNecessariaCell(node = {}){
+  return renderDetailCurrencyValue(node.metaDiariaNecessaria);
+}
+
+function renderDetailProjecaoCell(node = {}){
+  return renderDetailCurrencyValue(node.projecao);
+}
+
 function renderDetailAchievementCurrency(realizado, meta){
   const r = toNumber(realizado);
   const m = toNumber(meta);
@@ -2293,6 +2336,61 @@ function renderDetailAchievementPercent(ratio){
 }
 function getDetailColumnMeta(id){
   return DETAIL_COLUMNS.find(col => col.id === id) || null;
+}
+
+const DETAIL_LABEL_SORT_META = {
+  id: "__label__",
+  sortType: "string",
+  defaultDirection: "asc",
+  getValue: (node = {}) => node.label || "",
+};
+
+function getDetailSortMeta(sortId){
+  if (!sortId) return null;
+  if (sortId === "__label__") return DETAIL_LABEL_SORT_META;
+  const col = getDetailColumnMeta(sortId);
+  if (!col) return null;
+  const sortType = col.sortType || "string";
+  const getValue = typeof col.getValue === "function"
+    ? col.getValue
+    : ((node = {}) => node[col.id]);
+  const defaultDirection = col.defaultDirection || (sortType === "string" ? "asc" : "desc");
+  return { id: col.id, sortType, getValue, defaultDirection };
+}
+
+function compareDetailSortValues(a, b, sortType){
+  if (sortType === "number") {
+    const diff = toNumber(a) - toNumber(b);
+    if (diff < 0) return -1;
+    if (diff > 0) return 1;
+    return 0;
+  }
+  const strA = String(a ?? "");
+  const strB = String(b ?? "");
+  if (sortType === "date") {
+    return strA.localeCompare(strB);
+  }
+  return strA.localeCompare(strB, "pt-BR", { sensitivity: "base" });
+}
+
+function applyDetailSort(nodes, sortMeta, direction){
+  if (!Array.isArray(nodes) || !nodes.length) return;
+  const dir = direction === "asc" || direction === "desc" ? direction : null;
+  if (sortMeta && dir) {
+    const multiplier = dir === "asc" ? 1 : -1;
+    nodes.sort((a, b) => {
+      const va = sortMeta.getValue ? sortMeta.getValue(a) : undefined;
+      const vb = sortMeta.getValue ? sortMeta.getValue(b) : undefined;
+      const cmp = compareDetailSortValues(va, vb, sortMeta.sortType);
+      if (cmp !== 0) return cmp * multiplier;
+      return compareDetailSortValues(a.label || "", b.label || "", "string");
+    });
+  }
+  nodes.forEach(node => {
+    if (Array.isArray(node.children) && node.children.length) {
+      applyDetailSort(node.children, sortMeta, direction);
+    }
+  });
 }
 function sanitizeDetailColumns(columns = []){
   const valid = [];
@@ -2963,7 +3061,14 @@ const state = {
   lastNonContractView:"diretoria",
 
   // ranking
-  rk:{ level:"agencia" },
+  rk:{
+    level:"agencia",
+    type:"pobj",
+    product:"",
+    productMode:"melhores",
+  },
+
+  detailSort:{ id:null, direction:null },
 
   // busca por contrato (usa o input #busca)
   tableSearchTerm:"",
@@ -4932,6 +5037,12 @@ function buildTree(list, startKey) {
   const keyMap = { diretoria:"diretoria", gerencia:"gerenciaRegional", agencia:"agencia", gGestao:"gerenteGestao", gerente:"gerente", secao:"secaoId", familia:"familia", prodsub:"prodOrSub", produto:"prodOrSub", contrato:"contrato" };
   const NEXT   = { diretoria:"gerencia",  gerencia:"agencia",         agencia:"gGestao", gGestao:"gerente",       gerente:"secao", secao:"familia", familia:"contrato",   prodsub:"contrato", contrato:null };
 
+  const periodStart = state.period?.start || "";
+  const periodEnd = state.period?.end || "";
+  const diasTotais = businessDaysBetweenInclusive(periodStart, periodEnd);
+  const diasDecorridos = businessDaysElapsedUntilToday(periodStart, periodEnd);
+  const diasRestantes = Math.max(0, diasTotais - diasDecorridos);
+
   function group(arr, key){
     const m = new Map();
     arr.forEach(r => { const k = r[key] || "—"; const a = m.get(k) || []; a.push(r); m.set(k, a); });
@@ -4945,7 +5056,25 @@ function buildTree(list, startKey) {
           peso      = arr.reduce((a,b)=>a+Math.max(0, toNumber(b.peso ?? b.pontosMeta ?? 0)),0),
           pontosBr  = arr.reduce((a,b)=>a+Math.max(0, toNumber(b.pontosBrutos ?? b.pontos ?? 0)),0);
     const pontos = Math.max(0, Math.min(peso, pontosBr));
-    return { realizado, meta, qtd, ating: meta? realizado/meta : 0, data, peso, pontos, pontosMeta: peso, pontosBrutos: pontosBr };
+    const metaDiaria = diasTotais > 0 ? (meta / diasTotais) : 0;
+    const referenciaHoje = diasDecorridos > 0 ? Math.min(meta, metaDiaria * diasDecorridos) : 0;
+    const metaDiariaNecessaria = diasRestantes > 0 ? Math.max(0, (meta - realizado) / diasRestantes) : 0;
+    const projecao = diasDecorridos > 0 ? (realizado / diasDecorridos) * diasTotais : realizado;
+    return {
+      realizado,
+      meta,
+      qtd,
+      ating: meta? realizado/meta : 0,
+      data,
+      peso,
+      pontos,
+      pontosMeta: peso,
+      pontosBrutos: pontosBr,
+      metaDiaria,
+      referenciaHoje,
+      metaDiariaNecessaria,
+      projecao
+    };
   }
 
   function buildDetailGroups(arr){
@@ -5000,6 +5129,7 @@ function buildTree(list, startKey) {
           gerente: detailBase.gerente,
           modalidade: detailBase.modalidade
         } : null;
+        const diariaContrato = diasTotais > 0 ? (c.meta / diasTotais) : 0;
         return {
           type:"contrato",
           level,
@@ -5009,6 +5139,10 @@ function buildTree(list, startKey) {
           qtd:c.qtd,
           ating:c.ating,
           data:c.data,
+          metaDiaria: diariaContrato,
+          referenciaHoje: diasDecorridos > 0 ? Math.min(c.meta, diariaContrato * diasDecorridos) : 0,
+          metaDiariaNecessaria: diasRestantes > 0 ? Math.max(0, (c.meta - c.realizado) / diasRestantes) : 0,
+          projecao: diasDecorridos > 0 ? (c.realizado / Math.max(diasDecorridos, 1)) * diasTotais : c.realizado,
           detail,
           detailGroups,
           breadcrumb:[
@@ -5030,6 +5164,7 @@ function buildTree(list, startKey) {
       return {
         type:"grupo", level, label:labelText, realizado:a.realizado, meta:a.meta, qtd:a.qtd, ating:a.ating, data:a.data,
         peso:a.peso, pontos:a.pontos, pontosMeta:a.pontosMeta, pontosBrutos:a.pontosBrutos,
+        metaDiaria:a.metaDiaria, referenciaHoje:a.referenciaHoje, metaDiariaNecessaria:a.metaDiariaNecessaria, projecao:a.projecao,
         breadcrumb:[labelText], detailGroups: [],
         children: next ? buildLevel(subset, next, level+1) : []
       };
@@ -8098,14 +8233,59 @@ function createRankingView(){
   section.id="view-ranking"; section.className="hidden view-panel";
   section.innerHTML = `
     <section class="card card--ranking">
-      <header class="card__header">
-        <h3>Ranking</h3>
+      <header class="card__header rk-head">
+        <div class="title-subtitle">
+          <h3>Rankings</h3>
+          <p class="muted">Compare diferentes visões respeitando os filtros aplicados.</p>
+        </div>
+        <div class="rk-head__controls">
+          <div class="rk-control">
+            <label for="rk-type" class="muted">Tipo de ranking</label>
+            <select id="rk-type" class="input input--sm">
+              <option value="pobj">Ranking POBJ</option>
+              <option value="produto">Ranking por produto</option>
+            </select>
+          </div>
+          <div class="rk-product-controls" id="rk-product-wrapper" hidden>
+            <div class="rk-control">
+              <label for="rk-product" class="muted">Produto</label>
+              <select id="rk-product" class="input input--sm"></select>
+            </div>
+            <div class="segmented seg-mini" id="rk-product-mode" role="group" aria-label="Modo do ranking por produto">
+              <button type="button" class="seg-btn" data-mode="melhores">Melhores</button>
+              <button type="button" class="seg-btn" data-mode="piores">Piores</button>
+            </div>
+          </div>
+        </div>
       </header>
 
       <div class="rk-summary" id="rk-summary"></div>
       <div id="rk-table"></div>
     </section>`;
   main.appendChild(section);
+
+  const typeSelect = section.querySelector('#rk-type');
+  const productSelect = section.querySelector('#rk-product');
+  const modeGroup = section.querySelector('#rk-product-mode');
+
+  typeSelect?.addEventListener('change', () => {
+    state.rk.type = typeSelect.value;
+    renderRanking();
+  });
+
+  productSelect?.addEventListener('change', () => {
+    state.rk.product = productSelect.value;
+    renderRanking();
+  });
+
+  modeGroup?.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-mode]');
+    if (!btn) return;
+    const mode = btn.dataset.mode;
+    if (!mode || mode === state.rk.productMode) return;
+    state.rk.productMode = mode;
+    renderRanking();
+  });
 }
 function currentUnitForLevel(level){
   const f=getFilterValues();
@@ -8169,43 +8349,140 @@ function renderRanking(){
   const hostTbl = document.getElementById("rk-table");
   if(!hostSum || !hostTbl) return;
 
+  const typeSelect = document.getElementById("rk-type");
+  const productWrapper = document.getElementById("rk-product-wrapper");
+  const productSelect = document.getElementById("rk-product");
+  const modeGroup = document.getElementById("rk-product-mode");
+
   const level = deriveRankingLevelFromFilters();
   state.rk.level = level;
 
-  const except = { [level]: true };
-  const rows = filterRowsExcept(state._rankingRaw, except, { searchTerm: "" });
+  const type = state.rk.type || "pobj";
+  if (typeSelect) typeSelect.value = type;
+  if (productWrapper) productWrapper.hidden = (type !== "produto");
 
-  const data = aggRanking(rows, level);
-  data.sort((a,b)=> (b.p_acum - a.p_acum));
+  const except = { [level]: true };
+  const rowsBase = filterRowsExcept(state._rankingRaw, except, { searchTerm: "" });
 
   const gruposLimite = rkGroupCount(level);
-  const dataClamped = data.slice(0, gruposLimite);
-
   const myUnit = currentUnitForLevel(level);
-  const myIndexFull = myUnit ? data.findIndex(d => d.unidade===myUnit) : -1;
-  const myRankFull = myIndexFull>=0 ? (myIndexFull+1) : "—";
-
-  if (myUnit && myIndexFull >= 0 && !dataClamped.some(r => r.unidade === myUnit)) {
-    dataClamped.push(data[myIndexFull]);
-  }
-
   const levelNames = {
     diretoria: "Diretoria",
     gerencia: "Regional",
     agencia: "Agência",
     gerente: "Gerente"
   };
-  const nivelNome = levelNames[level] || level.charAt(0).toUpperCase() + level.slice(1);
-  const grupoTexto = typeof myRankFull === "number" ? fmtINT.format(myRankFull) : myRankFull;
-  hostSum.innerHTML = `
-    <div class="rk-badges">
-      <span class="rk-badge"><strong>Nível:</strong> ${nivelNome}</span>
-      <span class="rk-badge"><strong>Número do grupo:</strong> ${grupoTexto}</span>
-      <span class="rk-badge"><strong>Quantidade de participantes:</strong> ${fmtINT.format(data.length)}</span>
-    </div>
-  `;
+  const nivelNome = levelNames[level] || (level.charAt(0).toUpperCase() + level.slice(1));
+
+  let data = [];
+  let visibleRows = [];
+  let summaryBadges = [];
+  let myRankFull = "—";
+
+  if (type === "produto") {
+    const mode = state.rk.productMode === "piores" ? "piores" : "melhores";
+    if (state.rk.productMode !== mode) state.rk.productMode = mode;
+    if (modeGroup) {
+      modeGroup.querySelectorAll('.seg-btn').forEach(btn => {
+        btn.classList.toggle('is-active', btn.dataset.mode === mode);
+      });
+    }
+
+    const productMap = new Map();
+    rowsBase.forEach(row => {
+      const id = row.produtoId || row.prodOrSub || row.produto || row.subproduto;
+      if (!id || productMap.has(id)) return;
+      const label = row.produtoNome || row.prodOrSub || row.subproduto || row.produto || id;
+      productMap.set(id, label);
+    });
+    const productOptions = Array.from(productMap.entries())
+      .sort((a,b) => a[1].localeCompare(b[1], 'pt-BR', { sensitivity: 'base' }));
+
+    if (productSelect) {
+      productSelect.innerHTML = productOptions.map(([value, label]) => `
+        <option value="${escapeHTML(value)}">${escapeHTML(label)}</option>`).join("");
+    }
+
+    if (!productOptions.length) {
+      hostSum.innerHTML = `<div class="rk-badges"><span class="rk-badge">Sem produtos disponíveis para os filtros atuais.</span></div>`;
+      hostTbl.innerHTML = `<p class="rk-empty">Ajuste os filtros para visualizar o ranking por produto.</p>`;
+      return;
+    }
+
+    let selectedProductId = state.rk.product && productMap.has(state.rk.product)
+      ? state.rk.product
+      : productOptions[0][0];
+    if (state.rk.product !== selectedProductId) state.rk.product = selectedProductId;
+    if (productSelect && productSelect.value !== selectedProductId) {
+      productSelect.value = selectedProductId;
+    }
+    const selectedProductLabel = productMap.get(selectedProductId) || selectedProductId;
+
+    const filteredRows = rowsBase.filter(row =>
+      matchesSelection(selectedProductId, row.produtoId, row.prodOrSub, row.produtoNome, row.subproduto)
+    );
+
+    if (!filteredRows.length) {
+      summaryBadges = [
+        `<span class="rk-badge"><strong>Nível:</strong> ${nivelNome}</span>`,
+        `<span class="rk-badge"><strong>Produto:</strong> ${escapeHTML(selectedProductLabel)}</span>`,
+        `<span class="rk-badge"><strong>Modo:</strong> ${mode === 'piores' ? 'Piores resultados' : 'Melhores resultados'}</span>`
+      ];
+      hostSum.innerHTML = `<div class="rk-badges">${summaryBadges.join("")}</div>`;
+      hostTbl.innerHTML = `<p class="rk-empty">Ainda não há dados para o produto selecionado.</p>`;
+      return;
+    }
+
+    data = aggRanking(filteredRows, level);
+    data.sort((a,b) => mode === 'piores' ? (a.p_acum - b.p_acum) : (b.p_acum - a.p_acum));
+    visibleRows = data.slice(0, gruposLimite);
+
+    const myIndexFull = myUnit ? data.findIndex(d => d.unidade === myUnit) : -1;
+    if (myUnit && myIndexFull >= 0 && !visibleRows.some(r => r.unidade === myUnit)) {
+      visibleRows.push(data[myIndexFull]);
+    }
+    myRankFull = myIndexFull >= 0 ? myIndexFull + 1 : "—";
+
+    summaryBadges = [
+      `<span class="rk-badge"><strong>Nível:</strong> ${nivelNome}</span>`,
+      typeof myRankFull === "number" ? `<span class="rk-badge"><strong>Posição:</strong> ${fmtINT.format(myRankFull)}</span>` : "",
+      `<span class="rk-badge"><strong>Produto:</strong> ${escapeHTML(selectedProductLabel)}</span>`,
+      `<span class="rk-badge"><strong>Modo:</strong> ${mode === 'piores' ? 'Piores resultados' : 'Melhores resultados'}</span>`,
+      `<span class="rk-badge"><strong>Quantidade de participantes:</strong> ${fmtINT.format(data.length)}</span>`,
+    ].filter(Boolean);
+  } else {
+    if (modeGroup) {
+      modeGroup.querySelectorAll('.seg-btn').forEach(btn => btn.classList.remove('is-active'));
+    }
+    if (productSelect) productSelect.innerHTML = "";
+
+    data = aggRanking(rowsBase, level);
+    data.sort((a,b)=> (b.p_acum - a.p_acum));
+    visibleRows = data.slice(0, gruposLimite);
+
+    const myIndexFull = myUnit ? data.findIndex(d => d.unidade===myUnit) : -1;
+    myRankFull = myIndexFull>=0 ? (myIndexFull+1) : "—";
+
+    if (myUnit && myIndexFull >= 0 && !visibleRows.some(r => r.unidade === myUnit)) {
+      visibleRows.push(data[myIndexFull]);
+    }
+
+    const grupoTexto = typeof myRankFull === "number" ? fmtINT.format(myRankFull) : myRankFull;
+    summaryBadges = [
+      `<span class="rk-badge"><strong>Nível:</strong> ${nivelNome}</span>`,
+      `<span class="rk-badge"><strong>Número do grupo:</strong> ${grupoTexto}</span>`,
+      `<span class="rk-badge"><strong>Quantidade de participantes:</strong> ${fmtINT.format(data.length)}</span>`,
+    ];
+  }
+
+  hostSum.innerHTML = summaryBadges.length ? `<div class="rk-badges">${summaryBadges.join("")}</div>` : "";
 
   hostTbl.innerHTML = "";
+  if (!visibleRows.length) {
+    hostTbl.innerHTML = `<p class="rk-empty">Sem dados disponíveis para o ranking selecionado.</p>`;
+    return;
+  }
+
   const tbl = document.createElement("table");
   tbl.className = "rk-table";
   tbl.innerHTML = `
@@ -8221,7 +8498,7 @@ function renderRanking(){
   `;
   const tb = tbl.querySelector("tbody");
 
-  dataClamped.forEach((r,idx)=>{
+  visibleRows.forEach((r,idx)=>{
     const fullIndex = data.findIndex(d => d.unidade === r.unidade);
     const rankNumber = fullIndex >= 0 ? (fullIndex + 1) : (idx + 1);
     const isMine = (myUnit && r.unidade === myUnit);
@@ -8244,6 +8521,22 @@ function renderRanking(){
 }
 
 /* ===== Aqui eu renderizo a tabela em árvore usada no detalhamento ===== */
+function openDetailOpportunities(node = {}, trail = []){
+  const detail = {
+    node,
+    trail: Array.isArray(trail) ? [...trail] : [],
+    label: node?.label || "",
+    type: node?.type || "",
+    level: node?.level ?? null,
+  };
+  try {
+    document.dispatchEvent(new CustomEvent("detail:open-opportunities", { detail }));
+  } catch (err) {
+    console.warn("Não foi possível notificar oportunidades personalizadas:", err);
+  }
+  console.info("Detalhamento — oportunidades", detail);
+}
+
 function renderTreeTable() {
   ensureChipBarAndToolbar();
   renderDetailViewBar();
@@ -8252,6 +8545,25 @@ function renderTreeTable() {
   const rowsFiltered = filterRows(state._rankingRaw);
   const nodes = buildTree(rowsFiltered, def.id);
   const activeColumns = getActiveDetailColumns();
+  const activeIds = new Set(activeColumns.map(col => col.id));
+
+  let currentSortId = state.detailSort?.id || null;
+  let currentSortDirection = state.detailSort?.direction || null;
+  if (currentSortId && currentSortDirection) {
+    if (currentSortId !== "__label__" && !activeIds.has(currentSortId)) {
+      currentSortId = null;
+      currentSortDirection = null;
+      state.detailSort = { id: null, direction: null };
+    }
+  }
+
+  const sortMeta = getDetailSortMeta(currentSortId);
+  if (!sortMeta || !currentSortDirection) {
+    currentSortId = null;
+    currentSortDirection = null;
+  }
+
+  applyDetailSort(nodes, sortMeta, currentSortDirection);
 
   const host = document.getElementById("gridRanking");
   if (!host) return;
@@ -8259,10 +8571,32 @@ function renderTreeTable() {
 
   const table = document.createElement("table");
   table.className = "tree-table";
+  const iconFor = (columnId) => {
+    if (currentSortId === columnId) {
+      if (currentSortDirection === "asc") return "ti ti-arrow-up";
+      if (currentSortDirection === "desc") return "ti ti-arrow-down";
+    }
+    return "ti ti-arrows-up-down";
+  };
+  const buildSortControl = (label, columnId, { sortable = true } = {}) => {
+    const safeLabel = escapeHTML(label);
+    const iconClass = iconFor(columnId);
+    if (!sortable) {
+      return `<button type="button" class="tree-sort" disabled aria-disabled="true">${safeLabel}<span class="tree-sort__icon"><i class="${iconClass}"></i></span></button>`;
+    }
+    const safeId = escapeHTML(columnId);
+    const isActive = currentSortId === columnId && !!currentSortDirection;
+    const ariaPressed = isActive ? "true" : "false";
+    return `<button type="button" class="tree-sort" data-sort-id="${safeId}" aria-pressed="${ariaPressed}">${safeLabel}<span class="tree-sort__icon"><i class="${iconClass}"></i></span></button>`;
+  };
+  const buildHeaderCell = (label, columnId, { sortable = true, thClass = "" } = {}) => {
+    const classAttr = thClass ? ` class="${thClass}"` : "";
+    return `<th${classAttr}>${buildSortControl(label, columnId, { sortable })}</th>`;
+  };
   const headerCells = [
-    `<th>${escapeHTML(def.label)}</th>`,
-    ...activeColumns.map(col => `<th>${escapeHTML(col.label)}</th>`),
-    `<th class="col-actions">Ações</th>`,
+    buildHeaderCell(def.label, "__label__"),
+    ...activeColumns.map(col => buildHeaderCell(col.label, col.id)),
+    buildHeaderCell("Ações", "__actions__", { sortable: false, thClass: "col-actions" }),
   ].join("");
   table.innerHTML = `
     <thead>
@@ -8272,6 +8606,34 @@ function renderTreeTable() {
   `;
   const tbody = table.querySelector("tbody");
   host.appendChild(table);
+
+  table.querySelector("thead")?.addEventListener("click", (event) => {
+    const btn = event.target.closest(".tree-sort");
+    if (!btn || btn.disabled) return;
+    const sortId = btn.dataset.sortId;
+    if (!sortId) return;
+    const meta = getDetailSortMeta(sortId);
+    if (!meta) return;
+    const prev = state.detailSort || { id: null, direction: null };
+    const defaultDir = meta.defaultDirection || (meta.sortType === "string" ? "asc" : "desc");
+    const oppositeDir = defaultDir === "asc" ? "desc" : "asc";
+    let nextDirection;
+    if (prev.id !== sortId || !prev.direction) {
+      nextDirection = defaultDir;
+    } else if (prev.direction === defaultDir) {
+      nextDirection = oppositeDir;
+    } else if (prev.direction === oppositeDir) {
+      nextDirection = null;
+    } else {
+      nextDirection = defaultDir;
+    }
+    if (nextDirection) {
+      state.detailSort = { id: sortId, direction: nextDirection };
+    } else {
+      state.detailSort = { id: null, direction: null };
+    }
+    renderTreeTable();
+  });
 
   if (state.compact) document.getElementById("table-section")?.classList.add("is-compact");
   else document.getElementById("table-section")?.classList.remove("is-compact");
@@ -8364,17 +8726,15 @@ function renderTreeTable() {
       <td class="actions-cell">
         <span class="actions-group">
           <button type="button" class="icon-btn" title="Abrir chamado"><i class="ti ti-ticket"></i></button>
-          <button type="button" class="icon-btn" title="Copiar referência"><i class="ti ti-copy"></i></button>
+          <button type="button" class="icon-btn" title="Ver oportunidades"><i class="ti ti-bulb"></i></button>
         </span>
       </td>`;
 
-    const [btnTicket, btnCopy] = tr.querySelectorAll(".icon-btn");
+    const [btnTicket, btnOpportunity] = tr.querySelectorAll(".icon-btn");
     btnTicket?.addEventListener("click",(ev)=>{ ev.stopPropagation(); window.open(TICKET_URL,"_blank"); });
-    btnCopy?.addEventListener("click",(ev)=>{
+    btnOpportunity?.addEventListener("click",(ev)=>{
       ev.stopPropagation();
-      const text = trail.join(" > ");
-      navigator.clipboard?.writeText(text);
-      btnCopy.innerHTML = '<i class="ti ti-check"></i>'; setTimeout(()=> btnCopy.innerHTML = '<i class="ti ti-copy"></i>', 900);
+      openDetailOpportunities(node, trail);
     });
 
     const btn=tr.querySelector(".toggle");

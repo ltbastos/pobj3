@@ -864,6 +864,35 @@ select.input{
   background:#fbfcff; color:#475569; font-weight:800; font-size:12px; text-align:center;
   padding:10px 8px; border-bottom:1px solid #e5e7eb;
 }
+.tree-sort{
+  width:100%;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  border:none;
+  background:none;
+  font:inherit;
+  font-weight:800;
+  color:inherit;
+  cursor:pointer;
+  padding:4px 6px;
+  border-radius:999px;
+  transition:color .15s ease, background-color .15s ease;
+}
+.tree-sort:hover:not([disabled]){
+  color:#1d4ed8;
+  background:rgba(199,210,254,.35);
+}
+.tree-sort[aria-pressed="true"]{
+  color:#1d4ed8;
+}
+.tree-sort[disabled]{
+  cursor:default;
+  opacity:.65;
+}
+.tree-sort__icon{ display:inline-flex; align-items:center; font-size:16px; line-height:1; }
+
 .tree-table thead th:first-child,
 .tree-table tbody td:first-child{ text-align:left; }
 .tree-table tbody td{
@@ -993,6 +1022,12 @@ select.input{
    RANKING
    ========================================================= */
 #view-ranking .card--ranking{ padding-top:12px; }
+.rk-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+.rk-head__controls{ display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap; }
+.rk-control{ display:flex; flex-direction:column; gap:4px; min-width:180px; }
+.rk-control label{ font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#64748b; }
+.rk-product-controls{ display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; }
+.rk-product-controls .segmented{ margin-top:22px; }
 .rk-controls{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .segmented{ display:inline-flex; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:10px; padding:3px; }
 .seg-btn{ border:0; background:transparent; padding:6px 10px; border-radius:8px; cursor:pointer; font-weight:700; color:#475569; }
@@ -1000,6 +1035,7 @@ select.input{
 
 .rk-badges{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
 .rk-badge{ background:#eef2ff; border:1px solid #c7d2fe; color:#1e3a8a; padding:6px 10px; border-radius:999px; font-weight:700; }
+.rk-empty{ margin:18px 0; color:#6b7280; font-size:13px; }
 .rk-badge--warn{ background:#fff7ed; border-color:#fed7aa; color:#92400e; }
 
 .rk-table,
@@ -1599,7 +1635,7 @@ select.input{
   position:relative;
   width:min(860px, 94vw);
   max-height:90vh;
-  overflow:auto;
+  overflow:hidden;
   background:#fff;
   border-radius:18px;
   box-shadow:0 24px 60px rgba(15,23,42,.2);
@@ -1624,10 +1660,11 @@ select.input{
 .detail-designer__views{ display:flex; flex-direction:column; gap:10px; }
 .detail-designer__views-head{ display:flex; align-items:baseline; gap:10px; font-size:12px; color:#475569; }
 .detail-designer__views-head span{ font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#1f2937; }
-.detail-designer__lists{ display:flex; flex-wrap:wrap; gap:18px; }
+.detail-designer__lists{ display:flex; flex-wrap:wrap; gap:18px; flex:1 1 auto; min-height:0; align-items:stretch; }
 .detail-designer__list{
   flex:1 1 360px;
   min-width:280px;
+  min-height:0;
   background:#f8fafc;
   border:1px solid #e2e8f0;
   border-radius:16px;
@@ -1638,7 +1675,17 @@ select.input{
 }
 .detail-designer__list-head h5{ margin:0; font-size:14px; color:#0f172a; }
 .detail-designer__list-head p{ margin:4px 0 0; font-size:12px; color:#6b7280; }
-.detail-designer__items{ display:flex; flex-direction:column; gap:10px; min-height:120px; }
+.detail-designer__items{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  min-height:120px;
+  max-height:clamp(220px, 34vh, 360px);
+  overflow:auto;
+  padding-right:4px;
+  flex:1 1 auto;
+  scrollbar-gutter:stable;
+}
 .detail-designer__items.is-drag-over{ outline:2px dashed #93c5fd; outline-offset:4px; border-radius:12px; background:rgba(219,234,254,.3); }
 .detail-item{
   display:flex;
@@ -1698,6 +1745,12 @@ select.input{
   .detail-designer__foot{ flex-direction:column; align-items:stretch; }
   .detail-designer__actions{ justify-content:stretch; }
   .detail-designer__actions .btn{ flex:1 1 auto; }
+}
+@media (max-width: 720px){
+  .rk-head{ flex-direction:column; align-items:stretch; }
+  .rk-head__controls{ align-items:stretch; }
+  .rk-product-controls{ align-items:stretch; }
+  .rk-product-controls .segmented{ margin-top:0; }
 }
 
 body.has-modal-open{ overflow:hidden; }
