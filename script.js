@@ -140,6 +140,11 @@ let CURRENT_USER_CONTEXT = {
   gerente: ""
 };
 
+function getCurrentUserDisplayName(){
+  const name = document.querySelector('.userbox__name')?.textContent?.trim();
+  return name || 'Equipe Comercial';
+}
+
 // Aqui eu aponto onde normalmente ficam os CSVs e guardo a Promise de carregamento para evitar múltiplos downloads.
 const BASE_CSV_PATH = "Base";
 let baseDataPromise = null;
@@ -1481,6 +1486,7 @@ async function loadBaseData(){
       variavelRaw,
       campanhasRaw,
       calendarioRaw,
+      leadsRaw,
     ] = await Promise.all([
       loadCSVAuto(`${basePath}mesu.csv`),
       loadCSVAuto(`${basePath}Produto.csv`),
@@ -1490,6 +1496,7 @@ async function loadBaseData(){
       loadCSVAuto(`${basePath}fVariavel.csv`).catch(() => []),
       loadCSVAuto(`${basePath}fCampanhas.csv`).catch(() => []),
       loadCSVAuto(`${basePath}dCalendario.csv`).catch(() => []),
+      loadCSVAuto(`${basePath}leads_propensos.csv`).catch(() => []),
     ]);
 
     const mesuRows = normalizarLinhasMesu(mesuRaw);
@@ -1513,6 +1520,9 @@ async function loadBaseData(){
     }
     DIM_CALENDARIO = normalizarLinhasCalendario(calendarioRaw);
     updateCampaignSprintsUnits();
+
+    OPPORTUNITY_LEADS_RAW = Array.isArray(leadsRaw) ? leadsRaw : [];
+    ingestOpportunityLeadRows(OPPORTUNITY_LEADS_RAW);
 
     const availableDatesSource = (DIM_CALENDARIO.length
       ? DIM_CALENDARIO.map(row => row.data)
@@ -3096,9 +3106,10 @@ const state = {
     node:null,
     lineage:[],
     baseFilters:new Map(),
-    selectedLevel:"prodsub",
+    selectedLevel:"secao",
     filtered:[],
     trail:[],
+    contact:{ open:false, leadId:null, trigger:null },
   },
 
   animations:{
@@ -3121,11 +3132,6 @@ const OPPORTUNITY_LEVEL_OPTIONS = [
   { key:"prodsub", label:"Indicador" },
   { key:"familia", label:"Família" },
   { key:"secao", label:"Seção" },
-  { key:"gerente", label:"Gerente" },
-  { key:"gGestao", label:"Gerente de gestão" },
-  { key:"agencia", label:"Agência" },
-  { key:"gerencia", label:"Regional" },
-  { key:"diretoria", label:"Diretoria" },
 ];
 const OPPORTUNITY_LEVEL_LABELS = {
   diretoria:"Diretoria",
@@ -3138,6 +3144,8 @@ const OPPORTUNITY_LEVEL_LABELS = {
   prodsub:"Indicador",
   contrato:"Contrato",
 };
+const OPPORTUNITY_LEVEL_PRIORITY = ["prodsub","familia","secao"];
+const OPPORTUNITY_MODAL_ALLOWED_LEVELS = new Set(OPPORTUNITY_LEVEL_PRIORITY);
 const OPPORTUNITY_DIMENSION_FIELD = {
   diretoria:"diretoria",
   gerencia:"gerenciaRegional",
@@ -3149,32 +3157,6 @@ const OPPORTUNITY_DIMENSION_FIELD = {
   prodsub:"prodOrSub",
 };
 
-const LEAD_COMPANY_POOL = [
-  "Grupo Horizonte Logística",
-  "Sol Nascente Engenharia",
-  "Delta Foods Industrial",
-  "Atlas Tecnologia Integrada",
-  "Nova Mare Transportes",
-  "Aliança Farma Distribuidora",
-  "Vetor Energia Sustentável",
-  "União Serrana Têxtil",
-  "Planalto Data Services",
-  "Veredas Consultoria Corporativa",
-  "Orion Máquinas Pesadas",
-  "Cidade Alta Construções",
-  "Cativa Hotelaria & Eventos",
-  "Lumis Telecomunicações",
-  "Prime Atlântico Comércio Exterior",
-  "Camino Verde Agronegócios",
-  "Marfim Segurança Patrimonial",
-  "Ponte Nova Soluções Contábeis",
-  "Rede Armazém Norte",
-  "Aurora Digital Banking",
-  "Império Moveleiro Brasil",
-  "Serra Azul Papelaria Corporativa",
-  "Céu Aberto Aviação Executiva",
-  "Vanguarda Sistemas Financeiros"
-];
 const LEAD_CONTACT_CHANNELS = ["Telefone","WhatsApp","E-mail","Visita presencial","Videochamada"];
 const LEAD_CONTACT_OUTCOMES = [
   "Retorno agendado",
@@ -3195,192 +3177,203 @@ const LEAD_CONTACT_USERS = [
   "Beatriz Antunes",
   "André Figueiredo"
 ];
-const LEAD_COMMENTS = [
-  "Cliente demonstrou interesse em ampliar limite após revisão do fluxo de caixa.",
-  "Necessita simulação personalizada com base no faturamento projetado para o 4º trimestre.",
-  "Aguardando documentação complementar para avançar com a análise de crédito.",
-  "Solicitou retorno após reunião do conselho administrativo na próxima semana.",
-  "Prospect reforçou urgência na linha de capital de giro devido a novo contrato.",
-  "Indicou possibilidade de cross-sell com serviços de folha e seguros empresariais.",
-  "Cliente deseja migrar relacionamento principal e pediu condições diferenciadas.",
-  "Pedido de proposta enviado por e-mail com prazo de resposta até sexta-feira.",
-  "Necessário envolver especialista de cash management para próxima abordagem.",
-  "Solicitou visita técnica para apresentação do pacote de soluções digitais.",
-  "Diretoria financeira alinhada, aguardando aprovação do jurídico interno.",
-  "Lead reativado por recomendação de parceiro estratégico regional."
-];
 
+let OPPORTUNITY_LEADS_RAW = [];
 let OPPORTUNITY_LEADS = [];
+let OPPORTUNITY_LEADS_MAP = new Map();
 let opportunityModalBound = false;
+const LEAD_CONTACT_UI = {
+  drawer: null,
+  form: null,
+  company: null,
+  product: null,
+  credit: null,
+  origin: null,
+  context: null,
+  dateInput: null,
+  commentInput: null,
+  responsavelInput: null,
+  idInput: null,
+};
 
 function ensureOpportunityDataset(){
-  if (!OPPORTUNITY_LEADS.length) {
-    OPPORTUNITY_LEADS = buildOpportunityLeads(state._rankingRaw);
+  if (!OPPORTUNITY_LEADS.length && OPPORTUNITY_LEADS_RAW.length) {
+    ingestOpportunityLeadRows(OPPORTUNITY_LEADS_RAW);
   }
   return OPPORTUNITY_LEADS;
 }
 
-function rebuildOpportunityLeads(rows = state._rankingRaw){
+function rebuildOpportunityLeads(rows = OPPORTUNITY_LEADS_RAW){
   try {
-    OPPORTUNITY_LEADS = buildOpportunityLeads(rows);
+    OPPORTUNITY_LEADS_RAW = Array.isArray(rows) ? rows : [];
+    ingestOpportunityLeadRows(OPPORTUNITY_LEADS_RAW);
   } catch (err) {
     console.warn("Falha ao gerar leads propensos:", err);
     OPPORTUNITY_LEADS = [];
+    OPPORTUNITY_LEADS_MAP.clear();
   }
 }
 
-function buildOpportunityLeads(rows = []){
-  const source = Array.isArray(rows) && rows.length ? rows : CAMPAIGN_UNIT_DATA;
+function ingestOpportunityLeadRows(rows = []){
+  OPPORTUNITY_LEADS = normalizarLinhasLeads(rows);
+  OPPORTUNITY_LEADS_MAP = new Map(OPPORTUNITY_LEADS.map(lead => [lead.id, lead]));
+  return OPPORTUNITY_LEADS;
+}
+
+function normalizarLinhasLeads(rows = []){
+  if (!Array.isArray(rows)) return [];
   const dataset = [];
-  const combos = new Map();
-  const managerPools = new Map();
-  const used = new Set();
-  let companyCursor = 0;
-  const baseDateISO = state.period?.end || todayISO();
-  const TOTAL_LIMIT = 180;
-  const POOL_SIZE = 4;
 
-  const ensureManagerPool = (managerKey) => {
-    if (!managerPools.has(managerKey)) {
-      const pool = [];
-      for (let i = 0; i < POOL_SIZE; i++) {
-        pool.push(LEAD_COMPANY_POOL[companyCursor % LEAD_COMPANY_POOL.length]);
-        companyCursor += 1;
-      }
-      managerPools.set(managerKey, pool);
-    }
-    return managerPools.get(managerKey);
-  };
+  rows.forEach((raw, index) => {
+    const empresa = lerCelula(raw, ["Nome da empresa", "Empresa", "Lead", "Razao Social"]);
+    if (!empresa) return;
 
-  const makeKey = (empresa, produtoId, agencia, gerente) => {
-    return [empresa || "", produtoId || "", agencia || "", gerente || ""].join("|");
-  };
+    const produtoTexto = lerCelula(raw, ["Indicador ID", "Produto propenso", "Produto", "Indicador"]);
+    const produtoIdBase = resolverIndicadorPorAlias(produtoTexto) || lerCelula(raw, ["Produto propenso ID", "Produto ID"]);
+    const produtoId = produtoIdBase || (simplificarTexto(produtoTexto).replace(/[^a-z0-9]+/g, "_") || `produto_${index + 1}`);
+    const produtoMeta = PRODUTO_TO_FAMILIA.get(produtoId) || null;
+    const produtoNome = produtoMeta?.nome || PRODUCT_INDEX.get(produtoId)?.name || produtoTexto || produtoId;
 
-  for (const row of source) {
-    if (!row) continue;
-    const productKey = row.prodOrSub || row.produtoId || row.produto;
-    if (!productKey) continue;
+    const familiaTexto = lerCelula(raw, ["Familia do produto propenso", "Família do produto propenso", "Familia", "Família"]);
+    let familiaId = produtoMeta?.id || resolverIndicadorPorAlias(familiaTexto) || simplificarTexto(familiaTexto).replace(/[^a-z0-9]+/g, "_") || produtoId;
+    let familiaNome = produtoMeta?.nome || familiaTexto || familiaId;
+    if (!familiaNome) familiaNome = familiaId;
 
-    const familiaMeta = resolveFamilyMetaFromRow(row);
-    const secaoMeta = resolveSectionMetaFromRow(row);
-    const diretoria = row.diretoria || row.diretoriaNome || "";
-    const gerencia = row.gerenciaRegional || row.regional || "";
-    const agencia = row.agencia || row.agenciaNome || "";
-    const agenciaNome = row.agenciaNome || row.agencia || agencia;
-    const ggestao = row.gerenteGestao || row.gerenteGestaoNome || "";
-    const ggestaoNome = row.gerenteGestaoNome || row.gerenteGestao || ggestao;
-    const gerente = row.gerente || row.gerenteNome || "";
-    const gerenteNome = row.gerenteNome || row.gerente || gerente;
+    const secaoTexto = lerCelula(raw, ["Secao do produto propenso", "Seção do produto propenso", "Secao", "Seção"]);
+    const secaoResolved = resolveSectionFromText(secaoTexto, produtoMeta?.secaoId || PRODUCT_INDEX.get(produtoId)?.sectionId || "");
+    const secaoId = secaoResolved.id;
+    const secaoNome = secaoResolved.nome || secaoId;
 
-    const managerKey = [diretoria, gerencia, agencia, ggestao, gerente].map(v => v || "").join("|");
-    const companies = ensureManagerPool(managerKey);
-    const bucketKey = [managerKey, familiaMeta.id || familiaMeta.label || "", productKey].join("|");
-    const bucket = combos.get(bucketKey) || { count: 0 };
-    if (bucket.count >= companies.length) {
-      combos.set(bucketKey, bucket);
-      continue;
-    }
+    const diretoriaNomeCsv = lerCelula(raw, ["Diretoria do cliente", "Diretoria"]);
+    const diretoriaIdCsv = lerCelula(raw, ["Diretoria do cliente ID", "Diretoria ID"]);
+    const diretoriaMeta = findDiretoriaMeta(diretoriaIdCsv || diretoriaNomeCsv) || {};
+    const diretoriaId = diretoriaMeta?.id || diretoriaIdCsv || diretoriaNomeCsv || "";
+    const diretoriaNome = diretoriaMeta?.nome || diretoriaNomeCsv || diretoriaId;
 
-    const companyName = companies[bucket.count % companies.length];
-    const dedupeKey = makeKey(companyName, productKey, agencia, gerente);
-    if (used.has(dedupeKey)) {
-      bucket.count += 1;
-      combos.set(bucketKey, bucket);
-      continue;
-    }
+    const regionalNomeCsv = lerCelula(raw, ["Regional do cliente", "Regional"]);
+    const regionalIdCsv = lerCelula(raw, ["Regional do cliente ID", "Id Gerencia Regional"]);
+    const gerenciaMeta = findGerenciaMeta(regionalIdCsv || regionalNomeCsv) || {};
+    const gerenciaId = gerenciaMeta?.id || regionalIdCsv || regionalNomeCsv || "";
+    const regionalNome = gerenciaMeta?.nome || gerenciaMeta?.regional || regionalNomeCsv || gerenciaId;
 
-    const historySeed = dataset.length + bucket.count;
-    const historico = buildLeadHistory(baseDateISO, historySeed);
-    const lastContact = historico[0] || {};
-    const comentario = LEAD_COMMENTS[historySeed % LEAD_COMMENTS.length];
-    const dataBase = shiftISODate(baseDateISO, -(historySeed % 7));
-    const familiaId = familiaMeta.id || familiaMeta.label || "";
-    const familiaNome = familiaMeta.label || familiaMeta.id || familiaId;
-    const secaoId = secaoMeta.id || familiaId;
-    const secaoNome = secaoMeta.label || secaoId;
-    const produtoNome = row.produtoNome || PRODUCT_INDEX.get(row.produtoId || productKey)?.name || productKey;
-    const diretoriaNome = row.diretoriaNome || diretoria;
-    const regionalNome = row.regional || row.gerenciaNome || gerencia;
-    const metaBase = toNumber(row.meta ?? row.metaMensal ?? row.metaMes ?? 0);
-    const realizado = toNumber(row.realizado ?? row.real_mens ?? 0);
-    const baseValor = metaBase > 0 ? metaBase : (realizado > 0 ? realizado * 1.25 : 60000);
-    const fator = 1.05 + (bucket.count * 0.08) + ((dataset.length % 5) * 0.03);
-    const creditRaw = Math.max(25000, baseValor * fator);
-    const creditoPreAprovado = Math.round(creditRaw / 5000) * 5000;
+    const agenciaNomeCsv = lerCelula(raw, ["Agencia do cliente", "Agência do cliente", "Agencia"]);
+    const agenciaIdCsv = lerCelula(raw, ["Agencia do cliente ID", "Agencia ID"]);
+    const agenciaMeta = findAgenciaMeta(agenciaIdCsv || agenciaNomeCsv) || {};
+    const agenciaId = agenciaMeta?.agenciaId || agenciaMeta?.id || agenciaIdCsv || agenciaNomeCsv || "";
+    const agenciaNome = agenciaMeta?.agenciaNome || agenciaNomeCsv || agenciaId;
+    const agenciaCodigo = agenciaMeta?.agenciaCodigo || agenciaId;
+
+    const ggestaoNomeCsv = lerCelula(raw, ["Gerente de gestao do cliente", "Gerente de gestão do cliente", "Gerente de gestao"]);
+    const ggestaoIdCsv = lerCelula(raw, ["Gerente de gestao do cliente ID", "Id Gerente de Gestao"]);
+    const ggestaoMeta = findGerenteGestaoMeta(ggestaoIdCsv || ggestaoNomeCsv) || {};
+    const gerenteGestaoId = ggestaoMeta?.id || ggestaoIdCsv || ggestaoNomeCsv || "";
+    const gerenteGestaoNome = ggestaoMeta?.nome || ggestaoNomeCsv || gerenteGestaoId;
+
+    const gerenteNomeCsv = lerCelula(raw, ["Gerente do cliente", "Gerente"]);
+    const gerenteIdCsv = lerCelula(raw, ["Gerente do cliente ID", "Gerente ID"]);
+    const gerenteMeta = findGerenteMeta(gerenteIdCsv || gerenteNomeCsv) || {};
+    const gerenteId = gerenteMeta?.id || gerenteIdCsv || gerenteNomeCsv || "";
+    const gerenteNome = gerenteMeta?.nome || gerenteNomeCsv || gerenteId;
+
+    const responsavelContato = lerCelula(raw, ["Responsavel pelo contato", "Responsável pelo contato"]);
+    const comentario = lerCelula(raw, ["Comentario", "Comentário"]);
+    const origemTexto = lerCelula(raw, ["Origem do lead", "Origem"]);
+    const origemKey = simplificarTexto(origemTexto) || "smart";
+    const origemLabel = origemTexto || (origemKey === "link" ? "Link" : "Smart");
+
+    const dataBase = converterDataISO(lerCelula(raw, ["Database", "Data base", "Data modelo"])) || todayISO();
+    const contatoISO = converterDataISO(lerCelula(raw, ["Data do contato", "Data contato", "Último contato"])) || todayISO();
+
+    const creditoPreAprovado = Math.max(0, parseLeadCurrency(lerCelula(raw, ["Credito pre aprovado", "Crédito pre aprovado", "Credito", "Crédito pré aprovado"])));
 
     const lead = {
-      id: makeLeadId(companyName, productKey, dataset.length + 1),
-      empresa: companyName,
-      segmento: row.segmento || secaoNome || "Empresas",
-      diretoria,
+      id: makeLeadId(empresa, produtoId, index + 1),
+      empresa,
+      segmento: secaoNome || familiaNome,
+      diretoria: diretoriaId,
       diretoriaNome,
-      gerenciaRegional: gerencia,
+      gerenciaRegional: gerenciaId,
       regional: regionalNome,
-      agencia,
+      agencia: agenciaId,
       agenciaNome,
-      gerenteGestao: ggestao,
-      gerenteGestaoNome: ggestaoNome,
-      gerente,
+      agenciaCodigo,
+      gerenteGestao: gerenteGestaoId,
+      gerenteGestaoNome,
+      gerente: gerenteId,
       gerenteNome,
       secaoId,
       secaoNome,
       familia: familiaId,
       familiaNome,
-      prodOrSub: productKey,
-      produtoId: row.produtoId || productKey,
+      prodOrSub: produtoId,
+      produtoId,
       produtoNome,
       dataBase,
-      historico,
       ultimoComentario: comentario,
-      ultimoUsuario: lastContact.usuario || LEAD_CONTACT_USERS[(historySeed + 3) % LEAD_CONTACT_USERS.length],
-      ultimoContatoData: lastContact.data || dataBase,
+      ultimoUsuario: responsavelContato || gerenteNome,
+      ultimoContatoData: contatoISO,
       creditoPreAprovado,
-      score: 0.6 + ((historySeed % 9) / 15),
+      origem: origemKey,
+      origemLabel,
+      score: 0.65 + ((index % 7) * 0.03),
     };
 
-    dataset.push(lead);
-    used.add(dedupeKey);
-    bucket.count += 1;
-    combos.set(bucketKey, bucket);
-    if (dataset.length >= TOTAL_LIMIT) break;
-  }
+    const historySeed = index + 1;
+    const baseHistory = contatoISO || dataBase;
+    const olderHistory = buildLeadHistory(baseHistory, historySeed).slice(0, 2);
+    const canalLabel = origemKey === "link" ? "Origem Link" : origemKey === "smart" ? "Smart Lead" : "Contato";
+    const latestEntry = {
+      data: contatoISO,
+      canal: canalLabel,
+      resultado: comentario ? "Comentário registrado" : "Contato registrado",
+      usuario: lead.ultimoUsuario || LEAD_CONTACT_USERS[historySeed % LEAD_CONTACT_USERS.length],
+    };
+    const historico = [latestEntry, ...olderHistory].filter(entry => entry && entry.data);
+    historico.sort((a, b) => (a.data > b.data ? -1 : 1));
+    lead.historico = historico.slice(0, 3);
 
-  if (!dataset.length) {
-    for (let i = 0; i < Math.min(12, LEAD_COMPANY_POOL.length); i++) {
-      const historico = buildLeadHistory(baseDateISO, i);
-      dataset.push({
-        id: makeLeadId(LEAD_COMPANY_POOL[i], "captacao_bruta", i + 1),
-        empresa: LEAD_COMPANY_POOL[i],
-        segmento: "Empresas",
-        diretoria: "DR 01",
-        diretoriaNome: "Diretoria Norte & Nordeste",
-        gerenciaRegional: "GR 01",
-        regional: "Regional Fortaleza",
-        agencia: "Ag 1001",
-        agenciaNome: "Agência 1001 • Fortaleza Centro",
-        gerenteGestao: "GG 01",
-        gerenteGestaoNome: "Gerente geral 01",
-        gerente: "Gerente 1",
-        gerenteNome: "Ana Lima",
-        secaoId: "captacao",
-        secaoNome: "Captação",
-        familia: "captacao",
-        familiaNome: "Captação",
-        prodOrSub: "captacao_bruta",
-        produtoId: "captacao_bruta",
-        produtoNome: "Captação Bruta",
-        dataBase: shiftISODate(baseDateISO, -i),
-        historico,
-        ultimoComentario: LEAD_COMMENTS[i % LEAD_COMMENTS.length],
-        ultimoUsuario: historico[0]?.usuario || LEAD_CONTACT_USERS[i % LEAD_CONTACT_USERS.length],
-        ultimoContatoData: historico[0]?.data,
-        creditoPreAprovado: 80000 + (i * 7500),
-        score: 0.65 + (i % 4) * 0.05,
-      });
+    dataset.push(lead);
+  });
+
+  dataset.sort((a, b) => (b.creditoPreAprovado || 0) - (a.creditoPreAprovado || 0));
+  return dataset;
+}
+
+function parseLeadCurrency(value){
+  const text = limparTexto(value);
+  if (!text) return 0;
+  const normalized = text.replace(/\./g, "").replace(",", ".");
+  return toNumber(normalized);
+}
+
+function resolveSectionFromText(text, fallbackId = "") {
+  const normalized = simplificarTexto(text);
+  if (normalized) {
+    for (const [id, sec] of SECTION_BY_ID.entries()) {
+      if (simplificarTexto(id) === normalized || simplificarTexto(sec.label) === normalized) {
+        return { id, nome: sec.label };
+      }
     }
   }
+  if (fallbackId) {
+    const section = SECTION_BY_ID.get(fallbackId);
+    if (section) {
+      return { id: section.id, nome: section.label };
+    }
+    return { id: fallbackId, nome: getSectionLabel(fallbackId) || fallbackId };
+  }
+  if (text) {
+    const id = simplificarTexto(text).replace(/[^a-z0-9]+/g, "_") || text;
+    return { id, nome: text };
+  }
+  return { id: "", nome: "" };
+}
 
-  return dataset.sort((a, b) => (b.creditoPreAprovado || 0) - (a.creditoPreAprovado || 0));
+function getOpportunityLeadById(id){
+  if (!id) return null;
+  if (OPPORTUNITY_LEADS_MAP.has(id)) return OPPORTUNITY_LEADS_MAP.get(id);
+  const dataset = ensureOpportunityDataset();
+  return dataset.find(lead => lead.id === id) || null;
 }
 
 function makeLeadId(name, prodKey, index){
@@ -3414,19 +3407,26 @@ function shiftISODate(baseISO, delta = 0){
   return isoFromUTCDate(base);
 }
 
-function defaultOpportunityLevel(lineage = []){
-  const valid = new Set(OPPORTUNITY_LEVEL_OPTIONS.map(opt => opt.key));
-  for (let i = lineage.length - 1; i >= 0; i--) {
-    const key = lineage[i]?.levelKey;
-    if (valid.has(key)) return key;
+function resolveOpportunityTargetLevel(lineage = [], baseFilters = new Map()){
+  const path = Array.isArray(lineage) ? lineage : [];
+  for (let i = path.length - 1; i >= 0; i--) {
+    const key = path[i]?.levelKey;
+    if (OPPORTUNITY_MODAL_ALLOWED_LEVELS.has(key)) return key;
   }
-  return "prodsub";
+  const filters = baseFilters instanceof Map ? baseFilters : new Map();
+  for (const key of OPPORTUNITY_LEVEL_PRIORITY) {
+    if (filters.has(key)) return key;
+  }
+  return OPPORTUNITY_LEVEL_PRIORITY[OPPORTUNITY_LEVEL_PRIORITY.length - 1] || "secao";
 }
 
-function sanitizeOpportunityLevel(levelKey){
-  const valid = new Set(OPPORTUNITY_LEVEL_OPTIONS.map(opt => opt.key));
-  if (valid.has(levelKey)) return levelKey;
-  return defaultOpportunityLevel(state.opportunities?.lineage || []);
+function defaultOpportunityLevel(lineage = [], baseFilters = new Map()){
+  return resolveOpportunityTargetLevel(lineage, baseFilters);
+}
+
+function sanitizeOpportunityLevel(levelKey, lineage = [], baseFilters = new Map()){
+  if (OPPORTUNITY_MODAL_ALLOWED_LEVELS.has(levelKey)) return levelKey;
+  return resolveOpportunityTargetLevel(lineage, baseFilters);
 }
 
 function opportunityFilterKeysForLevel(levelKey){
@@ -3487,36 +3487,71 @@ function renderLeadComment(lead = {}){
 }
 
 function renderOpportunityTable(leads = []){
+  const activeLeadId = state.opportunities?.contact?.leadId || "";
   const rows = leads.map(lead => {
+    const isActive = activeLeadId && lead.id === activeLeadId;
     const empresaHtml = `<div class="lead-company"><strong>${escapeHTML(lead.empresa || "—")}</strong>${lead.segmento ? `<span>${escapeHTML(lead.segmento)}</span>` : ""}${lead.agenciaNome ? `<small>${escapeHTML(lead.agenciaNome)}</small>` : ""}</div>`;
     const produtoHtml = `<div class="lead-product"><strong>${escapeHTML(lead.produtoNome || lead.prodOrSub || "—")}</strong>${lead.familiaNome ? `<small>${escapeHTML(lead.familiaNome)}</small>` : ""}</div>`;
     const dataBaseLabel = formatBRDate(lead.dataBase) || "—";
-    const historicoHtml = renderLeadHistoryList(lead.historico);
+    const contatoLabel = formatBRDate(lead.ultimoContatoData || lead.dataBase) || "—";
+    const familiaLabel = escapeHTML(lead.familiaNome || lead.familia || "—");
+    const secaoLabel = escapeHTML(lead.secaoNome || lead.secaoId || "—");
     const comentarioHtml = renderLeadComment(lead);
-    const responsavel = escapeHTML(lead.ultimoUsuario || "—");
-    const responsavelMeta = lead.ultimoContatoData ? `<span class="lead-comment__meta">${formatBRDate(lead.ultimoContatoData)}</span>` : "";
+    const historicoHtml = renderLeadHistoryList(lead.historico);
+    const responsavelHtml = `<div class="lead-responsavel"><strong>${escapeHTML(lead.ultimoUsuario || "—")}</strong></div>`;
+    const diretoriaLabel = escapeHTML(lead.diretoriaNome || lead.diretoria || "—");
+    const regionalLabel = escapeHTML(lead.regional || lead.gerenciaRegional || "—");
+    const agenciaLabel = escapeHTML(lead.agenciaNome || lead.agencia || "—");
+    const ggestaoLabel = escapeHTML(lead.gerenteGestaoNome || lead.gerenteGestao || "—");
+    const gerenteLabel = escapeHTML(lead.gerenteNome || lead.gerente || "—");
     const credito = fmtBRL.format(lead.creditoPreAprovado || 0);
-    return `<tr>
+    const originKey = simplificarTexto(lead.origem || lead.origemLabel || "");
+    const originLabel = escapeHTML(lead.origemLabel || (originKey === "link" ? "Link" : originKey === "smart" ? "Smart" : (lead.origem || "—")));
+    const originBadge = `<span class="lead-origin-badge" data-origin="${escapeHTML(originKey || "outro")}">${originLabel}</span>`;
+    const actionButton = `<div class="lead-actions"><button type="button" class="btn btn--ghost" data-lead-action="add-contact" data-lead-id="${escapeHTML(lead.id)}"><i class="ti ti-user-plus"></i> Incluir contato</button></div>`;
+    const rowClass = isActive ? " class=\"is-active-row\"" : "";
+    return `<tr${rowClass} data-lead-id="${escapeHTML(lead.id)}">
+      <td>${escapeHTML(dataBaseLabel)}</td>
       <td>${empresaHtml}</td>
       <td>${produtoHtml}</td>
-      <td>${escapeHTML(dataBaseLabel)}</td>
-      <td>${historicoHtml}</td>
+      <td>${familiaLabel}</td>
+      <td>${secaoLabel}</td>
+      <td>${escapeHTML(contatoLabel)}</td>
       <td>${comentarioHtml}</td>
-      <td><div class="lead-responsavel"><strong>${responsavel}</strong>${responsavelMeta}</div></td>
+      <td>${responsavelHtml}</td>
+      <td>${historicoHtml}</td>
+      <td>${diretoriaLabel}</td>
+      <td>${regionalLabel}</td>
+      <td>${agenciaLabel}</td>
+      <td>${ggestaoLabel}</td>
+      <td>${gerenteLabel}</td>
       <td><span class="lead-credit">${credito}</span></td>
+      <td>${originBadge}</td>
+      <td>${actionButton}</td>
     </tr>`;
   }).join("");
+
   return `<div class="lead-table-wrapper">
     <table class="lead-table">
       <thead>
         <tr>
+          <th>Database</th>
           <th>Empresa</th>
           <th>Produto propenso</th>
-          <th>Data-base</th>
-          <th>Histórico de contatos</th>
-          <th>Comentário recente</th>
+          <th>Família</th>
+          <th>Seção</th>
+          <th>Data do contato</th>
+          <th>Comentário</th>
           <th>Responsável</th>
+          <th>Histórico (3 últimos)</th>
+          <th>Diretoria</th>
+          <th>Regional</th>
+          <th>Agência</th>
+          <th>Gerente de gestão</th>
+          <th>Gerente</th>
           <th>Crédito pré-aprovado</th>
+          <th>Origem</th>
+          <th>Ações</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -3529,11 +3564,10 @@ function renderOpportunityModal(){
   if (!modal || !state.opportunities.open) return;
 
   const dataset = ensureOpportunityDataset();
-  const level = sanitizeOpportunityLevel(state.opportunities.selectedLevel);
-  state.opportunities.selectedLevel = level;
-
   const lineage = Array.isArray(state.opportunities.lineage) ? state.opportunities.lineage : [];
   const baseFilters = state.opportunities.baseFilters instanceof Map ? state.opportunities.baseFilters : new Map();
+  const level = sanitizeOpportunityLevel(state.opportunities.selectedLevel, lineage, baseFilters);
+  state.opportunities.selectedLevel = level;
   const filtered = filterOpportunityLeads(level, dataset, baseFilters);
   state.opportunities.filtered = filtered;
 
@@ -3541,11 +3575,6 @@ function renderOpportunityModal(){
   const contextWrap = modal.querySelector("#leads-modal-context");
   const summaryEl = modal.querySelector("#leads-modal-summary");
   const listWrap = modal.querySelector("#leads-modal-list");
-  const levelSelect = modal.querySelector("#leads-modal-level");
-
-  if (levelSelect) {
-    levelSelect.value = level;
-  }
 
   const levelLabel = OPPORTUNITY_LEVEL_LABELS[level] || "Contexto";
   const lineageMap = new Map(lineage.map(entry => [entry.levelKey, entry]));
@@ -3554,9 +3583,9 @@ function renderOpportunityModal(){
 
   if (subtitleEl) {
     if (focusEntry && focusLabel) {
-      subtitleEl.textContent = `${levelLabel} selecionado: ${focusLabel}. Ajuste o nível para ampliar ou detalhar os leads propensos.`;
+      subtitleEl.textContent = `${levelLabel} selecionado: ${focusLabel}. Os leads exibidos respeitam o contexto atual dos filtros.`;
     } else {
-      subtitleEl.textContent = "Empresas com maior propensão dentro do contexto atual. Ajuste o nível para ampliar ou detalhar os leads.";
+      subtitleEl.textContent = "Empresas com maior propensão considerando o contexto atual dos filtros aplicados.";
     }
   }
 
@@ -3585,8 +3614,19 @@ function renderOpportunityModal(){
   if (listWrap) {
     if (!filtered.length) {
       listWrap.innerHTML = `<p class="lead-empty">Nenhum lead propenso encontrado para o nível selecionado com os filtros atuais.</p>`;
+      if (state.opportunities.contact?.open) {
+        closeLeadContactDrawer({ silent: true });
+      }
     } else {
       listWrap.innerHTML = renderOpportunityTable(filtered);
+      if (state.opportunities.contact?.open) {
+        const activeLead = getOpportunityLeadById(state.opportunities.contact.leadId);
+        if (activeLead) {
+          populateLeadContactDrawer(activeLead, { preserveInputs: true });
+        } else {
+          closeLeadContactDrawer({ silent: true });
+        }
+      }
     }
   }
 }
@@ -3594,7 +3634,9 @@ function renderOpportunityModal(){
 function setOpportunityLevel(levelKey){
   const modal = document.getElementById("leads-modal");
   if (!modal || !state.opportunities.open) return;
-  const sanitized = sanitizeOpportunityLevel(levelKey);
+  const lineage = Array.isArray(state.opportunities.lineage) ? state.opportunities.lineage : [];
+  const baseFilters = state.opportunities.baseFilters instanceof Map ? state.opportunities.baseFilters : new Map();
+  const sanitized = sanitizeOpportunityLevel(levelKey, lineage, baseFilters);
   if (state.opportunities.selectedLevel === sanitized) return;
   state.opportunities.selectedLevel = sanitized;
   renderOpportunityModal();
@@ -3607,13 +3649,15 @@ function closeOpportunityModal(){
   modal.setAttribute("aria-hidden", "true");
   modal.hidden = true;
   document.body.classList.remove("has-modal-open");
+  closeLeadContactDrawer({ silent: true });
   state.opportunities.open = false;
   state.opportunities.node = null;
   state.opportunities.lineage = [];
   state.opportunities.baseFilters = new Map();
   state.opportunities.filtered = [];
-  state.opportunities.selectedLevel = "prodsub";
+  state.opportunities.selectedLevel = defaultOpportunityLevel([], new Map());
   state.opportunities.trail = [];
+  state.opportunities.contact = { open:false, leadId:null, trigger:null };
 }
 
 function openOpportunityModal(detail = {}){
@@ -3642,7 +3686,8 @@ function openOpportunityModal(detail = {}){
   state.opportunities.lineage = lineage;
   state.opportunities.baseFilters = baseFilters;
   state.opportunities.trail = Array.isArray(detail?.trail) ? [...detail.trail] : [];
-  state.opportunities.selectedLevel = sanitizeOpportunityLevel(defaultOpportunityLevel(lineage));
+  state.opportunities.selectedLevel = defaultOpportunityLevel(lineage, baseFilters);
+  state.opportunities.contact = { open:false, leadId:null, trigger:null };
 
   modal.hidden = false;
   modal.setAttribute("aria-hidden", "false");
@@ -3664,14 +3709,34 @@ function setupOpportunityModal(){
   const modal = document.getElementById("leads-modal");
   if (!modal) return;
 
-  const levelSelect = modal.querySelector("#leads-modal-level");
-  if (levelSelect) {
-    levelSelect.innerHTML = OPPORTUNITY_LEVEL_OPTIONS
-      .map(opt => `<option value="${escapeHTML(opt.key)}">${escapeHTML(opt.label)}</option>`)
-      .join("");
-    levelSelect.addEventListener("change", (event) => {
-      setOpportunityLevel(event.target.value);
+  const listWrap = modal.querySelector("#leads-modal-list");
+  if (listWrap && !listWrap.dataset.wired) {
+    listWrap.addEventListener("click", handleOpportunityTableClick);
+    listWrap.dataset.wired = "1";
+  }
+
+  const drawer = modal.querySelector("#lead-contact-drawer");
+  if (drawer) {
+    LEAD_CONTACT_UI.drawer = drawer;
+    LEAD_CONTACT_UI.form = drawer.querySelector("#lead-contact-form");
+    LEAD_CONTACT_UI.company = drawer.querySelector("#lead-contact-company");
+    LEAD_CONTACT_UI.product = drawer.querySelector("#lead-contact-product");
+    LEAD_CONTACT_UI.credit = drawer.querySelector("#lead-contact-credit");
+    LEAD_CONTACT_UI.origin = drawer.querySelector("#lead-contact-origin");
+    LEAD_CONTACT_UI.context = drawer.querySelector("#lead-contact-context");
+    LEAD_CONTACT_UI.dateInput = drawer.querySelector("#lead-contact-date");
+    LEAD_CONTACT_UI.commentInput = drawer.querySelector("#lead-contact-comment");
+    LEAD_CONTACT_UI.responsavelInput = drawer.querySelector("#lead-contact-responsavel");
+    LEAD_CONTACT_UI.idInput = drawer.querySelector("#lead-contact-id");
+
+    drawer.querySelectorAll('[data-lead-contact-cancel]').forEach(btn => {
+      btn.addEventListener("click", () => closeLeadContactDrawer());
     });
+
+    if (LEAD_CONTACT_UI.form && !LEAD_CONTACT_UI.form.dataset.wired) {
+      LEAD_CONTACT_UI.form.addEventListener("submit", submitLeadContactForm);
+      LEAD_CONTACT_UI.form.dataset.wired = "1";
+    }
   }
 
   modal.querySelectorAll("[data-leads-close]").forEach(btn => {
@@ -3686,11 +3751,137 @@ function setupOpportunityModal(){
     if (!state.opportunities.open) return;
     if (event.key === "Escape") {
       event.preventDefault();
+      if (state.opportunities.contact?.open) {
+        closeLeadContactDrawer();
+        return;
+      }
       closeOpportunityModal();
     }
   });
 
   opportunityModalBound = true;
+}
+
+function escapeLeadIdSelector(value = ""){
+  if (!value) return "";
+  return window.CSS?.escape ? CSS.escape(value) : value.replace(/([\W_])/g, '\\$1');
+}
+
+function selectLeadRowById(leadId){
+  if (!leadId) return null;
+  const escaped = escapeLeadIdSelector(leadId);
+  return document.querySelector(`.lead-table tbody tr[data-lead-id="${escaped}"]`);
+}
+
+function handleOpportunityTableClick(event){
+  const button = event.target?.closest?.('[data-lead-action="add-contact"]');
+  if (!button) return;
+  event.preventDefault();
+  const leadId = button.getAttribute('data-lead-id');
+  if (!leadId) return;
+  const lead = getOpportunityLeadById(leadId);
+  if (!lead) return;
+  openLeadContactDrawer(lead, button);
+}
+
+function openLeadContactDrawer(lead, trigger){
+  if (!lead || !LEAD_CONTACT_UI.drawer) return;
+  state.opportunities.contact = { open:true, leadId: lead.id, trigger: trigger || null };
+  document.querySelectorAll('.lead-table tbody tr.is-active-row').forEach(row => row.classList.remove('is-active-row'));
+  const rowEl = selectLeadRowById(lead.id);
+  rowEl?.classList.add('is-active-row');
+  populateLeadContactDrawer(lead);
+  LEAD_CONTACT_UI.drawer.setAttribute('aria-hidden', 'false');
+  LEAD_CONTACT_UI.drawer.classList.add('is-open');
+  requestAnimationFrame(() => {
+    LEAD_CONTACT_UI.commentInput?.focus({ preventScroll: true });
+  });
+}
+
+function closeLeadContactDrawer(options = {}){
+  if (!LEAD_CONTACT_UI.drawer) return;
+  LEAD_CONTACT_UI.drawer.classList.remove('is-open');
+  LEAD_CONTACT_UI.drawer.setAttribute('aria-hidden', 'true');
+  if (LEAD_CONTACT_UI.form) {
+    LEAD_CONTACT_UI.form.reset();
+  }
+  const previousTrigger = state.opportunities.contact?.trigger;
+  const previousLeadId = state.opportunities.contact?.leadId;
+  state.opportunities.contact = { open:false, leadId:null, trigger:null };
+  if (previousLeadId) {
+    const rowEl = selectLeadRowById(previousLeadId);
+    rowEl?.classList.remove('is-active-row');
+  }
+  if (!options.silent && previousTrigger && typeof previousTrigger.focus === 'function') {
+    requestAnimationFrame(() => previousTrigger.focus());
+  }
+}
+
+function populateLeadContactDrawer(lead, { preserveInputs = false } = {}){
+  if (!lead || !LEAD_CONTACT_UI.drawer) return;
+  const today = todayISO();
+  const defaultDate = preserveInputs ? (LEAD_CONTACT_UI.dateInput?.value || today) : today;
+  const defaultComment = preserveInputs ? (LEAD_CONTACT_UI.commentInput?.value || "") : "";
+  const defaultResponsavel = preserveInputs ? (LEAD_CONTACT_UI.responsavelInput?.value || getCurrentUserDisplayName()) : getCurrentUserDisplayName();
+
+  if (LEAD_CONTACT_UI.company) LEAD_CONTACT_UI.company.textContent = lead.empresa || "—";
+  if (LEAD_CONTACT_UI.product) LEAD_CONTACT_UI.product.textContent = `${lead.produtoNome || lead.prodOrSub || "—"} • ${lead.familiaNome || lead.familia || "—"}`;
+  if (LEAD_CONTACT_UI.credit) LEAD_CONTACT_UI.credit.textContent = fmtBRL.format(lead.creditoPreAprovado || 0);
+  if (LEAD_CONTACT_UI.origin) {
+    const originKey = simplificarTexto(lead.origem || lead.origemLabel || "");
+    const originLabel = lead.origemLabel || (originKey === "link" ? "Link" : originKey === "smart" ? "Smart" : (lead.origem || "—"));
+    LEAD_CONTACT_UI.origin.textContent = originLabel;
+    LEAD_CONTACT_UI.origin.dataset.origin = originKey || "outro";
+  }
+  if (LEAD_CONTACT_UI.context) {
+    const badges = [
+      { label: "Diretoria", value: lead.diretoriaNome || lead.diretoria },
+      { label: "Regional", value: lead.regional || lead.gerenciaRegional },
+      { label: "Agência", value: lead.agenciaNome || lead.agencia },
+      { label: "Gerente", value: lead.gerenteNome || lead.gerente },
+    ].filter(item => limparTexto(item.value));
+    LEAD_CONTACT_UI.context.innerHTML = badges.map(item => `<span><strong>${escapeHTML(item.label)}:</strong> ${escapeHTML(item.value)}</span>`).join("");
+  }
+  if (LEAD_CONTACT_UI.dateInput) LEAD_CONTACT_UI.dateInput.value = defaultDate;
+  if (LEAD_CONTACT_UI.commentInput) LEAD_CONTACT_UI.commentInput.value = defaultComment;
+  if (LEAD_CONTACT_UI.responsavelInput) LEAD_CONTACT_UI.responsavelInput.value = defaultResponsavel;
+  if (LEAD_CONTACT_UI.idInput) LEAD_CONTACT_UI.idInput.value = lead.id;
+}
+
+function submitLeadContactForm(event){
+  event.preventDefault();
+  const leadId = LEAD_CONTACT_UI.idInput?.value;
+  const lead = getOpportunityLeadById(leadId);
+  if (!lead) {
+    closeLeadContactDrawer({ silent: true });
+    renderOpportunityModal();
+    return;
+  }
+  const contatoData = LEAD_CONTACT_UI.dateInput?.value || todayISO();
+  const comentario = LEAD_CONTACT_UI.commentInput?.value?.trim() || "";
+  const responsavel = LEAD_CONTACT_UI.responsavelInput?.value?.trim() || getCurrentUserDisplayName();
+
+  lead.ultimoContatoData = contatoData;
+  lead.ultimoComentario = comentario;
+  lead.ultimoUsuario = responsavel;
+
+  const canalLabel = lead.origem === "link" ? "Origem Link" : lead.origem === "smart" ? "Smart Lead" : "Contato";
+  const latestEntry = { data: contatoData, canal: canalLabel, resultado: comentario ? "Comentário atualizado" : "Contato registrado", usuario: responsavel };
+  const historicoAtual = Array.isArray(lead.historico) ? lead.historico.slice() : [];
+  const combinado = [latestEntry, ...historicoAtual.filter(entry => entry && entry.data !== contatoData)];
+  combinado.sort((a, b) => (a.data > b.data ? -1 : 1));
+  lead.historico = combinado.slice(0, 3);
+
+  OPPORTUNITY_LEADS_MAP.set(lead.id, lead);
+
+  closeLeadContactDrawer({ silent: true });
+  renderOpportunityModal();
+
+  const escapedId = escapeLeadIdSelector(lead.id);
+  requestAnimationFrame(() => {
+    const focusTarget = document.querySelector(`[data-lead-action="add-contact"][data-lead-id="${escapedId}"]`);
+    focusTarget?.focus();
+  });
 }
 
 hydrateDetailViewsFromStorage();
@@ -9330,6 +9521,11 @@ function renderTreeTable() {
       return `<td${cls}>${content}</td>`;
     }).join("");
 
+    const canOpenOpportunities = node.levelKey !== "contrato" && node.type !== "contrato";
+    const opportunityButtonHtml = canOpenOpportunities
+      ? `<button type="button" class="icon-btn" title="Ver oportunidades"><i class="ti ti-bulb"></i></button>`
+      : "";
+
     tr.innerHTML=`
       <td><div class="tree-cell">
         <button class="toggle" type="button" ${has?"":"disabled"} aria-label="${has?"Expandir/colapsar":""}"><i class="ti ${has?"ti-chevron-right":"ti-dot"}"></i></button>
@@ -9338,7 +9534,7 @@ function renderTreeTable() {
       <td class="actions-cell">
         <span class="actions-group">
           <button type="button" class="icon-btn" title="Abrir chamado"><i class="ti ti-ticket"></i></button>
-          <button type="button" class="icon-btn" title="Ver oportunidades"><i class="ti ti-bulb"></i></button>
+          ${opportunityButtonHtml}
         </span>
       </td>`;
 
@@ -9522,7 +9718,7 @@ async function refresh(){
     state._rankingRaw = (state.facts?.dados && state.facts.dados.length)
       ? state.facts.dados
       : (dataset.ranking || []);
-    rebuildOpportunityLeads(state._rankingRaw);
+    rebuildOpportunityLeads();
     updateContractAutocomplete();
 
     const right = document.getElementById("lbl-atualizacao");

@@ -357,13 +357,53 @@
         </button>
       </header>
       <div id="leads-modal-context" class="leads-modal__context"></div>
-      <section class="leads-modal__controls">
-        <label class="leads-modal__label" for="leads-modal-level">Ver leads considerando</label>
-        <select id="leads-modal-level" class="input input--sm"></select>
-      </section>
       <section id="leads-modal-summary" class="leads-modal__summary"></section>
       <section class="leads-modal__body">
         <div id="leads-modal-list" class="leads-modal__table"></div>
+        <aside id="lead-contact-drawer" class="lead-contact-drawer" aria-hidden="true" aria-labelledby="lead-contact-company" role="dialog">
+          <div class="lead-contact-drawer__content">
+            <header class="lead-contact-drawer__head">
+              <div class="lead-contact-drawer__titles">
+                <p class="lead-contact-drawer__eyebrow">Registrar contato</p>
+                <h5 id="lead-contact-company">Empresa selecionada</h5>
+                <p id="lead-contact-product" class="lead-contact-drawer__product"></p>
+              </div>
+              <button type="button" class="icon-btn lead-contact-drawer__close" data-lead-contact-cancel aria-label="Fechar formulário de contato">
+                <i class="ti ti-x"></i>
+              </button>
+            </header>
+            <div class="lead-contact-drawer__meta">
+              <div class="lead-contact-drawer__meta-item">
+                <span class="lead-contact-drawer__label">Crédito pré-aprovado</span>
+                <strong id="lead-contact-credit">—</strong>
+              </div>
+              <div class="lead-contact-drawer__meta-item">
+                <span class="lead-contact-drawer__label">Origem</span>
+                <span id="lead-contact-origin" class="lead-origin-badge">—</span>
+              </div>
+            </div>
+            <div id="lead-contact-context" class="lead-contact-drawer__context"></div>
+            <form id="lead-contact-form" class="lead-contact-form">
+              <input type="hidden" id="lead-contact-id" name="leadId" />
+              <div class="lead-contact-form__field">
+                <label for="lead-contact-date">Data do contato</label>
+                <input type="date" id="lead-contact-date" name="date" class="input" required />
+              </div>
+              <div class="lead-contact-form__field">
+                <label for="lead-contact-responsavel">Responsável pelo contato</label>
+                <input type="text" id="lead-contact-responsavel" name="responsavel" class="input" readonly />
+              </div>
+              <div class="lead-contact-form__field">
+                <label for="lead-contact-comment">Comentário</label>
+                <textarea id="lead-contact-comment" name="comentario" class="input" rows="4" placeholder="Compartilhe observações relevantes"></textarea>
+              </div>
+              <div class="lead-contact-form__actions">
+                <button type="button" class="btn" data-lead-contact-cancel>Cancelar</button>
+                <button type="submit" class="btn btn--primary">Salvar contato</button>
+              </div>
+            </form>
+          </div>
+        </aside>
       </section>
     </div>
   </div>
