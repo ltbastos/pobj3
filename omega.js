@@ -89,15 +89,20 @@ const OMEGA_LEVEL_LABELS = {
   contrato: "Contrato",
 };
 
-const OMEGA_USERS = [
-  { id: "usr-01", name: "Juliana Nogueira", role: "usuario", avatar: "https://i.pravatar.cc/160?img=47", queue: null, teamId: "sudeste" },
-  { id: "usr-02", name: "Thiago Azevedo", role: "atendente", avatar: "https://i.pravatar.cc/160?img=12", queue: "POBJ Produções", teamId: "sudeste" },
-  { id: "usr-03", name: "Sofia Martins", role: "supervisor", avatar: "https://i.pravatar.cc/160?img=32", queue: "POBJ Produções", teamId: "sudeste" },
-  { id: "usr-04", name: "Carlos Lima", role: "admin", avatar: "https://i.pravatar.cc/160?img=8", queue: null, teamId: null },
-  { id: "usr-05", name: "Larissa Galvão", role: "atendente", avatar: "https://i.pravatar.cc/160?img=21", queue: "POBJ Norte", teamId: "norte" },
-  { id: "usr-06", name: "Gabriel Figueiredo", role: "usuario", avatar: "https://i.pravatar.cc/160?img=36", queue: null, teamId: "norte" },
-  { id: "usr-07", name: "Renata Campos", role: "usuario", avatar: "https://i.pravatar.cc/160?img=55", queue: null, teamId: "sudeste" },
-];
+const OMEGA_USERS_SOURCE = "Bases/omega_usuarios.csv";
+
+const OMEGA_USER_METADATA = {
+  "usr-01": { avatar: "https://i.pravatar.cc/160?img=47", queue: null, teamId: "sudeste" },
+  "usr-02": { avatar: "https://i.pravatar.cc/160?img=12", queue: "POBJ Produções", teamId: "sudeste" },
+  "usr-03": { avatar: "https://i.pravatar.cc/160?img=32", queue: "POBJ Produções", teamId: "sudeste" },
+  "usr-04": { avatar: "https://i.pravatar.cc/160?img=8", queue: null, teamId: null },
+  "usr-05": { avatar: "https://i.pravatar.cc/160?img=21", queue: "POBJ Norte", teamId: "norte" },
+  "usr-06": { avatar: "https://i.pravatar.cc/160?img=36", queue: null, teamId: "norte" },
+  "usr-07": { avatar: "https://i.pravatar.cc/160?img=55", queue: null, teamId: "sudeste" },
+  "usr-08": { avatar: "https://i.pravatar.cc/160?img=41", queue: "Mesa Corporate", teamId: "corporate" },
+};
+
+let OMEGA_USERS = [];
 
 const OMEGA_PRODUCT_CATALOG = [
   { id: "capital_giro_flex", label: "Capital de Giro Flex", family: "Crédito PJ", section: "Crédito" },
@@ -112,7 +117,7 @@ const OMEGA_PRODUCT_CATALOG = [
 ];
 
 const omegaState = {
-  currentUserId: OMEGA_USERS[1]?.id || OMEGA_USERS[0]?.id || null,
+  currentUserId: null,
   view: "my",
   status: "todos",
   search: "",
@@ -124,6 +129,7 @@ const omegaState = {
 let OMEGA_TICKETS = [];
 let omegaTicketCounter = 0;
 let omegaDataPromise = null;
+let omegaUsersPromise = null;
 const OMEGA_TICKETS_SOURCE = "Bases/omega_chamados.csv";
 
 function ensureOmegaData(){
@@ -133,9 +139,9 @@ function ensureOmegaData(){
   const loader = (typeof loadCSVAuto === 'function')
     ? loadCSVAuto(OMEGA_TICKETS_SOURCE).catch((err) => {
         console.warn('Falha ao carregar CSV da Omega via loader principal:', err);
-        return fallbackLoadOmegaCsv();
+        return fallbackLoadCsv(OMEGA_TICKETS_SOURCE);
       })
-    : fallbackLoadOmegaCsv();
+    : fallbackLoadCsv(OMEGA_TICKETS_SOURCE);
 
   omegaDataPromise = loader
     .then((rows) => {
@@ -157,8 +163,39 @@ function ensureOmegaData(){
   return omegaDataPromise;
 }
 
-function fallbackLoadOmegaCsv(){
-  return fetch(OMEGA_TICKETS_SOURCE)
+function ensureOmegaUsers(){
+  if (OMEGA_USERS.length) return Promise.resolve(OMEGA_USERS);
+  if (omegaUsersPromise) return omegaUsersPromise;
+
+  const loader = (typeof loadCSVAuto === 'function')
+    ? loadCSVAuto(OMEGA_USERS_SOURCE).catch((err) => {
+        console.warn('Falha ao carregar usuários Omega via loader principal:', err);
+        return fallbackLoadCsv(OMEGA_USERS_SOURCE);
+      })
+    : fallbackLoadCsv(OMEGA_USERS_SOURCE);
+
+  omegaUsersPromise = loader
+    .then((rows) => {
+      OMEGA_USERS = normalizeOmegaUserRows(Array.isArray(rows) ? rows : []);
+      if (!OMEGA_USERS.length) throw new Error('Nenhum usuário disponível para o Omega');
+      if (!OMEGA_USERS.some((user) => user.id === omegaState.currentUserId)) {
+        omegaState.currentUserId = OMEGA_USERS[0]?.id || null;
+      }
+      return OMEGA_USERS;
+    })
+    .catch((err) => {
+      console.error('Não foi possível carregar os usuários Omega:', err);
+      omegaUsersPromise = null;
+      OMEGA_USERS = [];
+      omegaState.currentUserId = null;
+      return [];
+    });
+
+  return omegaUsersPromise;
+}
+
+function fallbackLoadCsv(path){
+  return fetch(path)
     .then((res) => {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.text();
@@ -198,6 +235,67 @@ function simpleCsvParse(text){
     });
     return row;
   });
+}
+
+function normalizeOmegaUserRows(rows){
+  return rows.map((row) => {
+    const id = (row.id || row.ID || '').trim();
+    const name = (row.nome || row.name || '').trim();
+    if (!id || !name) return null;
+    const roles = {
+      usuario: parseOmegaBoolean(row.usuario),
+      atendente: parseOmegaBoolean(row.atendente),
+      supervisor: parseOmegaBoolean(row.supervisor),
+      admin: parseOmegaBoolean(row.admin),
+    };
+    const primaryRole = resolvePrimaryRole(roles);
+    const meta = OMEGA_USER_METADATA[id] || {};
+    return {
+      id,
+      name,
+      role: primaryRole,
+      roles,
+      avatar: meta.avatar || `https://i.pravatar.cc/160?u=${encodeURIComponent(id)}`,
+      queue: meta.queue ?? null,
+      teamId: meta.teamId ?? null,
+    };
+  }).filter(Boolean).sort((a, b) => {
+    const orderMap = { usuario: 0, atendente: 1, supervisor: 2, admin: 3 };
+    const diff = (orderMap[a.role] ?? 10) - (orderMap[b.role] ?? 10);
+    if (diff !== 0) return diff;
+    return a.name.localeCompare(b.name, 'pt-BR');
+  });
+}
+
+function parseOmegaBoolean(value){
+  if (value == null) return false;
+  const normalized = value.toString().trim().toLowerCase();
+  return ['1', 'true', 'sim', 'yes', 'y', 'x'].includes(normalized);
+}
+
+function resolvePrimaryRole(roles){
+  const priority = ['admin', 'supervisor', 'atendente', 'usuario'];
+  const match = priority.find((role) => roles?.[role]);
+  return match || 'usuario';
+}
+
+function getUserRoles(user){
+  if (!user) return [];
+  const roles = Object.entries(user.roles || {})
+    .filter(([, value]) => !!value)
+    .map(([role]) => role);
+  if (!roles.length && user.role) roles.push(user.role);
+  if (user.role && !roles.includes(user.role)) roles.push(user.role);
+  const order = ['usuario', 'atendente', 'supervisor', 'admin'];
+  return roles.sort((a, b) => (order.indexOf(a) - order.indexOf(b)));
+}
+
+function getUserRoleLabel(user){
+  if (!user) return 'Usuário';
+  const roles = getUserRoles(user);
+  if (!roles.length) return OMEGA_ROLE_LABELS[user.role] || 'Usuário';
+  if (roles.length === 1) return OMEGA_ROLE_LABELS[roles[0]] || roles[0];
+  return roles.map((role) => OMEGA_ROLE_LABELS[role] || role).join(' • ');
 }
 
 function normalizeOmegaTicketRows(rows){
@@ -296,10 +394,11 @@ function ensureOmegaTemplate(){
 }
 
 function openOmega(detail = null){
-  Promise.all([ensureOmegaTemplate(), ensureOmegaData()])
+  Promise.all([ensureOmegaTemplate(), ensureOmegaData(), ensureOmegaUsers()])
     .then(([root]) => {
       if (!root) return;
       setupOmegaModule(root);
+      populateUserSelect(root);
       omegaState.contextDetail = detail || null;
       omegaState.search = "";
       omegaState.status = "todos";
@@ -324,6 +423,10 @@ function closeOmega(){
   const root = document.getElementById("omega-modal");
   if (!root) return;
   setDrawerOpen(false);
+  const shell = root.querySelector('.omega-body');
+  if (shell) delete shell.dataset.detailOpen;
+  const detail = root.querySelector('#omega-detail');
+  if (detail) detail.classList.remove('is-visible');
   root.hidden = true;
   document.body.classList.remove("has-omega-open");
 }
@@ -446,6 +549,7 @@ function renderOmega(){
   const filteredTickets = applyStatusAndSearch(viewTicketsBase);
 
   renderProfile(root, user);
+  renderBreadcrumb(root, user);
   renderPermissions(root, user);
   renderNav(root, user);
   renderContextBar(root, omegaState.contextDetail, contextTickets);
@@ -462,7 +566,7 @@ function renderProfile(root, user){
   const roleLabel = root.querySelector('#omega-user-role');
   if (avatar && user?.avatar) avatar.src = user.avatar;
   if (nameLabel) nameLabel.textContent = user?.name || '—';
-  if (roleLabel) roleLabel.textContent = OMEGA_ROLE_LABELS[user?.role] || '—';
+  if (roleLabel) roleLabel.textContent = getUserRoleLabel(user);
   const select = root.querySelector('#omega-user-select');
   if (select && select.value !== user?.id) select.value = user?.id || '';
 }
@@ -470,8 +574,29 @@ function renderProfile(root, user){
 function renderPermissions(root, user){
   const list = root.querySelector('#omega-permissions-list');
   if (!list) return;
-  const permissions = OMEGA_ROLE_PERMISSIONS[user?.role] || [];
-  list.innerHTML = permissions.map((item) => `<li>${escapeHTML(item)}</li>`).join('');
+  const roles = getUserRoles(user);
+  const unique = [];
+  roles.forEach((role) => {
+    (OMEGA_ROLE_PERMISSIONS[role] || []).forEach((permission) => {
+      if (!unique.includes(permission)) unique.push(permission);
+    });
+  });
+  list.innerHTML = unique.length
+    ? unique.map((item) => `<li>${escapeHTML(item)}</li>`).join('')
+    : '<li>Sem permissões registradas.</li>';
+}
+
+function renderBreadcrumb(root, user){
+  const host = root.querySelector('#omega-breadcrumb');
+  if (!host) return;
+  const view = OMEGA_NAV_ITEMS.find((item) => item.id === omegaState.view);
+  const viewLabel = view?.label || 'Visão atual';
+  const userLabel = user?.name || 'Usuário';
+  host.innerHTML = `
+    <span class="omega-breadcrumb__item"><i class="ti ti-user"></i>${escapeHTML(userLabel)}</span>
+    <span class="omega-breadcrumb__sep"><i class="ti ti-chevron-right"></i></span>
+    <span class="omega-breadcrumb__item">${escapeHTML(viewLabel)}</span>
+  `;
 }
 
 function renderNav(root, user){
@@ -559,7 +684,7 @@ function renderTable(root, tickets){
     return;
   }
   if (!tickets.some((ticket) => ticket.id === omegaState.selectedTicketId)) {
-    omegaState.selectedTicketId = tickets[0]?.id || null;
+    omegaState.selectedTicketId = null;
   }
   const rows = tickets.map((ticket) => {
     const meta = OMEGA_STATUS_META[ticket.status] || { label: ticket.status, tone: 'neutral' };
@@ -588,8 +713,11 @@ function renderTable(root, tickets){
 
 function renderDetail(root, tickets, baseTickets, user){
   const host = root.querySelector('#omega-detail');
+  const shell = root.querySelector('.omega-body');
   if (!host) return;
   if (!tickets.length) {
+    host.classList.remove('is-visible');
+    if (shell) shell.dataset.detailOpen = 'false';
     if (baseTickets.length) {
       host.innerHTML = `<div class="omega-detail__empty"><i class="ti ti-info-circle"></i><span>Ajuste os filtros para visualizar os chamados desta visão.</span></div>`;
     } else {
@@ -597,12 +725,15 @@ function renderDetail(root, tickets, baseTickets, user){
     }
     return;
   }
-  const ticket = tickets.find((item) => item.id === omegaState.selectedTicketId) || tickets[0];
-  omegaState.selectedTicketId = ticket?.id || null;
+  const ticket = tickets.find((item) => item.id === omegaState.selectedTicketId) || null;
   if (!ticket) {
+    host.classList.remove('is-visible');
+    if (shell) shell.dataset.detailOpen = 'false';
     host.innerHTML = `<div class="omega-detail__empty"><i class="ti ti-ticket"></i><span>Selecione um chamado na lista ao lado.</span></div>`;
     return;
   }
+  host.classList.add('is-visible');
+  if (shell) shell.dataset.detailOpen = 'true';
   const statusMeta = OMEGA_STATUS_META[ticket.status] || { label: ticket.status, tone: 'neutral' };
   const requester = resolveUserName(ticket.requesterId);
   const owner = resolveUserName(ticket.ownerId) || 'Sem responsável';
@@ -753,7 +884,12 @@ function enforceViewForRole(){
 }
 
 function getCurrentUser(){
-  return OMEGA_USERS.find((user) => user.id === omegaState.currentUserId) || OMEGA_USERS[0];
+  if (!OMEGA_USERS.length) return null;
+  const user = OMEGA_USERS.find((item) => item.id === omegaState.currentUserId) || OMEGA_USERS[0];
+  if (user && omegaState.currentUserId !== user.id) {
+    omegaState.currentUserId = user.id;
+  }
+  return user;
 }
 
 function resolveUserName(userId){
@@ -851,15 +987,24 @@ function setDrawerOpen(open){
 
 function populateUserSelect(root){
   const select = root.querySelector('#omega-user-select');
-  if (!select || select.options.length) return;
+  if (!select) return;
+  if (!OMEGA_USERS.length) {
+    select.innerHTML = '';
+    return;
+  }
   const order = { usuario: 0, atendente: 1, supervisor: 2, admin: 3 };
   const options = [...OMEGA_USERS].sort((a, b) => {
     const roleDiff = (order[a.role] ?? 10) - (order[b.role] ?? 10);
     if (roleDiff !== 0) return roleDiff;
     return a.name.localeCompare(b.name, 'pt-BR');
   });
-  select.innerHTML = options.map((user) => `<option value="${user.id}">${escapeHTML(user.name)} — ${escapeHTML(OMEGA_ROLE_LABELS[user.role] || user.role)}</option>`).join('');
-  select.value = omegaState.currentUserId || options[0]?.id || '';
+  select.innerHTML = options.map((user) => {
+    const label = getUserRoleLabel(user);
+    return `<option value="${user.id}">${escapeHTML(user.name)} — ${escapeHTML(label)}</option>`;
+  }).join('');
+  const defaultId = omegaState.currentUserId || options[0]?.id || '';
+  select.value = defaultId;
+  omegaState.currentUserId = defaultId || null;
 }
 
 function populateFormOptions(root){
