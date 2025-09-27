@@ -8330,6 +8330,7 @@ function createRankingView(){
             <select id="rk-type" class="input input--sm">
               <option value="pobj">Ranking POBJ</option>
               <option value="produto">Ranking por produto</option>
+              <option value="historico">Histórico anual</option>
             </select>
           </div>
           <div class="rk-product-controls" id="rk-product-wrapper" hidden>
@@ -8396,11 +8397,12 @@ function deriveRankingLevelFromFilters(){
   if(f.diretoria && f.diretoria!=="Todas") return "diretoria";
   return "agencia";
 }
+const RANKING_KEY_FIELDS = { diretoria:"diretoria", gerencia:"gerenciaRegional", agencia:"agencia", gerente:"gerente" };
+const RANKING_LABEL_FIELDS = { diretoria:"diretoriaNome", gerencia:"gerenciaNome", agencia:"agenciaNome", gerente:"gerenteNome" };
+
 function aggRanking(rows, level){
-  const keyMap = { diretoria:"diretoria", gerencia:"gerenciaRegional", agencia:"agencia", gerente:"gerente" };
-  const k = keyMap[level] || "agencia";
-  const labelFieldMap = { diretoria:"diretoriaNome", gerencia:"gerenciaNome", agencia:"agenciaNome", gerente:"gerenteNome" };
-  const labelField = labelFieldMap[level] || k;
+  const k = RANKING_KEY_FIELDS[level] || "agencia";
+  const labelField = RANKING_LABEL_FIELDS[level] || k;
   const map = new Map();
   rows.forEach(r=>{
     const key=r[k] || "—";
@@ -8419,6 +8421,31 @@ function aggRanking(rows, level){
     const ating_acum = x.meta_acum ? x.real_acum/x.meta_acum : 0;
     return { ...x, ating_mens, ating_acum, p_mens: ating_mens*100, p_acum: ating_acum*100 };
   });
+}
+
+function extractRankingRowYear(row){
+  if (!row) return null;
+  const tryNumber = (value) => {
+    if (value == null || value === "") return null;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+  const direct = tryNumber(row.ano || row.year || row.anoReferencia);
+  if (direct) return direct;
+  const dateCandidates = [row.competencia, row.data, row.periodo, row.mes, row.dataReferencia, row.dt];
+  for (const candidate of dateCandidates) {
+    if (!candidate) continue;
+    let text = candidate;
+    if (candidate instanceof Date) {
+      text = isoFromUTCDate(candidate);
+    }
+    const str = String(text);
+    if (str.length < 4) continue;
+    const slice = str.slice(0, 4);
+    const maybe = Number(slice);
+    if (Number.isFinite(maybe)) return maybe;
+  }
+  return null;
 }
 function renderRanking(){
   const hostSum = document.getElementById("rk-summary");
@@ -8453,6 +8480,115 @@ function renderRanking(){
   let visibleRows = [];
   let summaryBadges = [];
   let myRankFull = "—";
+
+  if (type === "historico") {
+    if (modeGroup) {
+      modeGroup.querySelectorAll('.seg-btn').forEach(btn => btn.classList.remove('is-active'));
+    }
+    if (!myUnit) {
+      hostSum.innerHTML = `<div class="rk-badges"><span class="rk-badge rk-badge--warn">Selecione um(a) ${nivelNome.toLowerCase()} para ver o histórico anual.</span></div>`;
+      hostTbl.innerHTML = `<p class="rk-empty">Escolha um(a) ${nivelNome.toLowerCase()} nos filtros para visualizar a evolução dos últimos anos.</p>`;
+      return;
+    }
+
+    const rowsHistory = filterRowsExcept(state._rankingRaw, except, { searchTerm: "", ignoreDate: true });
+    if (!rowsHistory.length) {
+      hostSum.innerHTML = `<div class="rk-badges"><span class="rk-badge rk-badge--warn">Sem dados históricos para o contexto selecionado.</span></div>`;
+      hostTbl.innerHTML = `<p class="rk-empty">Ainda não há registros para montar o histórico anual.</p>`;
+      return;
+    }
+
+    const normalizedUnit = simplificarTexto(myUnit);
+    const yearsSet = new Set();
+    rowsHistory.forEach(row => {
+      const year = extractRankingRowYear(row);
+      if (year) yearsSet.add(year);
+    });
+    const sortedYears = [...yearsSet].sort((a, b) => b - a).slice(0, 5);
+    if (!sortedYears.length) {
+      hostSum.innerHTML = `<div class="rk-badges"><span class="rk-badge rk-badge--warn">Sem dados históricos para o contexto selecionado.</span></div>`;
+      hostTbl.innerHTML = `<p class="rk-empty">Ainda não há registros para montar o histórico anual.</p>`;
+      return;
+    }
+
+    const keyField = RANKING_KEY_FIELDS[level] || "agencia";
+    const labelField = RANKING_LABEL_FIELDS[level] || keyField;
+    let unitLabel = "";
+    const records = sortedYears.map(year => {
+      const yearRows = rowsHistory.filter(row => extractRankingRowYear(row) === year);
+      if (!yearRows.length) {
+        return { year, rank: null, points: null, participants: 0 };
+      }
+      const aggregated = aggRanking(yearRows, level);
+      aggregated.sort((a, b) => b.p_acum - a.p_acum);
+      const idx = aggregated.findIndex(entry => simplificarTexto(entry.unidade) === normalizedUnit);
+      const entry = idx >= 0 ? aggregated[idx] : null;
+      if (!unitLabel && entry?.label) {
+        unitLabel = entry.label;
+      }
+      return {
+        year,
+        rank: idx >= 0 ? idx + 1 : null,
+        points: entry ? entry.p_acum : null,
+        participants: aggregated.length,
+      };
+    });
+
+    if (!unitLabel) {
+      const matchRow = rowsHistory.find(row => simplificarTexto(row?.[keyField]) === normalizedUnit);
+      if (matchRow) {
+        unitLabel = matchRow?.[labelField] || matchRow?.[keyField] || myUnit;
+      } else {
+        unitLabel = myUnit;
+      }
+    }
+
+    const rangeLabel = sortedYears.length > 1
+      ? `${sortedYears[sortedYears.length - 1]} a ${sortedYears[0]}`
+      : `${sortedYears[0]}`;
+    const latestParticipants = records[0]?.participants || 0;
+    const summaryItems = [
+      `<span class="rk-badge"><strong>Nível:</strong> ${nivelNome}</span>`,
+      `<span class="rk-badge"><strong>Unidade:</strong> ${escapeHTML(unitLabel || myUnit)}</span>`,
+      `<span class="rk-badge"><strong>Período:</strong> ${rangeLabel}</span>`,
+      `<span class="rk-badge"><strong>Participantes (${sortedYears[0]}):</strong> ${fmtINT.format(latestParticipants)}</span>`,
+    ];
+    hostSum.innerHTML = `<div class="rk-badges">${summaryItems.join("")}</div>`;
+
+    const table = document.createElement("table");
+    table.className = "rk-table rk-history-table";
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th class="year-col">Ano</th>
+          <th class="rank-col">Classificação</th>
+          <th>Pontuação acumulada</th>
+          <th>Participantes</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    `;
+    const tbody = table.querySelector("tbody");
+    records.forEach(record => {
+      const rankText = typeof record.rank === "number" ? `${fmtINT.format(record.rank)}º` : "—";
+      const pointsText = (typeof record.points === "number") ? `${fmtONE.format(record.points)}%` : "—";
+      const participantsText = record.participants ? fmtINT.format(record.participants) : "—";
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td class="year-col">${record.year}</td>
+        <td class="rank-col">${rankText}</td>
+        <td>${pointsText}</td>
+        <td>${participantsText}</td>
+      `;
+      if (record.rank === 1) {
+        row.classList.add("rk-history-row--top");
+      }
+      tbody.appendChild(row);
+    });
+    hostTbl.innerHTML = "";
+    hostTbl.appendChild(table);
+    return;
+  }
 
   if (type === "produto") {
     const mode = state.rk.productMode === "piores" ? "piores" : "melhores";

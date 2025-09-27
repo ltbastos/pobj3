@@ -74,6 +74,7 @@ let OPPORTUNITY_LEADS_MAP = new Map();
 let opportunityModalBound = false;
 const LEAD_CONTACT_UI = {
   drawer: null,
+  body: null,
   form: null,
   company: null,
   product: null,
@@ -739,6 +740,8 @@ async function setupOpportunityModal(){
     productSelect.dataset.wired = "1";
   }
 
+  LEAD_CONTACT_UI.body = modal.querySelector(".leads-modal__body");
+
   const drawer = modal.querySelector("#lead-contact-drawer");
   if (drawer) {
     LEAD_CONTACT_UI.drawer = drawer;
@@ -815,6 +818,9 @@ function openLeadContactDrawer(lead, trigger){
   state.opportunities.contact = { open:true, leadId: lead.id, trigger: trigger || null };
   setOpportunitySelectedLead(lead.id, { focusRow:false, silent:true });
   populateLeadContactDrawer(lead);
+  if (LEAD_CONTACT_UI.body) {
+    LEAD_CONTACT_UI.body.classList.add('has-contact-open');
+  }
   LEAD_CONTACT_UI.drawer.setAttribute('aria-hidden', 'false');
   LEAD_CONTACT_UI.drawer.classList.add('is-open');
   requestAnimationFrame(() => {
@@ -828,6 +834,9 @@ function closeLeadContactDrawer(options = {}){
   LEAD_CONTACT_UI.drawer.setAttribute('aria-hidden', 'true');
   if (LEAD_CONTACT_UI.form) {
     LEAD_CONTACT_UI.form.reset();
+  }
+  if (LEAD_CONTACT_UI.body) {
+    LEAD_CONTACT_UI.body.classList.remove('has-contact-open');
   }
   const previousTrigger = state.opportunities.contact?.trigger;
   const previousLeadId = state.opportunities.contact?.leadId;

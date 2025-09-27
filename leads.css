@@ -364,6 +364,7 @@
   right:32px;
   bottom:32px;
   width:min(420px, calc(100% - 48px));
+  max-width:420px;
   border-radius:18px;
   background:#ffffff;
   border:1px solid #dbeafe;
@@ -374,6 +375,8 @@
   pointer-events:none;
   display:flex;
   flex-direction:column;
+  box-sizing:border-box;
+  overflow:hidden;
   z-index:10;
 }
 
@@ -389,6 +392,7 @@
   height:100%;
   padding:26px 24px 24px;
   gap:20px;
+  overflow-y:auto;
 }
 
 .lead-contact-drawer__head{
@@ -468,16 +472,26 @@
 
 .lead-contact-form__actions{ display:flex; justify-content:flex-end; gap:12px; margin-top:8px; }
 
+.leads-modal__body.has-contact-open{
+  padding-right:calc(32px + min(420px, 32vw));
+}
+
+.leads-modal__body.has-contact-open .leads-modal__grid{
+  margin-right:min(420px, 32vw);
+}
+
 @media (max-width:860px){
   .leads-modal__panel{ width:96vw; max-height:94vh; }
   .leads-modal__head{ padding:22px 20px 16px; }
   .leads-modal__filters,
   .leads-modal__summary,
   .leads-modal__body{ padding-left:20px; padding-right:20px; }
+  .leads-modal__body.has-contact-open{ padding-right:20px; }
+  .leads-modal__body.has-contact-open .leads-modal__grid{ margin-right:0; }
   .leads-modal__table{ border-radius:10px; }
   .leads-modal__grid{ grid-template-columns:minmax(0,1fr); gap:20px; }
   .lead-detail{ position:relative; top:0; }
-  .lead-contact-drawer{ position:fixed; inset:auto 16px 16px 16px; width:auto; transform:translateY(30px); }
+  .lead-contact-drawer{ position:fixed; inset:auto 16px 16px 16px; width:auto; max-width:none; transform:translateY(30px); }
   .lead-contact-drawer.is-open{ transform:translateY(0); }
 }
 

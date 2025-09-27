@@ -1066,6 +1066,15 @@ select.input{
 .unit-col, .rk-name{ text-align:left; font-weight:700; color:#111827; }
 .rk-row--mine{ background:#f0f9ff; }
 .rk-row--mine:hover{ background:#e8f4ff; }
+.rk-history-table{ min-width:540px; }
+.rk-history-table .year-col{ width:110px; text-align:left; font-weight:800; color:#0f172a; }
+.rk-history-table .rank-col{ width:140px; font-weight:800; }
+.rk-history-table thead th:nth-child(3),
+.rk-history-table thead th:nth-child(4),
+.rk-history-table tbody td:nth-child(3),
+.rk-history-table tbody td:nth-child(4){ text-align:right; }
+.rk-history-row--top{ background:#ecfdf5; }
+.rk-history-row--top:hover{ background:#d1fae5; }
 
 /* =========================================================
    VISÃO EXECUTIVA (gráficos + mini-ranks)
