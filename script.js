@@ -8914,6 +8914,27 @@ function renderRanking(){
 }
 
 /* ===== Aqui eu renderizo a tabela em árvore usada no detalhamento ===== */
+function openDetailTicket(node = {}, trail = []){
+  const detail = {
+    node,
+    trail: Array.isArray(trail) ? [...trail] : [],
+    label: node?.label || "",
+    type: node?.type || "",
+    level: node?.level ?? null,
+    levelKey: node?.levelKey || "",
+    lineage: Array.isArray(node?.lineage) ? node.lineage.map(entry => ({ ...entry })) : [],
+  };
+  let handled = false;
+  try {
+    const event = new CustomEvent("detail:open-ticket", { detail, cancelable: true });
+    handled = !document.dispatchEvent(event);
+  } catch (err) {
+    console.warn("Não foi possível notificar o módulo de chamados:", err);
+  }
+  console.info("Detalhamento — chamado", detail);
+  if (!handled) window.open(TICKET_URL, "_blank");
+}
+
 function openDetailOpportunities(node = {}, trail = []){
   const detail = {
     node,
@@ -9132,7 +9153,10 @@ function renderTreeTable() {
       </td>`;
 
     const [btnTicket, btnOpportunity] = tr.querySelectorAll(".icon-btn");
-    btnTicket?.addEventListener("click",(ev)=>{ ev.stopPropagation(); window.open(TICKET_URL,"_blank"); });
+    btnTicket?.addEventListener("click",(ev)=>{
+      ev.stopPropagation();
+      openDetailTicket(node, trail);
+    });
     btnOpportunity?.addEventListener("click",(ev)=>{
       ev.stopPropagation();
       openDetailOpportunities(node, trail);
