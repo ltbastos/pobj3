@@ -1,9 +1,9 @@
-id,nome,usuario,atendente,supervisor,admin
-usr-01,Juliana Nogueira,TRUE,FALSE,FALSE,FALSE
-usr-02,Thiago Azevedo,TRUE,TRUE,FALSE,FALSE
-usr-03,Sofia Martins,TRUE,TRUE,TRUE,FALSE
-usr-04,Carlos Lima,TRUE,TRUE,TRUE,TRUE
-usr-05,Larissa Galvão,TRUE,TRUE,FALSE,FALSE
-usr-06,Gabriel Figueiredo,TRUE,FALSE,FALSE,FALSE
-usr-07,Renata Campos,TRUE,FALSE,FALSE,FALSE
-usr-08,Mariana Duarte,TRUE,TRUE,TRUE,FALSE
+id,nome,usuario,atendente,supervisor,admin,matriz
+usr-01,Juliana Nogueira,TRUE,FALSE,FALSE,FALSE,FALSE
+usr-02,Thiago Azevedo,TRUE,TRUE,FALSE,FALSE,TRUE
+usr-03,Sofia Martins,TRUE,TRUE,TRUE,FALSE,TRUE
+usr-04,Carlos Lima,TRUE,TRUE,TRUE,TRUE,TRUE
+usr-05,Larissa Galvão,TRUE,TRUE,FALSE,FALSE,FALSE
+usr-06,Gabriel Figueiredo,TRUE,FALSE,FALSE,FALSE,FALSE
+usr-07,Renata Campos,TRUE,FALSE,FALSE,FALSE,FALSE
+usr-08,Mariana Duarte,TRUE,TRUE,TRUE,FALSE,TRUE

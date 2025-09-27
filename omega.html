@@ -57,10 +57,6 @@
 
           <nav id="omega-nav" class="omega-nav" aria-label="Menu Omega"></nav>
 
-          <section class="omega-permissions" aria-labelledby="omega-permissions-title">
-            <h4 id="omega-permissions-title">Permissões do papel</h4>
-            <ul id="omega-permissions-list" class="omega-permissions__list"></ul>
-          </section>
         </aside>
 
         <section class="omega-main">
@@ -118,7 +114,7 @@
           <header class="omega-drawer__header">
             <div>
               <h3 id="omega-drawer-title">Novo chamado</h3>
-              <p id="omega-drawer-desc">Pré-preenchemos o contexto atual para agilizar o cadastro.</p>
+              <p id="omega-drawer-desc">Preencha os campos abaixo para registrar o chamado com agilidade.</p>
             </div>
             <button class="omega-icon-btn" type="button" data-omega-drawer-close aria-label="Fechar formulário">
               <i class="ti ti-x"></i>
@@ -126,16 +122,10 @@
           </header>
           <div id="omega-form-feedback" class="omega-feedback" role="alert" hidden></div>
           <form id="omega-form" class="omega-form">
-            <div class="omega-form__context">
-              <h4>Contexto detectado</h4>
-              <div class="omega-form__context-grid">
-                <label class="omega-field" for="omega-form-company">
-                  <span class="omega-field__label">Empresa</span>
-                  <input id="omega-form-company" class="omega-input" type="text" placeholder="Ex.: Pães &amp; Cia Ltda" required/>
-                </label>
-                <ul id="omega-form-context" class="omega-tags"></ul>
-              </div>
-            </div>
+            <label class="omega-field" for="omega-form-company">
+              <span class="omega-field__label">Empresa</span>
+              <input id="omega-form-company" class="omega-input" type="text" placeholder="Ex.: Pães &amp; Cia Ltda" required/>
+            </label>
 
             <div class="omega-form__grid">
               <label class="omega-field" for="omega-form-department">
