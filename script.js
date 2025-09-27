@@ -3110,6 +3110,7 @@ const state = {
     filtered:[],
     trail:[],
     contact:{ open:false, leadId:null, trigger:null },
+    detail:{ selectedId:null },
   },
 
   animations:{
@@ -3468,7 +3469,7 @@ function filterOpportunityLeads(levelKey, dataset = [], baseFilters = new Map())
 
 function renderLeadHistoryList(history = []){
   if (!Array.isArray(history) || !history.length) {
-    return `<span class="lead-comment__meta">Sem registros</span>`;
+    return `<p class="lead-detail__history-empty">Nenhum contato registrado até o momento.</p>`;
   }
   return `<ul class="lead-history">${history.slice(0, 3).map(entry => {
     const data = formatBRDate(entry?.data) || "—";
@@ -3478,85 +3479,158 @@ function renderLeadHistoryList(history = []){
   }).join("")}</ul>`;
 }
 
-function renderLeadComment(lead = {}){
+function renderLeadComment(lead = {}, { includeDate = true } = {}){
   const comment = limparTexto(lead?.ultimoComentario) ? escapeHTML(lead.ultimoComentario) : "Sem comentários registrados.";
-  const usuario = lead?.ultimoUsuario ? escapeHTML(lead.ultimoUsuario) : "—";
-  const data = lead?.ultimoContatoData ? formatBRDate(lead.ultimoContatoData) : "";
-  const meta = data ? `${usuario} • ${data}` : usuario;
+  const usuario = lead?.ultimoUsuario ? escapeHTML(lead.ultimoUsuario) : "";
+  const data = includeDate && lead?.ultimoContatoData ? formatBRDate(lead.ultimoContatoData) : "";
+  const metaParts = [];
+  if (usuario) metaParts.push(usuario);
+  if (includeDate && data) metaParts.push(data);
+  const meta = metaParts.length ? metaParts.join(" • ") : "—";
   return `<div class="lead-comment"><p class="lead-comment__text">${comment}</p><span class="lead-comment__meta">${meta}</span></div>`;
 }
 
 function renderOpportunityTable(leads = []){
-  const activeLeadId = state.opportunities?.contact?.leadId || "";
+  const selectedId = state.opportunities?.detail?.selectedId || "";
   const rows = leads.map(lead => {
-    const isActive = activeLeadId && lead.id === activeLeadId;
-    const empresaHtml = `<div class="lead-company"><strong>${escapeHTML(lead.empresa || "—")}</strong>${lead.segmento ? `<span>${escapeHTML(lead.segmento)}</span>` : ""}${lead.agenciaNome ? `<small>${escapeHTML(lead.agenciaNome)}</small>` : ""}</div>`;
-    const produtoHtml = `<div class="lead-product"><strong>${escapeHTML(lead.produtoNome || lead.prodOrSub || "—")}</strong>${lead.familiaNome ? `<small>${escapeHTML(lead.familiaNome)}</small>` : ""}</div>`;
-    const dataBaseLabel = formatBRDate(lead.dataBase) || "—";
-    const contatoLabel = formatBRDate(lead.ultimoContatoData || lead.dataBase) || "—";
-    const familiaLabel = escapeHTML(lead.familiaNome || lead.familia || "—");
-    const secaoLabel = escapeHTML(lead.secaoNome || lead.secaoId || "—");
-    const comentarioHtml = renderLeadComment(lead);
-    const historicoHtml = renderLeadHistoryList(lead.historico);
-    const responsavelHtml = `<div class="lead-responsavel"><strong>${escapeHTML(lead.ultimoUsuario || "—")}</strong></div>`;
-    const diretoriaLabel = escapeHTML(lead.diretoriaNome || lead.diretoria || "—");
-    const regionalLabel = escapeHTML(lead.regional || lead.gerenciaRegional || "—");
-    const agenciaLabel = escapeHTML(lead.agenciaNome || lead.agencia || "—");
-    const ggestaoLabel = escapeHTML(lead.gerenteGestaoNome || lead.gerenteGestao || "—");
-    const gerenteLabel = escapeHTML(lead.gerenteNome || lead.gerente || "—");
+    const isActive = selectedId && lead.id === selectedId;
+    const databaseLabel = formatBRDate(lead.dataBase) || "—";
+    const empresaHtml = `<div class=\"lead-company\"><strong>${escapeHTML(lead.empresa || "—")}</strong>${lead.segmento ? `<span>${escapeHTML(lead.segmento)}</span>` : ""}<small>Database ${escapeHTML(databaseLabel)}</small>${lead.agenciaNome ? `<span class=\"lead-company__tag\">${escapeHTML(lead.agenciaNome)}</span>` : ""}</div>`;
+    const produtoLabel = escapeHTML(lead.produtoNome || lead.prodOrSub || "—");
+    const familiaLabel = limparTexto(lead.familiaNome || lead.familia) ? escapeHTML(lead.familiaNome || lead.familia) : "";
+    const secaoLabel = limparTexto(lead.secaoNome || lead.secaoId) ? escapeHTML(lead.secaoNome || lead.secaoId) : "";
+    const propHtml = `<div class=\"lead-propensity\"><strong>${produtoLabel}</strong>${familiaLabel ? `<span>${familiaLabel}</span>` : ""}${secaoLabel ? `<small>${secaoLabel}</small>` : ""}</div>`;
+    const lastContactStamp = formatBRDate(lead.ultimoContatoData) || "Sem contato registrado";
+    const comentarioHtml = renderLeadComment(lead, { includeDate: false });
+    const lastContactHtml = `<div class=\"lead-last-contact\"><span class=\"lead-last-contact__stamp\">${escapeHTML(lastContactStamp)}</span>${comentarioHtml}</div>`;
     const credito = fmtBRL.format(lead.creditoPreAprovado || 0);
     const originKey = simplificarTexto(lead.origem || lead.origemLabel || "");
     const originLabel = escapeHTML(lead.origemLabel || (originKey === "link" ? "Link" : originKey === "smart" ? "Smart" : (lead.origem || "—")));
-    const originBadge = `<span class="lead-origin-badge" data-origin="${escapeHTML(originKey || "outro")}">${originLabel}</span>`;
-    const actionButton = `<div class="lead-actions"><button type="button" class="btn btn--ghost" data-lead-action="add-contact" data-lead-id="${escapeHTML(lead.id)}"><i class="ti ti-user-plus"></i> Incluir contato</button></div>`;
-    const rowClass = isActive ? " class=\"is-active-row\"" : "";
-    return `<tr${rowClass} data-lead-id="${escapeHTML(lead.id)}">
-      <td>${escapeHTML(dataBaseLabel)}</td>
-      <td>${empresaHtml}</td>
-      <td>${produtoHtml}</td>
-      <td>${familiaLabel}</td>
-      <td>${secaoLabel}</td>
-      <td>${escapeHTML(contatoLabel)}</td>
-      <td>${comentarioHtml}</td>
-      <td>${responsavelHtml}</td>
-      <td>${historicoHtml}</td>
-      <td>${diretoriaLabel}</td>
-      <td>${regionalLabel}</td>
-      <td>${agenciaLabel}</td>
-      <td>${ggestaoLabel}</td>
-      <td>${gerenteLabel}</td>
-      <td><span class="lead-credit">${credito}</span></td>
-      <td>${originBadge}</td>
-      <td>${actionButton}</td>
-    </tr>`;
+    const originBadge = `<span class=\"lead-origin-badge\" data-origin=\"${escapeHTML(originKey || "outro")}\">${originLabel}</span>`;
+    const actionButton = `<div class=\"lead-actions\"><button type=\"button\" class=\"btn btn--ghost\" data-lead-action=\"add-contact\" data-lead-id=\"${escapeHTML(lead.id)}\"><i class=\"ti ti-user-plus\"></i> Incluir contato</button></div>`;
+    const rowClass = isActive ? " class=\\\"is-active-row\\\"" : "";
+    return `<tr${rowClass} data-lead-id=\"${escapeHTML(lead.id)}\">\n      <td>${empresaHtml}</td>\n      <td>${propHtml}</td>\n      <td>${lastContactHtml}</td>\n      <td><span class=\"lead-credit\">${credito}</span></td>\n      <td>${originBadge}</td>\n      <td>${actionButton}</td>\n    </tr>`;
   }).join("");
 
-  return `<div class="lead-table-wrapper">
-    <table class="lead-table">
-      <thead>
-        <tr>
-          <th>Database</th>
-          <th>Empresa</th>
-          <th>Produto propenso</th>
-          <th>Família</th>
-          <th>Seção</th>
-          <th>Data do contato</th>
-          <th>Comentário</th>
-          <th>Responsável</th>
-          <th>Histórico (3 últimos)</th>
-          <th>Diretoria</th>
-          <th>Regional</th>
-          <th>Agência</th>
-          <th>Gerente de gestão</th>
-          <th>Gerente</th>
-          <th>Crédito pré-aprovado</th>
-          <th>Origem</th>
-          <th>Ações</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-  </div>`;
+  return `<div class=\"lead-table-wrapper\">\n    <table class=\"lead-table\">\n      <thead>\n        <tr>\n          <th>Empresa</th>\n          <th>Propensão</th>\n          <th>Último contato</th>\n          <th>Crédito pré-aprovado</th>\n          <th>Origem</th>\n          <th>Ações</th>\n        </tr>\n      </thead>\n      <tbody>${rows}</tbody>\n    </table>\n  </div>`;
+}
+
+function renderLeadDetailPanel(lead){
+  if (!lead) {
+    return `<p class="lead-detail__empty">Selecione um lead para ver o histórico e os detalhes completos.</p>`;
+  }
+
+  const databaseLabel = formatBRDate(lead.dataBase) || "—";
+  const empresa = escapeHTML(lead.empresa || "—");
+  const produto = escapeHTML(lead.produtoNome || lead.prodOrSub || "—");
+  const familiaLabel = limparTexto(lead.familiaNome || lead.familia) ? escapeHTML(lead.familiaNome || lead.familia) : "";
+  const secaoLabel = limparTexto(lead.secaoNome || lead.secaoId) ? escapeHTML(lead.secaoNome || lead.secaoId) : "";
+  const contexto = [
+    { label:"Diretoria", value: lead.diretoriaNome || lead.diretoria },
+    { label:"Regional", value: lead.regional || lead.gerenciaRegional },
+    { label:"Agência", value: lead.agenciaNome || lead.agencia },
+    { label:"Gerente de gestão", value: lead.gerenteGestaoNome || lead.gerenteGestao },
+    { label:"Gerente", value: lead.gerenteNome || lead.gerente },
+  ].filter(item => limparTexto(item.value));
+  const contextHtml = contexto.length
+    ? contexto.map(item => `<span><strong>${escapeHTML(item.label)}:</strong> ${escapeHTML(item.value)}</span>`).join("")
+    : `<span class="lead-detail__empty">Contexto não disponível.</span>`;
+
+  const credit = fmtBRL.format(lead.creditoPreAprovado || 0);
+  const originKey = simplificarTexto(lead.origem || lead.origemLabel || "");
+  const originLabel = escapeHTML(lead.origemLabel || (originKey === "link" ? "Link" : originKey === "smart" ? "Smart" : (lead.origem || "—")));
+  const responsavel = lead.ultimoUsuario ? escapeHTML(lead.ultimoUsuario) : "—";
+  const ultimoContato = lead.ultimoContatoData ? formatBRDate(lead.ultimoContatoData) : "Sem contato registrado";
+  const historyHtml = renderLeadHistoryList(lead.historico);
+  const commentHtml = renderLeadComment(lead);
+
+  return `
+    <div class="lead-detail__header">
+      <span class="lead-detail__eyebrow">Database ${escapeHTML(databaseLabel)}</span>
+      <h5>${empresa}</h5>
+      <p class="lead-detail__product">${produto}${familiaLabel ? ` • ${familiaLabel}` : ""}${secaoLabel ? ` • ${secaoLabel}` : ""}</p>
+    </div>
+    <div class="lead-detail__meta">
+      <div class="lead-detail__meta-item">
+        <span class="lead-detail__label">Crédito pré-aprovado</span>
+        <strong>${credit}</strong>
+      </div>
+      <div class="lead-detail__meta-item">
+        <span class="lead-detail__label">Origem do lead</span>
+        <span class="lead-origin-badge" data-origin="${escapeHTML(originKey || "outro")}">${originLabel}</span>
+      </div>
+      <div class="lead-detail__meta-item">
+        <span class="lead-detail__label">Último contato</span>
+        <strong>${escapeHTML(ultimoContato)}</strong>
+      </div>
+      <div class="lead-detail__meta-item">
+        <span class="lead-detail__label">Responsável</span>
+        <strong>${responsavel}</strong>
+      </div>
+    </div>
+    <div class="lead-detail__context">${contextHtml}</div>
+    <div class="lead-detail__block">
+      <h6>Histórico de contatos</h6>
+      ${historyHtml}
+    </div>
+    <div class="lead-detail__block">
+      <h6>Último comentário</h6>
+      ${commentHtml}
+    </div>
+  `;
+}
+
+function updateLeadDetailPanel(lead){
+  const modal = document.getElementById("leads-modal");
+  if (!modal) return;
+  const detail = modal.querySelector("#lead-detail-panel");
+  if (!detail) return;
+  detail.innerHTML = renderLeadDetailPanel(lead);
+}
+
+function applyLeadRowSelection(leadId, { scrollIntoView = false } = {}){
+  const modal = document.getElementById("leads-modal");
+  if (!modal) return;
+  const rows = modal.querySelectorAll(".lead-table tbody tr");
+  rows.forEach(row => {
+    const match = leadId && row.getAttribute("data-lead-id") === leadId;
+    row.classList.toggle("is-active-row", Boolean(match));
+    if (match && scrollIntoView) {
+      row.scrollIntoView({ block: "nearest" });
+    }
+  });
+}
+
+function setOpportunitySelectedLead(leadId, { focusRow = false, silent = false } = {}){
+  if (!state.opportunities.open) return;
+  if (!state.opportunities.detail) state.opportunities.detail = { selectedId:null };
+  const lead = leadId ? getOpportunityLeadById(leadId) : null;
+  if (!lead) {
+    state.opportunities.detail.selectedId = null;
+    applyLeadRowSelection("");
+    updateLeadDetailPanel(null);
+    if (!silent && state.opportunities.contact?.open) {
+      closeLeadContactDrawer({ silent: true });
+    }
+    return null;
+  }
+
+  state.opportunities.detail.selectedId = lead.id;
+  applyLeadRowSelection(lead.id, { scrollIntoView: focusRow });
+  updateLeadDetailPanel(lead);
+
+  if (state.opportunities.contact?.open) {
+    if (state.opportunities.contact.leadId !== lead.id) {
+      state.opportunities.contact.leadId = lead.id;
+      if (!silent) {
+        populateLeadContactDrawer(lead);
+      }
+    } else if (!silent) {
+      populateLeadContactDrawer(lead, { preserveInputs: true });
+    }
+  }
+
+  return lead;
 }
 
 function renderOpportunityModal(){
@@ -3575,6 +3649,24 @@ function renderOpportunityModal(){
   const contextWrap = modal.querySelector("#leads-modal-context");
   const summaryEl = modal.querySelector("#leads-modal-summary");
   const listWrap = modal.querySelector("#leads-modal-list");
+  if (!state.opportunities.detail) state.opportunities.detail = { selectedId:null };
+  const detailState = state.opportunities.detail;
+  let selectedLead = null;
+  if (detailState.selectedId) {
+    selectedLead = filtered.find(lead => lead.id === detailState.selectedId) || null;
+    if (!selectedLead) {
+      detailState.selectedId = null;
+    }
+  }
+  if (!selectedLead && state.opportunities.contact?.leadId) {
+    selectedLead = filtered.find(lead => lead.id === state.opportunities.contact.leadId) || null;
+    if (selectedLead) {
+      detailState.selectedId = selectedLead.id;
+    }
+  }
+  if (!filtered.length) {
+    detailState.selectedId = null;
+  }
 
   const levelLabel = OPPORTUNITY_LEVEL_LABELS[level] || "Contexto";
   const lineageMap = new Map(lineage.map(entry => [entry.levelKey, entry]));
@@ -3620,7 +3712,7 @@ function renderOpportunityModal(){
     } else {
       listWrap.innerHTML = renderOpportunityTable(filtered);
       if (state.opportunities.contact?.open) {
-        const activeLead = getOpportunityLeadById(state.opportunities.contact.leadId);
+        const activeLead = filtered.find(lead => lead.id === state.opportunities.contact.leadId) || null;
         if (activeLead) {
           populateLeadContactDrawer(activeLead, { preserveInputs: true });
         } else {
@@ -3628,6 +3720,14 @@ function renderOpportunityModal(){
         }
       }
     }
+  }
+
+  if (filtered.length) {
+    applyLeadRowSelection(detailState.selectedId || "");
+    updateLeadDetailPanel(selectedLead || null);
+  } else {
+    applyLeadRowSelection("");
+    updateLeadDetailPanel(null);
   }
 }
 
@@ -3658,6 +3758,7 @@ function closeOpportunityModal(){
   state.opportunities.selectedLevel = defaultOpportunityLevel([], new Map());
   state.opportunities.trail = [];
   state.opportunities.contact = { open:false, leadId:null, trigger:null };
+  state.opportunities.detail = { selectedId:null };
 }
 
 function openOpportunityModal(detail = {}){
@@ -3688,6 +3789,7 @@ function openOpportunityModal(detail = {}){
   state.opportunities.trail = Array.isArray(detail?.trail) ? [...detail.trail] : [];
   state.opportunities.selectedLevel = defaultOpportunityLevel(lineage, baseFilters);
   state.opportunities.contact = { open:false, leadId:null, trigger:null };
+  state.opportunities.detail = { selectedId:null };
 
   modal.hidden = false;
   modal.setAttribute("aria-hidden", "false");
@@ -3767,29 +3869,30 @@ function escapeLeadIdSelector(value = ""){
   return window.CSS?.escape ? CSS.escape(value) : value.replace(/([\W_])/g, '\\$1');
 }
 
-function selectLeadRowById(leadId){
-  if (!leadId) return null;
-  const escaped = escapeLeadIdSelector(leadId);
-  return document.querySelector(`.lead-table tbody tr[data-lead-id="${escaped}"]`);
-}
-
 function handleOpportunityTableClick(event){
   const button = event.target?.closest?.('[data-lead-action="add-contact"]');
-  if (!button) return;
-  event.preventDefault();
-  const leadId = button.getAttribute('data-lead-id');
+  if (button) {
+    event.preventDefault();
+    const leadId = button.getAttribute('data-lead-id');
+    if (!leadId) return;
+    const lead = getOpportunityLeadById(leadId);
+    if (!lead) return;
+    setOpportunitySelectedLead(lead.id, { focusRow:false, silent:true });
+    openLeadContactDrawer(lead, button);
+    return;
+  }
+
+  const row = event.target?.closest?.('tr[data-lead-id]');
+  if (!row) return;
+  const leadId = row.getAttribute('data-lead-id');
   if (!leadId) return;
-  const lead = getOpportunityLeadById(leadId);
-  if (!lead) return;
-  openLeadContactDrawer(lead, button);
+  setOpportunitySelectedLead(leadId, { focusRow:true });
 }
 
 function openLeadContactDrawer(lead, trigger){
   if (!lead || !LEAD_CONTACT_UI.drawer) return;
   state.opportunities.contact = { open:true, leadId: lead.id, trigger: trigger || null };
-  document.querySelectorAll('.lead-table tbody tr.is-active-row').forEach(row => row.classList.remove('is-active-row'));
-  const rowEl = selectLeadRowById(lead.id);
-  rowEl?.classList.add('is-active-row');
+  setOpportunitySelectedLead(lead.id, { focusRow:false, silent:true });
   populateLeadContactDrawer(lead);
   LEAD_CONTACT_UI.drawer.setAttribute('aria-hidden', 'false');
   LEAD_CONTACT_UI.drawer.classList.add('is-open');
@@ -3808,10 +3911,7 @@ function closeLeadContactDrawer(options = {}){
   const previousTrigger = state.opportunities.contact?.trigger;
   const previousLeadId = state.opportunities.contact?.leadId;
   state.opportunities.contact = { open:false, leadId:null, trigger:null };
-  if (previousLeadId) {
-    const rowEl = selectLeadRowById(previousLeadId);
-    rowEl?.classList.remove('is-active-row');
-  }
+  applyLeadRowSelection(state.opportunities.detail?.selectedId || "");
   if (!options.silent && previousTrigger && typeof previousTrigger.focus === 'function') {
     requestAnimationFrame(() => previousTrigger.focus());
   }

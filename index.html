@@ -359,7 +359,12 @@
       <div id="leads-modal-context" class="leads-modal__context"></div>
       <section id="leads-modal-summary" class="leads-modal__summary"></section>
       <section class="leads-modal__body">
-        <div id="leads-modal-list" class="leads-modal__table"></div>
+        <div class="leads-modal__grid">
+          <div id="leads-modal-list" class="leads-modal__table"></div>
+          <aside id="lead-detail-panel" class="lead-detail" aria-live="polite">
+            <p class="lead-detail__empty">Selecione um lead para ver o histórico e os detalhes completos.</p>
+          </aside>
+        </div>
         <aside id="lead-contact-drawer" class="lead-contact-drawer" aria-hidden="true" aria-labelledby="lead-contact-company" role="dialog">
           <div class="lead-contact-drawer__content">
             <header class="lead-contact-drawer__head">
