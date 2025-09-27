@@ -140,6 +140,11 @@ let CURRENT_USER_CONTEXT = {
   gerente: ""
 };
 
+function getCurrentUserDisplayName(){
+  const name = document.querySelector('.userbox__name')?.textContent?.trim();
+  return name || 'Equipe Comercial';
+}
+
 // Aqui eu aponto onde normalmente ficam os CSVs e guardo a Promise de carregamento para evitar múltiplos downloads.
 const BASE_CSV_PATH = "Base";
 let baseDataPromise = null;
@@ -1481,6 +1486,7 @@ async function loadBaseData(){
       variavelRaw,
       campanhasRaw,
       calendarioRaw,
+      leadsRaw,
     ] = await Promise.all([
       loadCSVAuto(`${basePath}mesu.csv`),
       loadCSVAuto(`${basePath}Produto.csv`),
@@ -1490,6 +1496,7 @@ async function loadBaseData(){
       loadCSVAuto(`${basePath}fVariavel.csv`).catch(() => []),
       loadCSVAuto(`${basePath}fCampanhas.csv`).catch(() => []),
       loadCSVAuto(`${basePath}dCalendario.csv`).catch(() => []),
+      loadCSVAuto(`${basePath}leads_propensos.csv`).catch(() => []),
     ]);
 
     const mesuRows = normalizarLinhasMesu(mesuRaw);
@@ -1513,6 +1520,9 @@ async function loadBaseData(){
     }
     DIM_CALENDARIO = normalizarLinhasCalendario(calendarioRaw);
     updateCampaignSprintsUnits();
+
+    OPPORTUNITY_LEADS_RAW = Array.isArray(leadsRaw) ? leadsRaw : [];
+    ingestOpportunityLeadRows(OPPORTUNITY_LEADS_RAW);
 
     const availableDatesSource = (DIM_CALENDARIO.length
       ? DIM_CALENDARIO.map(row => row.data)
@@ -2210,7 +2220,7 @@ const DETAIL_COLUMNS = [
   { id: "pontos",        label: "Pontos (pts)",        cellClass: "", render: renderDetailPointsCell, sortType: "number", getValue: (node = {}) => toNumber(node.pontos ?? node.pontosCumpridos) },
   { id: "peso",          label: "Peso (pts)",          cellClass: "", render: renderDetailPesoCell, sortType: "number", getValue: (node = {}) => toNumber(node.peso ?? node.pontosMeta) },
   { id: "data",          label: "Data",                cellClass: "", render: renderDetailDateCellFromNode, sortType: "date", getValue: (node = {}) => node.data || "" },
-  { id: "meta_diaria",   label: "Meta diária (R$)",    cellClass: "", render: renderDetailMetaDiariaCell, sortType: "number", getValue: (node = {}) => toNumber(node.metaDiaria) },
+  { id: "meta_diaria",   label: "Meta diária total (R$)",    cellClass: "", render: renderDetailMetaDiariaCell, sortType: "number", getValue: (node = {}) => toNumber(node.metaDiaria) },
   { id: "referencia_hoje", label: "Referência para hoje (R$)", cellClass: "", render: renderDetailReferenciaHojeCell, sortType: "number", getValue: (node = {}) => toNumber(node.referenciaHoje) },
   { id: "meta_diaria_necessaria", label: "Meta diária necessária (R$)", cellClass: "", render: renderDetailMetaDiariaNecessariaCell, sortType: "number", getValue: (node = {}) => toNumber(node.metaDiariaNecessaria) },
   { id: "projecao",      label: "Projeção (R$)",       cellClass: "", render: renderDetailProjecaoCell, sortType: "number", getValue: (node = {}) => toNumber(node.projecao) },
@@ -2234,7 +2244,7 @@ const DETAIL_MAX_CUSTOM_VIEWS = 5;
 const DETAIL_VIEW_STORAGE_KEY = "pobj3:detailViews";
 const DETAIL_VIEW_ACTIVE_KEY = "pobj3:detailActiveView";
 const DETAIL_VIEW_CUSTOM_KEY = "pobj3:detailCustomView";
-const DETAIL_CUSTOM_DEFAULT_LABEL = "Visão atual";
+const DETAIL_CUSTOM_DEFAULT_LABEL = "Visão personalizada";
 
 function renderDetailDateCell(iso){
   if (!iso) return "—";
@@ -3091,6 +3101,18 @@ const state = {
     designerMessage: "",
   },
 
+  opportunities:{
+    open:false,
+    node:null,
+    lineage:[],
+    baseFilters:new Map(),
+    selectedProduct:"",
+    filtered:[],
+    trail:[],
+    contact:{ open:false, leadId:null, trigger:null },
+    detail:{ selectedId:null },
+  },
+
   animations:{
     resumo:{
       kpiKey:null,
@@ -3115,10 +3137,18 @@ function hydrateDetailViewsFromStorage(){
 
   const customRaw = readLocalStorageJSON(DETAIL_VIEW_CUSTOM_KEY);
   if (customRaw && Array.isArray(customRaw.columns)) {
-    const label = limparTexto(customRaw.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL;
+    const baseCandidate = typeof customRaw.baseId === "string" && customRaw.baseId.trim() && customRaw.baseId !== "__custom__"
+      ? customRaw.baseId.trim()
+      : DETAIL_DEFAULT_VIEW.id;
+    const savedBase = (state.details.savedViews || []).find(view => view.id === baseCandidate);
+    const baseView = baseCandidate === DETAIL_DEFAULT_VIEW.id
+      ? DETAIL_DEFAULT_VIEW
+      : (savedBase ? { id: savedBase.id, name: savedBase.name || "Visão personalizada" } : DETAIL_DEFAULT_VIEW);
+    const label = limparTexto(customRaw.name || "") || limparTexto(baseView.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL;
     state.details.customView = {
       name: label,
       columns: sanitizeDetailColumns(customRaw.columns),
+      baseId: baseView.id,
     };
   } else {
     state.details.customView = null;
@@ -3133,6 +3163,9 @@ function hydrateDetailViewsFromStorage(){
       state.details.customView = {
         name: candidate.name || DETAIL_CUSTOM_DEFAULT_LABEL,
         columns: [...state.details.activeColumns],
+        baseId: candidate.baseId && candidate.baseId !== "__custom__"
+          ? candidate.baseId
+          : (state.details.customView?.baseId || DETAIL_DEFAULT_VIEW.id),
       };
     }
   } else {
@@ -3144,20 +3177,11 @@ function hydrateDetailViewsFromStorage(){
 
 function getAllDetailViews(){
   const saved = Array.isArray(state.details.savedViews) ? state.details.savedViews : [];
-  const base = [DETAIL_DEFAULT_VIEW, ...saved.map(view => ({
+  return [DETAIL_DEFAULT_VIEW, ...saved.map(view => ({
     id: view.id,
     name: limparTexto(view.name || "") || "Visão personalizada",
     columns: sanitizeDetailColumns(view.columns),
   }))];
-  const custom = state.details.customView;
-  if (custom && Array.isArray(custom.columns) && custom.columns.length) {
-    base.push({
-      id: "__custom__",
-      name: limparTexto(custom.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL,
-      columns: sanitizeDetailColumns(custom.columns),
-    });
-  }
-  return base;
 }
 
 function getActiveDetailColumns(){
@@ -3171,10 +3195,17 @@ function detailViewById(viewId){
   if (viewId === "__custom__") {
     const custom = state.details.customView;
     if (custom && Array.isArray(custom.columns) && custom.columns.length) {
+      const baseId = custom.baseId && custom.baseId !== "__custom__"
+        ? custom.baseId
+        : DETAIL_DEFAULT_VIEW.id;
+      const baseView = baseId === DETAIL_DEFAULT_VIEW.id
+        ? DETAIL_DEFAULT_VIEW
+        : (baseId ? detailViewById(baseId) : null) || DETAIL_DEFAULT_VIEW;
       return {
         id: "__custom__",
-        name: limparTexto(custom.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL,
+        name: limparTexto(custom.name || "") || limparTexto(baseView.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL,
         columns: sanitizeDetailColumns(custom.columns),
+        baseId: baseView.id,
       };
     }
     return null;
@@ -3203,6 +3234,11 @@ function persistActiveDetailState(){
     writeLocalStorageJSON(DETAIL_VIEW_CUSTOM_KEY, {
       name: limparTexto(state.details.customView.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL,
       columns: sanitizeDetailColumns(state.details.customView.columns),
+      baseId: state.details.customView.baseId && state.details.customView.baseId !== "__custom__"
+        ? state.details.customView.baseId
+        : (state.details.activeViewId && state.details.activeViewId !== "__custom__"
+          ? state.details.activeViewId
+          : DETAIL_DEFAULT_VIEW.id),
     });
   } else {
     writeLocalStorageItem(DETAIL_VIEW_CUSTOM_KEY, null);
@@ -3217,14 +3253,33 @@ function persistDetailState(){
 function updateActiveDetailConfiguration(viewId, columns, options = {}){
   const sanitized = sanitizeDetailColumns(columns);
   const label = limparTexto(options.label || "");
+  const baseHint = typeof options.baseId === "string" ? options.baseId.trim() : "";
   if (viewId === "__custom__") {
-    const name = label || state.details.customView?.name || DETAIL_CUSTOM_DEFAULT_LABEL;
+    const fallbackBase = baseHint && baseHint !== "__custom__"
+      ? baseHint
+      : (state.details.customView?.baseId && state.details.customView.baseId !== "__custom__"
+        ? state.details.customView.baseId
+        : (state.details.activeViewId && state.details.activeViewId !== "__custom__"
+          ? state.details.activeViewId
+          : DETAIL_DEFAULT_VIEW.id));
+    const baseView = fallbackBase === DETAIL_DEFAULT_VIEW.id
+      ? DETAIL_DEFAULT_VIEW
+      : detailViewById(fallbackBase) || DETAIL_DEFAULT_VIEW;
+    const name = label || limparTexto(baseView.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL;
     state.details.customView = {
       name,
       columns: [...sanitized],
+      baseId: baseView.id,
     };
+    state.details.activeViewId = "__custom__";
+  } else {
+    state.details.activeViewId = viewId;
+    if (state.details.customView) {
+      state.details.customView.baseId = state.details.customView.baseId && state.details.customView.baseId !== "__custom__"
+        ? state.details.customView.baseId
+        : viewId;
+    }
   }
-  state.details.activeViewId = viewId;
   state.details.activeColumns = [...sanitized];
   persistDetailState();
   return [...sanitized];
@@ -3876,9 +3931,19 @@ function renderDetailViewBar(){
     chipsHolder.innerHTML = `<span class="detail-view-empty">Sem visões disponíveis</span>`;
     return;
   }
-  const activeId = state.details.activeViewId || DETAIL_DEFAULT_VIEW.id;
+  const availableIds = new Set(views.map(view => view.id));
+  const rawActiveId = state.details.activeViewId || DETAIL_DEFAULT_VIEW.id;
+  let highlightId = rawActiveId;
+  if (rawActiveId === "__custom__") {
+    const baseId = state.details.customView?.baseId && state.details.customView.baseId !== "__custom__"
+      ? state.details.customView.baseId
+      : DETAIL_DEFAULT_VIEW.id;
+    highlightId = availableIds.has(baseId) ? baseId : DETAIL_DEFAULT_VIEW.id;
+  } else if (!availableIds.has(rawActiveId)) {
+    highlightId = DETAIL_DEFAULT_VIEW.id;
+  }
   chipsHolder.innerHTML = views.map(view => {
-    const isActive = view.id === activeId;
+    const isActive = view.id === highlightId;
     const safeId = escapeHTML(view.id);
     const safeName = escapeHTML(view.name || "Visão");
     return `<button type="button" class="detail-chip${isActive ? " is-active" : ""}" data-view-id="${safeId}"><span>${safeName}</span></button>`;
@@ -3937,10 +4002,18 @@ function openDetailDesigner(){
   const host = document.getElementById("detail-designer");
   if (!host) return;
   const current = detailViewById(state.details.activeViewId) || DETAIL_DEFAULT_VIEW;
+  const baseId = current.id === "__custom__"
+    ? (state.details.customView?.baseId && state.details.customView.baseId !== "__custom__"
+      ? state.details.customView.baseId
+      : DETAIL_DEFAULT_VIEW.id)
+    : current.id;
+  const baseView = baseId === current.id && current.id !== "__custom__"
+    ? current
+    : (baseId === DETAIL_DEFAULT_VIEW.id ? DETAIL_DEFAULT_VIEW : detailViewById(baseId) || DETAIL_DEFAULT_VIEW);
   const baseColumns = sanitizeDetailColumns(current.columns);
   state.details.designerDraft = {
-    viewId: current.id,
-    name: current.name,
+    viewId: baseView.id,
+    name: baseView.name,
     columns: [...baseColumns],
     original: [...baseColumns],
     modified: false,
@@ -4178,6 +4251,12 @@ function handleDetailDesignerApply(){
     return;
   }
 
+  const baseId = draft.viewId && draft.viewId !== "__custom__"
+    ? draft.viewId
+    : (state.details.customView?.baseId && state.details.customView.baseId !== "__custom__"
+      ? state.details.customView.baseId
+      : DETAIL_DEFAULT_VIEW.id);
+
   let targetId = draft.viewId;
   if (!targetId || targetId === DETAIL_DEFAULT_VIEW.id) targetId = "__custom__";
   if (targetId !== "__custom__" && draft.modified) {
@@ -4188,15 +4267,14 @@ function handleDetailDesignerApply(){
 
   let label;
   if (targetId === "__custom__") {
-    label = draft.viewId === "__custom__"
-      ? (draft.name || state.details.customView?.name || DETAIL_CUSTOM_DEFAULT_LABEL)
-      : DETAIL_CUSTOM_DEFAULT_LABEL;
+    const baseMeta = detailViewById(baseId) || DETAIL_DEFAULT_VIEW;
+    label = limparTexto(baseMeta.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL;
   } else {
     const viewMeta = detailViewById(targetId) || detailViewById(draft.viewId);
     label = viewMeta?.name || draft.name || DETAIL_CUSTOM_DEFAULT_LABEL;
   }
 
-  updateActiveDetailConfiguration(targetId, columns, { label });
+  updateActiveDetailConfiguration(targetId, columns, { label, baseId });
   renderDetailViewBar();
   if (state.tableRendered) renderTreeTable();
   closeDetailDesigner();
@@ -5118,7 +5196,7 @@ function buildTree(list, startKey) {
     }).sort((a,b)=> (b.realizado||0) - (a.realizado||0));
   }
 
-  function buildLevel(arr, levelKey, level){
+  function buildLevel(arr, levelKey, level, lineage = []){
     if (levelKey === "contrato") {
       return arr.flatMap(r => ensureContracts(r).map(c => {
         const detailGroups = buildDetailGroups([c]);
@@ -5130,6 +5208,9 @@ function buildTree(list, startKey) {
           modalidade: detailBase.modalidade
         } : null;
         const diariaContrato = diasTotais > 0 ? (c.meta / diasTotais) : 0;
+        const entryMeta = { levelKey, groupField: "contrato", value: c.id, label: c.id };
+        const nextLineage = [...lineage, entryMeta];
+        const breadcrumb = nextLineage.map(item => item.label || item.value).filter(Boolean);
         return {
           type:"contrato",
           level,
@@ -5145,14 +5226,11 @@ function buildTree(list, startKey) {
           projecao: diasDecorridos > 0 ? (c.realizado / Math.max(diasDecorridos, 1)) * diasTotais : c.realizado,
           detail,
           detailGroups,
-          breadcrumb:[
-            c.prodOrSub,
-            r.gerenteNome || r.gerente,
-            r.gerenteGestaoNome || r.gerenteGestao,
-            r.agenciaNome || r.agencia,
-            r.regional || r.gerenciaNome || r.gerenciaRegional,
-            r.diretoriaNome || r.diretoria
-          ].filter(Boolean),
+          levelKey,
+          groupField:"contrato",
+          groupValue:c.id,
+          lineage: nextLineage.map(item => ({ ...item })),
+          breadcrumb,
           children:[]
         };
       }));
@@ -5161,16 +5239,24 @@ function buildTree(list, startKey) {
     return group(arr, mapKey).map(([k, subset]) => {
       const a = agg(subset), next = NEXT[levelKey];
       const labelText = resolveTreeLabel(levelKey, subset, k);
+      const entryMeta = { levelKey, groupField: mapKey, value: k, label: labelText };
+      const nextLineage = [...lineage, entryMeta];
+      const breadcrumb = nextLineage.map(item => item.label || item.value).filter(Boolean);
       return {
         type:"grupo", level, label:labelText, realizado:a.realizado, meta:a.meta, qtd:a.qtd, ating:a.ating, data:a.data,
         peso:a.peso, pontos:a.pontos, pontosMeta:a.pontosMeta, pontosBrutos:a.pontosBrutos,
         metaDiaria:a.metaDiaria, referenciaHoje:a.referenciaHoje, metaDiariaNecessaria:a.metaDiariaNecessaria, projecao:a.projecao,
-        breadcrumb:[labelText], detailGroups: [],
-        children: next ? buildLevel(subset, next, level+1) : []
+        breadcrumb,
+        detailGroups: [],
+        levelKey,
+        groupField: mapKey,
+        groupValue: k,
+        lineage: nextLineage.map(item => ({ ...item })),
+        children: next ? buildLevel(subset, next, level+1, nextLineage) : []
       };
     });
   }
-  return buildLevel(list, startKey, 0);
+  return buildLevel(list, startKey, 0, []);
 }
 
 function getContractSearchInput(){
@@ -8244,13 +8330,10 @@ function createRankingView(){
             <select id="rk-type" class="input input--sm">
               <option value="pobj">Ranking POBJ</option>
               <option value="produto">Ranking por produto</option>
+              <option value="historico">Histórico anual</option>
             </select>
           </div>
           <div class="rk-product-controls" id="rk-product-wrapper" hidden>
-            <div class="rk-control">
-              <label for="rk-product" class="muted">Produto</label>
-              <select id="rk-product" class="input input--sm"></select>
-            </div>
             <div class="segmented seg-mini" id="rk-product-mode" role="group" aria-label="Modo do ranking por produto">
               <button type="button" class="seg-btn" data-mode="melhores">Melhores</button>
               <button type="button" class="seg-btn" data-mode="piores">Piores</button>
@@ -8265,16 +8348,10 @@ function createRankingView(){
   main.appendChild(section);
 
   const typeSelect = section.querySelector('#rk-type');
-  const productSelect = section.querySelector('#rk-product');
   const modeGroup = section.querySelector('#rk-product-mode');
 
   typeSelect?.addEventListener('change', () => {
     state.rk.type = typeSelect.value;
-    renderRanking();
-  });
-
-  productSelect?.addEventListener('change', () => {
-    state.rk.product = productSelect.value;
     renderRanking();
   });
 
@@ -8320,11 +8397,12 @@ function deriveRankingLevelFromFilters(){
   if(f.diretoria && f.diretoria!=="Todas") return "diretoria";
   return "agencia";
 }
+const RANKING_KEY_FIELDS = { diretoria:"diretoria", gerencia:"gerenciaRegional", agencia:"agencia", gerente:"gerente" };
+const RANKING_LABEL_FIELDS = { diretoria:"diretoriaNome", gerencia:"gerenciaNome", agencia:"agenciaNome", gerente:"gerenteNome" };
+
 function aggRanking(rows, level){
-  const keyMap = { diretoria:"diretoria", gerencia:"gerenciaRegional", agencia:"agencia", gerente:"gerente" };
-  const k = keyMap[level] || "agencia";
-  const labelFieldMap = { diretoria:"diretoriaNome", gerencia:"gerenciaNome", agencia:"agenciaNome", gerente:"gerenteNome" };
-  const labelField = labelFieldMap[level] || k;
+  const k = RANKING_KEY_FIELDS[level] || "agencia";
+  const labelField = RANKING_LABEL_FIELDS[level] || k;
   const map = new Map();
   rows.forEach(r=>{
     const key=r[k] || "—";
@@ -8344,6 +8422,31 @@ function aggRanking(rows, level){
     return { ...x, ating_mens, ating_acum, p_mens: ating_mens*100, p_acum: ating_acum*100 };
   });
 }
+
+function extractRankingRowYear(row){
+  if (!row) return null;
+  const tryNumber = (value) => {
+    if (value == null || value === "") return null;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+  const direct = tryNumber(row.ano || row.year || row.anoReferencia);
+  if (direct) return direct;
+  const dateCandidates = [row.competencia, row.data, row.periodo, row.mes, row.dataReferencia, row.dt];
+  for (const candidate of dateCandidates) {
+    if (!candidate) continue;
+    let text = candidate;
+    if (candidate instanceof Date) {
+      text = isoFromUTCDate(candidate);
+    }
+    const str = String(text);
+    if (str.length < 4) continue;
+    const slice = str.slice(0, 4);
+    const maybe = Number(slice);
+    if (Number.isFinite(maybe)) return maybe;
+  }
+  return null;
+}
 function renderRanking(){
   const hostSum = document.getElementById("rk-summary");
   const hostTbl = document.getElementById("rk-table");
@@ -8351,7 +8454,6 @@ function renderRanking(){
 
   const typeSelect = document.getElementById("rk-type");
   const productWrapper = document.getElementById("rk-product-wrapper");
-  const productSelect = document.getElementById("rk-product");
   const modeGroup = document.getElementById("rk-product-mode");
 
   const level = deriveRankingLevelFromFilters();
@@ -8379,6 +8481,115 @@ function renderRanking(){
   let summaryBadges = [];
   let myRankFull = "—";
 
+  if (type === "historico") {
+    if (modeGroup) {
+      modeGroup.querySelectorAll('.seg-btn').forEach(btn => btn.classList.remove('is-active'));
+    }
+    if (!myUnit) {
+      hostSum.innerHTML = `<div class="rk-badges"><span class="rk-badge rk-badge--warn">Selecione um(a) ${nivelNome.toLowerCase()} para ver o histórico anual.</span></div>`;
+      hostTbl.innerHTML = `<p class="rk-empty">Escolha um(a) ${nivelNome.toLowerCase()} nos filtros para visualizar a evolução dos últimos anos.</p>`;
+      return;
+    }
+
+    const rowsHistory = filterRowsExcept(state._rankingRaw, except, { searchTerm: "", ignoreDate: true });
+    if (!rowsHistory.length) {
+      hostSum.innerHTML = `<div class="rk-badges"><span class="rk-badge rk-badge--warn">Sem dados históricos para o contexto selecionado.</span></div>`;
+      hostTbl.innerHTML = `<p class="rk-empty">Ainda não há registros para montar o histórico anual.</p>`;
+      return;
+    }
+
+    const normalizedUnit = simplificarTexto(myUnit);
+    const yearsSet = new Set();
+    rowsHistory.forEach(row => {
+      const year = extractRankingRowYear(row);
+      if (year) yearsSet.add(year);
+    });
+    const sortedYears = [...yearsSet].sort((a, b) => b - a).slice(0, 5);
+    if (!sortedYears.length) {
+      hostSum.innerHTML = `<div class="rk-badges"><span class="rk-badge rk-badge--warn">Sem dados históricos para o contexto selecionado.</span></div>`;
+      hostTbl.innerHTML = `<p class="rk-empty">Ainda não há registros para montar o histórico anual.</p>`;
+      return;
+    }
+
+    const keyField = RANKING_KEY_FIELDS[level] || "agencia";
+    const labelField = RANKING_LABEL_FIELDS[level] || keyField;
+    let unitLabel = "";
+    const records = sortedYears.map(year => {
+      const yearRows = rowsHistory.filter(row => extractRankingRowYear(row) === year);
+      if (!yearRows.length) {
+        return { year, rank: null, points: null, participants: 0 };
+      }
+      const aggregated = aggRanking(yearRows, level);
+      aggregated.sort((a, b) => b.p_acum - a.p_acum);
+      const idx = aggregated.findIndex(entry => simplificarTexto(entry.unidade) === normalizedUnit);
+      const entry = idx >= 0 ? aggregated[idx] : null;
+      if (!unitLabel && entry?.label) {
+        unitLabel = entry.label;
+      }
+      return {
+        year,
+        rank: idx >= 0 ? idx + 1 : null,
+        points: entry ? entry.p_acum : null,
+        participants: aggregated.length,
+      };
+    });
+
+    if (!unitLabel) {
+      const matchRow = rowsHistory.find(row => simplificarTexto(row?.[keyField]) === normalizedUnit);
+      if (matchRow) {
+        unitLabel = matchRow?.[labelField] || matchRow?.[keyField] || myUnit;
+      } else {
+        unitLabel = myUnit;
+      }
+    }
+
+    const rangeLabel = sortedYears.length > 1
+      ? `${sortedYears[sortedYears.length - 1]} a ${sortedYears[0]}`
+      : `${sortedYears[0]}`;
+    const latestParticipants = records[0]?.participants || 0;
+    const summaryItems = [
+      `<span class="rk-badge"><strong>Nível:</strong> ${nivelNome}</span>`,
+      `<span class="rk-badge"><strong>Unidade:</strong> ${escapeHTML(unitLabel || myUnit)}</span>`,
+      `<span class="rk-badge"><strong>Período:</strong> ${rangeLabel}</span>`,
+      `<span class="rk-badge"><strong>Participantes (${sortedYears[0]}):</strong> ${fmtINT.format(latestParticipants)}</span>`,
+    ];
+    hostSum.innerHTML = `<div class="rk-badges">${summaryItems.join("")}</div>`;
+
+    const table = document.createElement("table");
+    table.className = "rk-table rk-history-table";
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th class="year-col">Ano</th>
+          <th class="rank-col">Classificação</th>
+          <th>Pontuação acumulada</th>
+          <th>Participantes</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    `;
+    const tbody = table.querySelector("tbody");
+    records.forEach(record => {
+      const rankText = typeof record.rank === "number" ? `${fmtINT.format(record.rank)}º` : "—";
+      const pointsText = (typeof record.points === "number") ? `${fmtONE.format(record.points)}%` : "—";
+      const participantsText = record.participants ? fmtINT.format(record.participants) : "—";
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td class="year-col">${record.year}</td>
+        <td class="rank-col">${rankText}</td>
+        <td>${pointsText}</td>
+        <td>${participantsText}</td>
+      `;
+      if (record.rank === 1) {
+        row.classList.add("rk-history-row--top");
+      }
+      tbody.appendChild(row);
+    });
+    hostTbl.innerHTML = "";
+    hostTbl.appendChild(table);
+    return;
+  }
+
   if (type === "produto") {
     const mode = state.rk.productMode === "piores" ? "piores" : "melhores";
     if (state.rk.productMode !== mode) state.rk.productMode = mode;
@@ -8388,48 +8599,72 @@ function renderRanking(){
       });
     }
 
-    const productMap = new Map();
-    rowsBase.forEach(row => {
-      const id = row.produtoId || row.prodOrSub || row.produto || row.subproduto;
-      if (!id || productMap.has(id)) return;
-      const label = row.produtoNome || row.prodOrSub || row.subproduto || row.produto || id;
-      productMap.set(id, label);
-    });
-    const productOptions = Array.from(productMap.entries())
-      .sort((a,b) => a[1].localeCompare(b[1], 'pt-BR', { sensitivity: 'base' }));
+    const filters = getFilterValues();
+    const hasProductFilter = !selecaoPadrao(filters.produtoId);
+    const hasFamilyFilter = !selecaoPadrao(filters.familiaId);
+    state.rk.product = hasProductFilter ? filters.produtoId : "";
 
-    if (productSelect) {
-      productSelect.innerHTML = productOptions.map(([value, label]) => `
-        <option value="${escapeHTML(value)}">${escapeHTML(label)}</option>`).join("");
-    }
+    const selectLabel = (selector, value) => {
+      if (!value || selecaoPadrao(value)) return "";
+      const select = document.querySelector(selector);
+      if (!select) return "";
+      const options = Array.from(select.options || []);
+      const desired = limparTexto(value);
+      const match = options.find(opt => limparTexto(opt.value) === desired);
+      return match?.textContent?.trim() || "";
+    };
 
-    if (!productOptions.length) {
-      hostSum.innerHTML = `<div class="rk-badges"><span class="rk-badge">Sem produtos disponíveis para os filtros atuais.</span></div>`;
-      hostTbl.innerHTML = `<p class="rk-empty">Ajuste os filtros para visualizar o ranking por produto.</p>`;
+    const productLabelFromRow = (row = {}) => row?.produtoNome || row?.prodOrSub || row?.subproduto || row?.produto || "";
+    const familyLabelFromRow = (row = {}) => row?.familiaNome || row?.familia || "";
+
+    const hasAnyProductData = rowsBase.some(row =>
+      Boolean(row?.produtoId || row?.prodOrSub || row?.produto || row?.subproduto)
+    );
+    if (!hasAnyProductData) {
+      const badges = [
+        `<span class="rk-badge"><strong>Nível:</strong> ${nivelNome}</span>`,
+        `<span class="rk-badge"><strong>Modo:</strong> ${mode === 'piores' ? 'Piores resultados' : 'Melhores resultados'}</span>`
+      ];
+      hostSum.innerHTML = `<div class="rk-badges">${badges.join("")}</div>`;
+      hostTbl.innerHTML = `<p class="rk-empty">Sem dados disponíveis para o ranking por produto com os filtros atuais.</p>`;
       return;
     }
 
-    let selectedProductId = state.rk.product && productMap.has(state.rk.product)
-      ? state.rk.product
-      : productOptions[0][0];
-    if (state.rk.product !== selectedProductId) state.rk.product = selectedProductId;
-    if (productSelect && productSelect.value !== selectedProductId) {
-      productSelect.value = selectedProductId;
-    }
-    const selectedProductLabel = productMap.get(selectedProductId) || selectedProductId;
+    let contextBadge = "";
+    let emptyMessage = "Sem dados disponíveis para o contexto selecionado.";
+    let filteredRows = rowsBase.slice();
 
-    const filteredRows = rowsBase.filter(row =>
-      matchesSelection(selectedProductId, row.produtoId, row.prodOrSub, row.produtoNome, row.subproduto)
-    );
+    if (hasProductFilter) {
+      filteredRows = filteredRows.filter(row =>
+        matchesSelection(filters.produtoId, row.produtoId, row.prodOrSub, row.produtoNome, row.subproduto, row.produto)
+      );
+      const label = selectLabel('#f-produto', filters.produtoId)
+        || productLabelFromRow(filteredRows.find(row => productLabelFromRow(row)))
+        || filters.produtoId;
+      contextBadge = `<span class="rk-badge"><strong>Produto:</strong> ${escapeHTML(label || filters.produtoId)}</span>`;
+      emptyMessage = "Ainda não há dados para o produto selecionado.";
+    } else if (hasFamilyFilter) {
+      filteredRows = filteredRows.filter(row =>
+        matchesSelection(filters.familiaId, row.familiaId, row.familia, row.familiaNome)
+      );
+      const label = selectLabel('#f-familia', filters.familiaId)
+        || familyLabelFromRow(filteredRows.find(row => familyLabelFromRow(row)))
+        || filters.familiaId;
+      contextBadge = `<span class="rk-badge"><strong>Família:</strong> ${escapeHTML(label || filters.familiaId)}</span>`;
+      emptyMessage = "Ainda não há dados para a família selecionada.";
+    } else {
+      contextBadge = `<span class="rk-badge"><strong>Contexto:</strong> Todos os produtos</span>`;
+      emptyMessage = "Sem dados disponíveis para o ranking selecionado.";
+    }
 
     if (!filteredRows.length) {
       summaryBadges = [
         `<span class="rk-badge"><strong>Nível:</strong> ${nivelNome}</span>`,
-        `<span class="rk-badge"><strong>Produto:</strong> ${escapeHTML(selectedProductLabel)}</span>`,
+        contextBadge,
         `<span class="rk-badge"><strong>Modo:</strong> ${mode === 'piores' ? 'Piores resultados' : 'Melhores resultados'}</span>`
-      ];
-      hostSum.innerHTML = `<div class="rk-badges">${summaryBadges.join("")}</div>`;
-      hostTbl.innerHTML = `<p class="rk-empty">Ainda não há dados para o produto selecionado.</p>`;
+      ].filter(Boolean);
+      hostSum.innerHTML = summaryBadges.length ? `<div class="rk-badges">${summaryBadges.join("")}</div>` : "";
+      hostTbl.innerHTML = `<p class="rk-empty">${emptyMessage}</p>`;
       return;
     }
 
@@ -8446,7 +8681,7 @@ function renderRanking(){
     summaryBadges = [
       `<span class="rk-badge"><strong>Nível:</strong> ${nivelNome}</span>`,
       typeof myRankFull === "number" ? `<span class="rk-badge"><strong>Posição:</strong> ${fmtINT.format(myRankFull)}</span>` : "",
-      `<span class="rk-badge"><strong>Produto:</strong> ${escapeHTML(selectedProductLabel)}</span>`,
+      contextBadge,
       `<span class="rk-badge"><strong>Modo:</strong> ${mode === 'piores' ? 'Piores resultados' : 'Melhores resultados'}</span>`,
       `<span class="rk-badge"><strong>Quantidade de participantes:</strong> ${fmtINT.format(data.length)}</span>`,
     ].filter(Boolean);
@@ -8454,7 +8689,6 @@ function renderRanking(){
     if (modeGroup) {
       modeGroup.querySelectorAll('.seg-btn').forEach(btn => btn.classList.remove('is-active'));
     }
-    if (productSelect) productSelect.innerHTML = "";
 
     data = aggRanking(rowsBase, level);
     data.sort((a,b)=> (b.p_acum - a.p_acum));
@@ -8528,6 +8762,8 @@ function openDetailOpportunities(node = {}, trail = []){
     label: node?.label || "",
     type: node?.type || "",
     level: node?.level ?? null,
+    levelKey: node?.levelKey || "",
+    lineage: Array.isArray(node?.lineage) ? node.lineage.map(entry => ({ ...entry })) : [],
   };
   try {
     document.dispatchEvent(new CustomEvent("detail:open-opportunities", { detail }));
@@ -8535,6 +8771,7 @@ function openDetailOpportunities(node = {}, trail = []){
     console.warn("Não foi possível notificar oportunidades personalizadas:", err);
   }
   console.info("Detalhamento — oportunidades", detail);
+  openOpportunityModal(detail);
 }
 
 function renderTreeTable() {
@@ -8718,6 +8955,11 @@ function renderTreeTable() {
       return `<td${cls}>${content}</td>`;
     }).join("");
 
+    const canOpenOpportunities = node.levelKey !== "contrato" && node.type !== "contrato";
+    const opportunityButtonHtml = canOpenOpportunities
+      ? `<button type="button" class="icon-btn" title="Ver oportunidades"><i class="ti ti-bulb"></i></button>`
+      : "";
+
     tr.innerHTML=`
       <td><div class="tree-cell">
         <button class="toggle" type="button" ${has?"":"disabled"} aria-label="${has?"Expandir/colapsar":""}"><i class="ti ${has?"ti-chevron-right":"ti-dot"}"></i></button>
@@ -8726,7 +8968,7 @@ function renderTreeTable() {
       <td class="actions-cell">
         <span class="actions-group">
           <button type="button" class="icon-btn" title="Abrir chamado"><i class="ti ti-ticket"></i></button>
-          <button type="button" class="icon-btn" title="Ver oportunidades"><i class="ti ti-bulb"></i></button>
+          ${opportunityButtonHtml}
         </span>
       </td>`;
 
@@ -8910,6 +9152,7 @@ async function refresh(){
     state._rankingRaw = (state.facts?.dados && state.facts.dados.length)
       ? state.facts.dados
       : (dataset.ranking || []);
+    rebuildOpportunityLeads();
     updateContractAutocomplete();
 
     const right = document.getElementById("lbl-atualizacao");
@@ -8960,6 +9203,12 @@ async function loadCSVAuto(url) {
     text = new TextDecoder("iso-8859-1").decode(buf);
   }
   text = text.trim();
+  if (!text) return [];
+
+  // Se o Papa ainda não carregou (ex.: offline ou CDN bloqueada), faz o parse manual.
+  if (typeof Papa === "undefined" || typeof Papa.parse !== "function") {
+    return converterCSV(text);
+  }
 
   // Descobre o separador pela 1ª linha (conta ; e ,)
   const first = (text.split(/\r?\n/)[0] || "");
@@ -8974,11 +9223,30 @@ async function loadCSVAuto(url) {
     skipEmptyLines: true
   });
 
-  if (parsed.errors && parsed.errors.length) {
-    console.warn(`Avisos ao ler ${url}:`, parsed.errors);
+  if (!parsed || !Array.isArray(parsed.data)) {
+    return converterCSV(text);
   }
 
-  return parsed.data; // array de objetos {coluna:valor}
+  if (parsed.errors && parsed.errors.length) {
+    const simplified = parsed.errors.map(err => ({
+      type: err?.type,
+      code: err?.code,
+      row: err?.row,
+      message: err?.message,
+    }));
+    console.warn(`Avisos ao ler ${url}:`, simplified);
+  }
+
+  return parsed.data.map(record => {
+    if (!record || typeof record !== "object") return record;
+    const normalized = {};
+    Object.keys(record).forEach(key => {
+      const safeKey = typeof key === "string" ? key.trim() : key;
+      const value = record[key];
+      normalized[safeKey] = typeof value === "string" ? value.trim() : value;
+    });
+    return normalized;
+  });
 }
 
 
@@ -8996,6 +9264,9 @@ async function loadCSVAuto(url) {
   wireClearFiltersButton();
   ensureStatusFilterInAdvanced();
   reorderFiltersUI();
+  if (typeof setupOpportunityModal === "function") {
+    setupOpportunityModal();
+  }
   await refresh();
   ensureChatWidget();
 })();
