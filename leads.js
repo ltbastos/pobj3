@@ -79,6 +79,13 @@ const LEAD_CONTACT_USERS = [
   "Beatriz Antunes",
   "André Figueiredo"
 ];
+const LEAD_HISTORY_SAMPLE_COMMENTS = [
+  "Cliente solicitou nova simulação e aguarda retorno.",
+  "Contato positivo: encaminhamos proposta revisada por e-mail.",
+  "Responsável financeiro prefere avançar após aprovação interna.",
+  "Lead pediu tempo para comparar ofertas com a concorrência.",
+  "Reunião presencial agendada para reforçar benefícios do produto."
+];
 
 let OPPORTUNITY_LEADS_RAW = [];
 let OPPORTUNITY_LEADS = [];
@@ -178,7 +185,8 @@ function normalizarLinhasLeads(rows = []){
     const gerenteNome = gerenteMeta?.nome || gerenteNomeCsv || gerenteId;
 
     const responsavelContato = lerCelula(raw, ["Responsavel pelo contato", "Responsável pelo contato"]);
-    const comentario = lerCelula(raw, ["Comentario", "Comentário"]);
+    const comentarioBruto = lerCelula(raw, ["Comentario", "Comentário"]);
+    const comentario = typeof comentarioBruto === "string" ? comentarioBruto.trim() : "";
     const origemTexto = lerCelula(raw, ["Origem do lead", "Origem"]);
     const origemKey = simplificarTexto(origemTexto) || "smart";
     const origemLabel = origemTexto || (origemKey === "link" ? "Link" : "Smart");
@@ -229,6 +237,7 @@ function normalizarLinhasLeads(rows = []){
       canal: canalLabel,
       resultado: comentario ? "Comentário registrado" : "Contato registrado",
       usuario: lead.ultimoUsuario || LEAD_CONTACT_USERS[historySeed % LEAD_CONTACT_USERS.length],
+      comentario,
     };
     const historico = [latestEntry, ...olderHistory].filter(entry => entry && entry.data);
     historico.sort((a, b) => (a.data > b.data ? -1 : 1));
@@ -296,7 +305,11 @@ function buildLeadHistory(baseISO, seed = 0){
     const canal = LEAD_CONTACT_CHANNELS[(seed + i) % LEAD_CONTACT_CHANNELS.length];
     const resultado = LEAD_CONTACT_OUTCOMES[(seed + i) % LEAD_CONTACT_OUTCOMES.length];
     const usuario = LEAD_CONTACT_USERS[(seed + i) % LEAD_CONTACT_USERS.length];
-    history.push({ data, canal, resultado, usuario });
+    const hasComment = ((seed + i) % 3) === 0;
+    const comentario = hasComment
+      ? LEAD_HISTORY_SAMPLE_COMMENTS[(seed + i) % LEAD_HISTORY_SAMPLE_COMMENTS.length]
+      : "";
+    history.push({ data, canal, resultado, usuario, comentario });
   }
   history.sort((a, b) => (a.data > b.data ? -1 : 1));
   return history;
@@ -376,7 +389,19 @@ function renderLeadHistoryList(history = []){
     const data = formatBRDate(entry?.data) || "—";
     const canal = escapeHTML(entry?.canal || "—");
     const status = escapeHTML(entry?.resultado || "");
-    return `<li class="lead-history__item"><span class="lead-history__date">${data}</span><span class="lead-history__channel">${canal}</span><span class="lead-history__status">${status}</span></li>`;
+    const usuario = limparTexto(entry?.usuario) ? escapeHTML(entry.usuario) : "";
+    const comentario = limparTexto(entry?.comentario) ? escapeHTML(entry.comentario) : "";
+    const userBlock = usuario ? `<span class="lead-history__user"><strong>Responsável:</strong> ${usuario}</span>` : "";
+    const commentBlock = comentario ? `<p class="lead-history__comment">${comentario}</p>` : "";
+    return `<li class="lead-history__item">
+      <div class="lead-history__meta">
+        <span class="lead-history__date">${data}</span>
+        <span class="lead-history__channel">${canal}</span>
+        <span class="lead-history__status">${status}</span>
+      </div>
+      ${userBlock}
+      ${commentBlock}
+    </li>`;
   }).join("")}</ul>`;
 }
 
@@ -874,7 +899,13 @@ function submitLeadContactForm(event){
   lead.ultimoUsuario = responsavel;
 
   const canalLabel = lead.origem === "link" ? "Origem Link" : lead.origem === "smart" ? "Smart Lead" : "Contato";
-  const latestEntry = { data: contatoData, canal: canalLabel, resultado: comentario ? "Comentário atualizado" : "Contato registrado", usuario: responsavel };
+  const latestEntry = {
+    data: contatoData,
+    canal: canalLabel,
+    resultado: comentario ? "Comentário atualizado" : "Contato registrado",
+    usuario: responsavel,
+    comentario,
+  };
   const historicoAtual = Array.isArray(lead.historico) ? lead.historico.slice() : [];
   const combinado = [latestEntry, ...historicoAtual.filter(entry => entry && entry.data !== contatoData)];
   combinado.sort((a, b) => (a.data > b.data ? -1 : 1));

@@ -2244,7 +2244,7 @@ const DETAIL_MAX_CUSTOM_VIEWS = 5;
 const DETAIL_VIEW_STORAGE_KEY = "pobj3:detailViews";
 const DETAIL_VIEW_ACTIVE_KEY = "pobj3:detailActiveView";
 const DETAIL_VIEW_CUSTOM_KEY = "pobj3:detailCustomView";
-const DETAIL_CUSTOM_DEFAULT_LABEL = "Visão atual";
+const DETAIL_CUSTOM_DEFAULT_LABEL = "Visão personalizada";
 
 function renderDetailDateCell(iso){
   if (!iso) return "—";
@@ -3137,10 +3137,18 @@ function hydrateDetailViewsFromStorage(){
 
   const customRaw = readLocalStorageJSON(DETAIL_VIEW_CUSTOM_KEY);
   if (customRaw && Array.isArray(customRaw.columns)) {
-    const label = limparTexto(customRaw.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL;
+    const baseCandidate = typeof customRaw.baseId === "string" && customRaw.baseId.trim() && customRaw.baseId !== "__custom__"
+      ? customRaw.baseId.trim()
+      : DETAIL_DEFAULT_VIEW.id;
+    const savedBase = (state.details.savedViews || []).find(view => view.id === baseCandidate);
+    const baseView = baseCandidate === DETAIL_DEFAULT_VIEW.id
+      ? DETAIL_DEFAULT_VIEW
+      : (savedBase ? { id: savedBase.id, name: savedBase.name || "Visão personalizada" } : DETAIL_DEFAULT_VIEW);
+    const label = limparTexto(customRaw.name || "") || limparTexto(baseView.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL;
     state.details.customView = {
       name: label,
       columns: sanitizeDetailColumns(customRaw.columns),
+      baseId: baseView.id,
     };
   } else {
     state.details.customView = null;
@@ -3155,6 +3163,9 @@ function hydrateDetailViewsFromStorage(){
       state.details.customView = {
         name: candidate.name || DETAIL_CUSTOM_DEFAULT_LABEL,
         columns: [...state.details.activeColumns],
+        baseId: candidate.baseId && candidate.baseId !== "__custom__"
+          ? candidate.baseId
+          : (state.details.customView?.baseId || DETAIL_DEFAULT_VIEW.id),
       };
     }
   } else {
@@ -3166,20 +3177,11 @@ function hydrateDetailViewsFromStorage(){
 
 function getAllDetailViews(){
   const saved = Array.isArray(state.details.savedViews) ? state.details.savedViews : [];
-  const base = [DETAIL_DEFAULT_VIEW, ...saved.map(view => ({
+  return [DETAIL_DEFAULT_VIEW, ...saved.map(view => ({
     id: view.id,
     name: limparTexto(view.name || "") || "Visão personalizada",
     columns: sanitizeDetailColumns(view.columns),
   }))];
-  const custom = state.details.customView;
-  if (custom && Array.isArray(custom.columns) && custom.columns.length) {
-    base.push({
-      id: "__custom__",
-      name: limparTexto(custom.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL,
-      columns: sanitizeDetailColumns(custom.columns),
-    });
-  }
-  return base;
 }
 
 function getActiveDetailColumns(){
@@ -3193,10 +3195,17 @@ function detailViewById(viewId){
   if (viewId === "__custom__") {
     const custom = state.details.customView;
     if (custom && Array.isArray(custom.columns) && custom.columns.length) {
+      const baseId = custom.baseId && custom.baseId !== "__custom__"
+        ? custom.baseId
+        : DETAIL_DEFAULT_VIEW.id;
+      const baseView = baseId === DETAIL_DEFAULT_VIEW.id
+        ? DETAIL_DEFAULT_VIEW
+        : (baseId ? detailViewById(baseId) : null) || DETAIL_DEFAULT_VIEW;
       return {
         id: "__custom__",
-        name: limparTexto(custom.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL,
+        name: limparTexto(custom.name || "") || limparTexto(baseView.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL,
         columns: sanitizeDetailColumns(custom.columns),
+        baseId: baseView.id,
       };
     }
     return null;
@@ -3225,6 +3234,11 @@ function persistActiveDetailState(){
     writeLocalStorageJSON(DETAIL_VIEW_CUSTOM_KEY, {
       name: limparTexto(state.details.customView.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL,
       columns: sanitizeDetailColumns(state.details.customView.columns),
+      baseId: state.details.customView.baseId && state.details.customView.baseId !== "__custom__"
+        ? state.details.customView.baseId
+        : (state.details.activeViewId && state.details.activeViewId !== "__custom__"
+          ? state.details.activeViewId
+          : DETAIL_DEFAULT_VIEW.id),
     });
   } else {
     writeLocalStorageItem(DETAIL_VIEW_CUSTOM_KEY, null);
@@ -3239,14 +3253,33 @@ function persistDetailState(){
 function updateActiveDetailConfiguration(viewId, columns, options = {}){
   const sanitized = sanitizeDetailColumns(columns);
   const label = limparTexto(options.label || "");
+  const baseHint = typeof options.baseId === "string" ? options.baseId.trim() : "";
   if (viewId === "__custom__") {
-    const name = label || state.details.customView?.name || DETAIL_CUSTOM_DEFAULT_LABEL;
+    const fallbackBase = baseHint && baseHint !== "__custom__"
+      ? baseHint
+      : (state.details.customView?.baseId && state.details.customView.baseId !== "__custom__"
+        ? state.details.customView.baseId
+        : (state.details.activeViewId && state.details.activeViewId !== "__custom__"
+          ? state.details.activeViewId
+          : DETAIL_DEFAULT_VIEW.id));
+    const baseView = fallbackBase === DETAIL_DEFAULT_VIEW.id
+      ? DETAIL_DEFAULT_VIEW
+      : detailViewById(fallbackBase) || DETAIL_DEFAULT_VIEW;
+    const name = label || limparTexto(baseView.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL;
     state.details.customView = {
       name,
       columns: [...sanitized],
+      baseId: baseView.id,
     };
+    state.details.activeViewId = "__custom__";
+  } else {
+    state.details.activeViewId = viewId;
+    if (state.details.customView) {
+      state.details.customView.baseId = state.details.customView.baseId && state.details.customView.baseId !== "__custom__"
+        ? state.details.customView.baseId
+        : viewId;
+    }
   }
-  state.details.activeViewId = viewId;
   state.details.activeColumns = [...sanitized];
   persistDetailState();
   return [...sanitized];
@@ -3898,9 +3931,19 @@ function renderDetailViewBar(){
     chipsHolder.innerHTML = `<span class="detail-view-empty">Sem visões disponíveis</span>`;
     return;
   }
-  const activeId = state.details.activeViewId || DETAIL_DEFAULT_VIEW.id;
+  const availableIds = new Set(views.map(view => view.id));
+  const rawActiveId = state.details.activeViewId || DETAIL_DEFAULT_VIEW.id;
+  let highlightId = rawActiveId;
+  if (rawActiveId === "__custom__") {
+    const baseId = state.details.customView?.baseId && state.details.customView.baseId !== "__custom__"
+      ? state.details.customView.baseId
+      : DETAIL_DEFAULT_VIEW.id;
+    highlightId = availableIds.has(baseId) ? baseId : DETAIL_DEFAULT_VIEW.id;
+  } else if (!availableIds.has(rawActiveId)) {
+    highlightId = DETAIL_DEFAULT_VIEW.id;
+  }
   chipsHolder.innerHTML = views.map(view => {
-    const isActive = view.id === activeId;
+    const isActive = view.id === highlightId;
     const safeId = escapeHTML(view.id);
     const safeName = escapeHTML(view.name || "Visão");
     return `<button type="button" class="detail-chip${isActive ? " is-active" : ""}" data-view-id="${safeId}"><span>${safeName}</span></button>`;
@@ -3959,10 +4002,18 @@ function openDetailDesigner(){
   const host = document.getElementById("detail-designer");
   if (!host) return;
   const current = detailViewById(state.details.activeViewId) || DETAIL_DEFAULT_VIEW;
+  const baseId = current.id === "__custom__"
+    ? (state.details.customView?.baseId && state.details.customView.baseId !== "__custom__"
+      ? state.details.customView.baseId
+      : DETAIL_DEFAULT_VIEW.id)
+    : current.id;
+  const baseView = baseId === current.id && current.id !== "__custom__"
+    ? current
+    : (baseId === DETAIL_DEFAULT_VIEW.id ? DETAIL_DEFAULT_VIEW : detailViewById(baseId) || DETAIL_DEFAULT_VIEW);
   const baseColumns = sanitizeDetailColumns(current.columns);
   state.details.designerDraft = {
-    viewId: current.id,
-    name: current.name,
+    viewId: baseView.id,
+    name: baseView.name,
     columns: [...baseColumns],
     original: [...baseColumns],
     modified: false,
@@ -4200,6 +4251,12 @@ function handleDetailDesignerApply(){
     return;
   }
 
+  const baseId = draft.viewId && draft.viewId !== "__custom__"
+    ? draft.viewId
+    : (state.details.customView?.baseId && state.details.customView.baseId !== "__custom__"
+      ? state.details.customView.baseId
+      : DETAIL_DEFAULT_VIEW.id);
+
   let targetId = draft.viewId;
   if (!targetId || targetId === DETAIL_DEFAULT_VIEW.id) targetId = "__custom__";
   if (targetId !== "__custom__" && draft.modified) {
@@ -4210,15 +4267,14 @@ function handleDetailDesignerApply(){
 
   let label;
   if (targetId === "__custom__") {
-    label = draft.viewId === "__custom__"
-      ? (draft.name || state.details.customView?.name || DETAIL_CUSTOM_DEFAULT_LABEL)
-      : DETAIL_CUSTOM_DEFAULT_LABEL;
+    const baseMeta = detailViewById(baseId) || DETAIL_DEFAULT_VIEW;
+    label = limparTexto(baseMeta.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL;
   } else {
     const viewMeta = detailViewById(targetId) || detailViewById(draft.viewId);
     label = viewMeta?.name || draft.name || DETAIL_CUSTOM_DEFAULT_LABEL;
   }
 
-  updateActiveDetailConfiguration(targetId, columns, { label });
+  updateActiveDetailConfiguration(targetId, columns, { label, baseId });
   renderDetailViewBar();
   if (state.tableRendered) renderTreeTable();
   closeDetailDesigner();
