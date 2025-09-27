@@ -277,11 +277,14 @@ function ensureOmegaTemplate(){
     })
     .then((html) => {
       const wrapper = document.createElement("div");
-      wrapper.innerHTML = html.trim();
-      const fragment = document.createDocumentFragment();
-      while (wrapper.firstChild) fragment.appendChild(wrapper.firstChild);
-      document.body.appendChild(fragment);
-      return document.getElementById("omega-modal");
+      wrapper.innerHTML = html;
+      const templateRoot = wrapper.querySelector("#omega-modal");
+      if (!templateRoot) throw new Error("Template Omega não encontrado em omega.html");
+      const clone = templateRoot.cloneNode(true);
+      clone.removeAttribute("data-omega-standalone");
+      clone.hidden = true;
+      document.body.appendChild(clone);
+      return clone;
     })
     .catch((err) => {
       console.error("Não foi possível carregar o template da Omega:", err);

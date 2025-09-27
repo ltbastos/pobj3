@@ -7,7 +7,7 @@
 /* ===== Aqui eu organizo as configurações base do painel ===== */
 const DATA_SOURCE = "csv";
 const API_URL = "/api";
-const TICKET_URL = "https://botpj.com/index.php?class=LoginForm";
+const TICKET_URL = "omega.html";
 
 /* ===== Aqui eu deixo separado tudo que envolve o chat embutido ===== */
 // MODO 1 (recomendado): "iframe" — cole a URL do seu agente (Copilot Studio / SharePoint)

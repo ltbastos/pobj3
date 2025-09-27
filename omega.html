@@ -1,161 +1,192 @@
-<div id="omega-modal" class="omega-modal" hidden>
-  <div class="omega-modal__overlay" data-omega-close></div>
-  <section class="omega-modal__panel" role="dialog" aria-modal="true" aria-labelledby="omega-title">
-    <header class="omega-header">
-      <div class="omega-header__left">
-        <span class="omega-badge omega-badge--brand">Omega</span>
-        <div class="omega-header__titles">
-          <h2 id="omega-title">Central de chamados Omega</h2>
-          <p id="omega-subtitle">Registre ocorrências, acompanhe atendimentos e gerencie permissões da equipe PJ.</p>
-        </div>
-      </div>
-      <div class="omega-header__right">
-        <button id="omega-notifications" class="omega-icon-btn" type="button" title="Notificações">
-          <i class="ti ti-bell"></i>
-        </button>
-        <button class="omega-icon-btn" type="button" data-omega-close aria-label="Fechar painel Omega">
-          <i class="ti ti-x"></i>
-        </button>
-      </div>
-    </header>
-
-    <div class="omega-body">
-      <aside class="omega-sidebar" id="omega-sidebar">
-        <section class="omega-profile" aria-labelledby="omega-profile-title">
-          <div class="omega-profile__info">
-            <figure class="omega-avatar" aria-hidden="true">
-              <img id="omega-avatar" src="https://i.pravatar.cc/160?img=52" alt="" loading="lazy"/>
-            </figure>
-            <div class="omega-profile__text">
-              <h3 id="omega-profile-title">Perfil atual</h3>
-              <strong id="omega-user-name">—</strong>
-              <span id="omega-user-role">—</span>
-            </div>
-          </div>
-          <label class="omega-field" for="omega-user-select">
-            <span class="omega-field__label">Entrar como</span>
-            <select id="omega-user-select" class="omega-select" aria-describedby="omega-role-hint"></select>
-          </label>
-          <p id="omega-role-hint" class="omega-hint">Simule as permissões de cada papel para testar fluxos.</p>
-        </section>
-
-        <nav id="omega-nav" class="omega-nav" aria-label="Menu Omega"></nav>
-
-        <section class="omega-permissions" aria-labelledby="omega-permissions-title">
-          <h4 id="omega-permissions-title">Permissões do papel</h4>
-          <ul id="omega-permissions-list" class="omega-permissions__list"></ul>
-        </section>
-      </aside>
-
-      <section class="omega-main">
-        <div id="omega-context" class="omega-context" hidden></div>
-
-        <div class="omega-toolbar" role="group" aria-label="Filtros da central Omega">
-          <label class="omega-search" for="omega-search">
-            <i class="ti ti-search"></i>
-            <input id="omega-search" type="search" placeholder="Buscar chamado, empresa ou produto" autocomplete="off"/>
-          </label>
-          <div class="omega-toolbar__actions">
-            <div id="omega-status" class="omega-status" role="tablist" aria-label="Situação do chamado"></div>
-            <button id="omega-new-ticket" class="omega-btn omega-btn--primary" type="button">
-              <i class="ti ti-plus"></i>
-              <span>Registrar chamado</span>
-            </button>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Omega • Central de chamados</title>
+  <link rel="icon" type="image/png" href="img/pobj.png" sizes="32x32"/>
+  <link rel="icon" type="image/png" href="img/pobj.png" sizes="192x192"/>
+  <link rel="apple-touch-icon" href="img/pobj.png" sizes="180x180"/>
+  <link rel="shortcut icon" href="img/pobj.png"/>
+  <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+  <link rel="stylesheet" href="omega.css"/>
+</head>
+<body class="omega-standalone">
+  <div id="omega-modal" class="omega-modal" data-omega-standalone hidden>
+    <div class="omega-modal__overlay" data-omega-close></div>
+    <section class="omega-modal__panel" role="dialog" aria-modal="true" aria-labelledby="omega-title">
+      <header class="omega-header">
+        <div class="omega-header__left">
+          <span class="omega-badge omega-badge--brand">Omega</span>
+          <div class="omega-header__titles">
+            <h2 id="omega-title">Central de chamados Omega</h2>
+            <p id="omega-subtitle">Registre ocorrências, acompanhe atendimentos e gerencie permissões da equipe PJ.</p>
           </div>
         </div>
-
-        <div id="omega-summary" class="omega-summary" aria-live="polite"></div>
-
-        <div class="omega-main__content">
-          <div id="omega-table-wrapper" class="omega-table-wrapper" role="region" aria-labelledby="omega-table-caption">
-            <table class="omega-table">
-              <caption id="omega-table-caption" class="sr-only">Chamados filtrados pela visão atual</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Chamado</th>
-                  <th scope="col">Empresa</th>
-                  <th scope="col">Produto</th>
-                  <th scope="col">Fila</th>
-                  <th scope="col">Abertura</th>
-                  <th scope="col">Atualização</th>
-                  <th scope="col" class="col-status">Situação</th>
-                </tr>
-              </thead>
-              <tbody id="omega-ticket-rows"></tbody>
-            </table>
-          </div>
-          <div id="omega-empty" class="omega-empty" hidden>
-            <i class="ti ti-inbox"></i>
-            <p>Nenhum chamado encontrado para este recorte.</p>
-            <button id="omega-reset-filters" class="omega-btn" type="button">Limpar filtros</button>
-          </div>
-        </div>
-      </section>
-
-      <aside id="omega-detail" class="omega-detail" aria-live="polite"></aside>
-    </div>
-
-    <div id="omega-drawer" class="omega-drawer" hidden>
-      <div class="omega-drawer__overlay" data-omega-drawer-close></div>
-      <section class="omega-drawer__panel" role="dialog" aria-modal="true" aria-labelledby="omega-drawer-title">
-        <header class="omega-drawer__header">
-          <div>
-            <h3 id="omega-drawer-title">Novo chamado</h3>
-            <p id="omega-drawer-desc">Pré-preenchemos o contexto atual para agilizar o cadastro.</p>
-          </div>
-          <button class="omega-icon-btn" type="button" data-omega-drawer-close aria-label="Fechar formulário">
+        <div class="omega-header__right">
+          <button id="omega-notifications" class="omega-icon-btn" type="button" title="Notificações">
+            <i class="ti ti-bell"></i>
+          </button>
+          <button class="omega-icon-btn" type="button" data-omega-close aria-label="Fechar painel Omega">
             <i class="ti ti-x"></i>
           </button>
-        </header>
-        <div id="omega-form-feedback" class="omega-feedback" role="alert" hidden></div>
-        <form id="omega-form" class="omega-form">
-          <div class="omega-form__context">
-            <h4>Contexto detectado</h4>
-            <div class="omega-form__context-grid">
-              <label class="omega-field" for="omega-form-company">
-                <span class="omega-field__label">Empresa</span>
-                <input id="omega-form-company" class="omega-input" type="text" placeholder="Ex.: Pães &amp; Cia Ltda" required/>
-              </label>
-              <ul id="omega-form-context" class="omega-tags"></ul>
+        </div>
+      </header>
+
+      <div class="omega-body">
+        <aside class="omega-sidebar" id="omega-sidebar">
+          <section class="omega-profile" aria-labelledby="omega-profile-title">
+            <div class="omega-profile__info">
+              <figure class="omega-avatar" aria-hidden="true">
+                <img id="omega-avatar" src="https://i.pravatar.cc/160?img=52" alt="" loading="lazy"/>
+              </figure>
+              <div class="omega-profile__text">
+                <h3 id="omega-profile-title">Perfil atual</h3>
+                <strong id="omega-user-name">—</strong>
+                <span id="omega-user-role">—</span>
+              </div>
+            </div>
+            <label class="omega-field" for="omega-user-select">
+              <span class="omega-field__label">Entrar como</span>
+              <select id="omega-user-select" class="omega-select" aria-describedby="omega-role-hint"></select>
+            </label>
+            <p id="omega-role-hint" class="omega-hint">Simule as permissões de cada papel para testar fluxos.</p>
+          </section>
+
+          <nav id="omega-nav" class="omega-nav" aria-label="Menu Omega"></nav>
+
+          <section class="omega-permissions" aria-labelledby="omega-permissions-title">
+            <h4 id="omega-permissions-title">Permissões do papel</h4>
+            <ul id="omega-permissions-list" class="omega-permissions__list"></ul>
+          </section>
+        </aside>
+
+        <section class="omega-main">
+          <div id="omega-context" class="omega-context" hidden></div>
+
+          <div class="omega-toolbar" role="group" aria-label="Filtros da central Omega">
+            <label class="omega-search" for="omega-search">
+              <i class="ti ti-search"></i>
+              <input id="omega-search" type="search" placeholder="Buscar chamado, empresa ou produto" autocomplete="off"/>
+            </label>
+            <div class="omega-toolbar__actions">
+              <div id="omega-status" class="omega-status" role="tablist" aria-label="Situação do chamado"></div>
+              <button id="omega-new-ticket" class="omega-btn omega-btn--primary" type="button">
+                <i class="ti ti-plus"></i>
+                <span>Registrar chamado</span>
+              </button>
             </div>
           </div>
 
-          <div class="omega-form__grid">
-            <label class="omega-field" for="omega-form-department">
-              <span class="omega-field__label">Departamento</span>
-              <select id="omega-form-department" class="omega-select" required></select>
-            </label>
-            <label class="omega-field" for="omega-form-type">
-              <span class="omega-field__label">Tipo de chamado</span>
-              <select id="omega-form-type" class="omega-select" required></select>
-            </label>
-          </div>
+          <div id="omega-summary" class="omega-summary" aria-live="polite"></div>
 
-          <label class="omega-field" for="omega-form-observation">
-            <span class="omega-field__label">Observação</span>
-            <textarea id="omega-form-observation" class="omega-textarea" rows="6" placeholder="Descreva a situação" required></textarea>
-          </label>
-
-          <label class="omega-field omega-field--file" for="omega-form-file">
-            <span class="omega-field__label">Arquivo</span>
-            <div class="omega-file-input">
-              <input id="omega-form-file" class="omega-input omega-input--file" type="file"/>
-              <span class="omega-file-input__hint">Nenhum ficheiro selecionado</span>
+          <div class="omega-main__content">
+            <div id="omega-table-wrapper" class="omega-table-wrapper" role="region" aria-labelledby="omega-table-caption">
+              <table class="omega-table">
+                <caption id="omega-table-caption" class="sr-only">Chamados filtrados pela visão atual</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Chamado</th>
+                    <th scope="col">Empresa</th>
+                    <th scope="col">Produto</th>
+                    <th scope="col">Fila</th>
+                    <th scope="col">Abertura</th>
+                    <th scope="col">Atualização</th>
+                    <th scope="col" class="col-status">Situação</th>
+                  </tr>
+                </thead>
+                <tbody id="omega-ticket-rows"></tbody>
+              </table>
             </div>
-          </label>
+            <div id="omega-empty" class="omega-empty" hidden>
+              <i class="ti ti-inbox"></i>
+              <p>Nenhum chamado encontrado para este recorte.</p>
+              <button id="omega-reset-filters" class="omega-btn" type="button">Limpar filtros</button>
+            </div>
+          </div>
+        </section>
 
-          <input id="omega-form-product" type="hidden"/>
-          <input id="omega-form-subject" type="hidden"/>
+        <aside id="omega-detail" class="omega-detail" aria-live="polite"></aside>
+      </div>
 
-          <footer class="omega-form__actions">
-            <button class="omega-btn" type="button" data-omega-drawer-close>Cancelar</button>
-            <button class="omega-btn omega-btn--primary" type="submit">
-              <i class="ti ti-device-floppy"></i>
-              <span>Salvar</span>
+      <div id="omega-drawer" class="omega-drawer" hidden>
+        <div class="omega-drawer__overlay" data-omega-drawer-close></div>
+        <section class="omega-drawer__panel" role="dialog" aria-modal="true" aria-labelledby="omega-drawer-title">
+          <header class="omega-drawer__header">
+            <div>
+              <h3 id="omega-drawer-title">Novo chamado</h3>
+              <p id="omega-drawer-desc">Pré-preenchemos o contexto atual para agilizar o cadastro.</p>
+            </div>
+            <button class="omega-icon-btn" type="button" data-omega-drawer-close aria-label="Fechar formulário">
+              <i class="ti ti-x"></i>
             </button>
-          </footer>
-        </form>
-      </section>
-    </div>
-  </section>
-</div>
+          </header>
+          <div id="omega-form-feedback" class="omega-feedback" role="alert" hidden></div>
+          <form id="omega-form" class="omega-form">
+            <div class="omega-form__context">
+              <h4>Contexto detectado</h4>
+              <div class="omega-form__context-grid">
+                <label class="omega-field" for="omega-form-company">
+                  <span class="omega-field__label">Empresa</span>
+                  <input id="omega-form-company" class="omega-input" type="text" placeholder="Ex.: Pães &amp; Cia Ltda" required/>
+                </label>
+                <ul id="omega-form-context" class="omega-tags"></ul>
+              </div>
+            </div>
+
+            <div class="omega-form__grid">
+              <label class="omega-field" for="omega-form-department">
+                <span class="omega-field__label">Departamento</span>
+                <select id="omega-form-department" class="omega-select" required></select>
+              </label>
+              <label class="omega-field" for="omega-form-type">
+                <span class="omega-field__label">Tipo de chamado</span>
+                <select id="omega-form-type" class="omega-select" required></select>
+              </label>
+            </div>
+
+            <label class="omega-field" for="omega-form-observation">
+              <span class="omega-field__label">Observação</span>
+              <textarea id="omega-form-observation" class="omega-textarea" rows="6" placeholder="Descreva a situação" required></textarea>
+            </label>
+
+            <label class="omega-field omega-field--file" for="omega-form-file">
+              <span class="omega-field__label">Arquivo</span>
+              <div class="omega-file-input">
+                <input id="omega-form-file" class="omega-input omega-input--file" type="file"/>
+                <span class="omega-file-input__hint">Nenhum ficheiro selecionado</span>
+              </div>
+            </label>
+
+            <input id="omega-form-product" type="hidden"/>
+            <input id="omega-form-subject" type="hidden"/>
+
+            <footer class="omega-form__actions">
+              <button class="omega-btn" type="button" data-omega-drawer-close>Cancelar</button>
+              <button class="omega-btn omega-btn--primary" type="submit">
+                <i class="ti ti-device-floppy"></i>
+                <span>Salvar</span>
+              </button>
+            </footer>
+          </form>
+        </section>
+      </div>
+    </section>
+  </div>
+
+  <script src="omega.js" defer></script>
+  <script>
+    window.addEventListener('load', () => {
+      const root = document.getElementById('omega-modal');
+      if (root) {
+        root.hidden = false;
+      }
+      if (typeof window.openOmega === 'function') {
+        window.openOmega();
+      }
+    });
+  </script>
+</body>
+</html>

@@ -11,6 +11,42 @@
   --omega-progress: #2563eb;
 }
 
+body.omega-standalone{
+  margin:0;
+  min-height:100vh;
+  background:var(--bg, #f6f7fc);
+  font-family:"Plus Jakarta Sans", Inter, system-ui, sans-serif;
+  color:var(--text, #0f1424);
+}
+
+body.omega-standalone.has-omega-open{
+  overflow:auto;
+}
+
+body.omega-standalone #omega-modal{
+  position:relative;
+  inset:auto;
+  z-index:1;
+  display:flex;
+  align-items:stretch;
+  justify-content:center;
+  padding:48px 24px;
+}
+
+body.omega-standalone .omega-modal__overlay{ display:none; }
+
+body.omega-standalone .omega-modal__panel{
+  width:min(1200px, 100%);
+  height:auto;
+  min-height:calc(100vh - 96px);
+  box-shadow:0 24px 64px rgba(15,20,36,.12);
+}
+
+@media (max-width: 768px){
+  body.omega-standalone #omega-modal{ padding:32px 12px; }
+  body.omega-standalone .omega-modal__panel{ min-height:calc(100vh - 64px); border-radius:20px; }
+}
+
 body.has-omega-open{ overflow:hidden; }
 
 #omega-modal[hidden]{ display:none !important; }
