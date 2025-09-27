@@ -3106,7 +3106,7 @@ const state = {
     node:null,
     lineage:[],
     baseFilters:new Map(),
-    selectedLevel:"secao",
+    selectedProduct:"",
     filtered:[],
     trail:[],
     contact:{ open:false, leadId:null, trigger:null },

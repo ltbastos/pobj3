@@ -28,26 +28,6 @@ function ensureLeadsTemplate(){
   return leadsTemplatePromise;
 }
 
-const OPPORTUNITY_LEVEL_SEQUENCE = ["diretoria","gerencia","agencia","gGestao","gerente","secao","familia","prodsub"];
-const OPPORTUNITY_LEVEL_ORDER = new Map(OPPORTUNITY_LEVEL_SEQUENCE.map((key, index) => [key, index]));
-const OPPORTUNITY_LEVEL_OPTIONS = [
-  { key:"prodsub", label:"Indicador" },
-  { key:"familia", label:"Família" },
-  { key:"secao", label:"Seção" },
-];
-const OPPORTUNITY_LEVEL_LABELS = {
-  diretoria:"Diretoria",
-  gerencia:"Regional",
-  agencia:"Agência",
-  gGestao:"Gerente de gestão",
-  gerente:"Gerente",
-  secao:"Seção",
-  familia:"Família",
-  prodsub:"Indicador",
-  contrato:"Contrato",
-};
-const OPPORTUNITY_LEVEL_PRIORITY = ["prodsub","familia","secao"];
-const OPPORTUNITY_MODAL_ALLOWED_LEVELS = new Set(OPPORTUNITY_LEVEL_PRIORITY);
 const OPPORTUNITY_DIMENSION_FIELD = {
   diretoria:"diretoria",
   gerencia:"gerenciaRegional",
@@ -58,6 +38,7 @@ const OPPORTUNITY_DIMENSION_FIELD = {
   familia:"familia",
   prodsub:"prodOrSub",
 };
+const OPPORTUNITY_PRODUCT_FILTER_ID = "leads-product-filter";
 
 const LEAD_CONTACT_CHANNELS = ["Telefone","WhatsApp","E-mail","Visita presencial","Videochamada"];
 const LEAD_CONTACT_OUTCOMES = [
@@ -196,10 +177,14 @@ function normalizarLinhasLeads(rows = []){
 
     const creditoPreAprovado = Math.max(0, parseLeadCurrency(lerCelula(raw, ["Credito pre aprovado", "Crédito pre aprovado", "Credito", "Crédito pré aprovado"])));
 
+    const cnaeTexto = lerCelula(raw, ["CNAE", "Código CNAE", "CNAE Principal"]);
+    const cnae = typeof cnaeTexto === "number" ? String(cnaeTexto) : (cnaeTexto || "").toString().trim();
+
     const lead = {
       id: makeLeadId(empresa, produtoId, index + 1),
       empresa,
       segmento: secaoNome || familiaNome,
+      cnae,
       diretoria: diretoriaId,
       diretoriaNome,
       gerenciaRegional: gerenciaId,
@@ -322,36 +307,6 @@ function shiftISODate(baseISO, delta = 0){
   return isoFromUTCDate(base);
 }
 
-function resolveOpportunityTargetLevel(lineage = [], baseFilters = new Map()){
-  const path = Array.isArray(lineage) ? lineage : [];
-  for (let i = path.length - 1; i >= 0; i--) {
-    const key = path[i]?.levelKey;
-    if (OPPORTUNITY_MODAL_ALLOWED_LEVELS.has(key)) return key;
-  }
-  const filters = baseFilters instanceof Map ? baseFilters : new Map();
-  for (const key of OPPORTUNITY_LEVEL_PRIORITY) {
-    if (filters.has(key)) return key;
-  }
-  return OPPORTUNITY_LEVEL_PRIORITY[OPPORTUNITY_LEVEL_PRIORITY.length - 1] || "secao";
-}
-
-function defaultOpportunityLevel(lineage = [], baseFilters = new Map()){
-  return resolveOpportunityTargetLevel(lineage, baseFilters);
-}
-
-function sanitizeOpportunityLevel(levelKey, lineage = [], baseFilters = new Map()){
-  if (OPPORTUNITY_MODAL_ALLOWED_LEVELS.has(levelKey)) return levelKey;
-  return resolveOpportunityTargetLevel(lineage, baseFilters);
-}
-
-function opportunityFilterKeysForLevel(levelKey){
-  const targetIndex = OPPORTUNITY_LEVEL_ORDER.has(levelKey)
-    ? OPPORTUNITY_LEVEL_ORDER.get(levelKey)
-    : OPPORTUNITY_LEVEL_ORDER.get("prodsub");
-  if (targetIndex == null) return [];
-  return OPPORTUNITY_LEVEL_SEQUENCE.filter(key => (OPPORTUNITY_LEVEL_ORDER.get(key) ?? Infinity) <= targetIndex);
-}
-
 function leadMatchesDimension(lead = {}, levelKey, expected){
   if (!expected) return true;
   const normalizedExpected = simplificarTexto(expected);
@@ -372,13 +327,112 @@ function leadMatchesDimension(lead = {}, levelKey, expected){
   }
 }
 
-function filterOpportunityLeads(levelKey, dataset = [], baseFilters = new Map()){
-  const keys = opportunityFilterKeysForLevel(levelKey);
-  return dataset.filter(lead => keys.every(key => {
-    const expected = baseFilters instanceof Map ? baseFilters.get(key) : null;
-    if (!expected) return true;
-    return leadMatchesDimension(lead, key, expected);
-  }));
+function productsMatch(valueA, valueB){
+  if (!valueA || !valueB) return false;
+  return simplificarTexto(valueA) === simplificarTexto(valueB);
+}
+
+function leadMatchesBaseFilters(lead = {}, baseFilters = new Map()){
+  if (!(baseFilters instanceof Map) || !baseFilters.size) return true;
+  for (const [key, expected] of baseFilters.entries()) {
+    if (!expected || key === "prodsub") continue;
+    if (!leadMatchesDimension(lead, key, expected)) return false;
+  }
+  return true;
+}
+
+function filterLeadsByBaseFilters(dataset = [], baseFilters = new Map()){
+  if (!Array.isArray(dataset) || !dataset.length) return [];
+  return dataset.filter(lead => leadMatchesBaseFilters(lead, baseFilters));
+}
+
+function filterLeadsByProduct(leads = [], productId = ""){
+  if (!Array.isArray(leads) || !leads.length) return [];
+  if (!productId) return [...leads];
+  return leads.filter(lead => {
+    const candidates = [lead.prodOrSub, lead.produtoId, lead.produtoNome];
+    return candidates.some(candidate => productsMatch(candidate, productId));
+  });
+}
+
+function buildOpportunityProductOptions(leads = []){
+  const map = new Map();
+  leads.forEach(lead => {
+    const value = lead?.prodOrSub || lead?.produtoId || lead?.produtoNome;
+    if (!value) return;
+    if (map.has(value)) return;
+    const label = lead?.produtoNome || value;
+    map.set(value, { value, label });
+  });
+  return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+}
+
+function populateOpportunityProductFilter(modal, options = [], selectedValue = ""){
+  if (!modal) return;
+  const select = modal.querySelector(`#${OPPORTUNITY_PRODUCT_FILTER_ID}`);
+  if (!select) return;
+
+  const desired = [
+    { value:"", label:"Todos os indicadores" },
+    ...options,
+  ];
+  const current = Array.from(select.options || []).map(opt => `${opt.value}::${opt.textContent}`);
+  const nextSnapshot = desired.map(opt => `${opt.value}::${opt.label}`);
+  if (current.length !== nextSnapshot.length || current.some((item, idx) => item !== nextSnapshot[idx])) {
+    select.innerHTML = desired.map(opt => `<option value="${escapeHTML(opt.value)}">${escapeHTML(opt.label)}</option>`).join("");
+  }
+
+  const matchingOption = desired.find(opt => opt.value && productsMatch(opt.value, selectedValue));
+  if (matchingOption) {
+    select.value = matchingOption.value;
+  } else {
+    select.value = "";
+    if (selectedValue) {
+      state.opportunities.selectedProduct = "";
+    }
+  }
+}
+
+function handleOpportunityProductChange(event){
+  if (!state.opportunities.open) return;
+  const value = event?.target?.value || "";
+  state.opportunities.selectedProduct = value;
+  if (!state.opportunities.detail) state.opportunities.detail = { selectedId:null };
+  state.opportunities.detail.selectedId = null;
+  closeLeadContactDrawer({ silent: true });
+  renderOpportunityModal();
+}
+
+function resolveProductIdFromToken(token){
+  if (token == null || token === "") return "";
+  const normalized = simplificarTexto(token);
+  if (!normalized) return "";
+  const dataset = ensureOpportunityDataset();
+  for (const lead of dataset) {
+    const candidates = [lead.prodOrSub, lead.produtoId, lead.produtoNome];
+    if (candidates.some(candidate => productsMatch(candidate, normalized))) {
+      return lead.prodOrSub || lead.produtoId || lead.produtoNome || "";
+    }
+  }
+  return "";
+}
+
+function determineDefaultOpportunityProduct(detail = {}){
+  const lineage = Array.isArray(detail?.lineage) ? detail.lineage : [];
+  for (let i = lineage.length - 1; i >= 0; i--) {
+    const entry = lineage[i];
+    if (entry?.levelKey === "prodsub") {
+      const resolved = resolveProductIdFromToken(entry.value || entry.id || entry.label);
+      if (resolved) return resolved;
+    }
+  }
+  const node = detail?.node || {};
+  const candidates = [node.prodOrSub, node.produtoId, node.id, node.value, node.label];
+  for (const token of candidates) {
+    const resolved = resolveProductIdFromToken(token);
+    if (resolved) return resolved;
+  }
+  return "";
 }
 
 function renderLeadHistoryList(history = []){
@@ -387,19 +441,16 @@ function renderLeadHistoryList(history = []){
   }
   return `<ul class="lead-history">${history.slice(0, 3).map(entry => {
     const data = formatBRDate(entry?.data) || "—";
-    const canal = escapeHTML(entry?.canal || "—");
-    const status = escapeHTML(entry?.resultado || "");
-    const usuario = limparTexto(entry?.usuario) ? escapeHTML(entry.usuario) : "";
+    const usuario = limparTexto(entry?.usuario) ? escapeHTML(entry.usuario) : "—";
     const comentario = limparTexto(entry?.comentario) ? escapeHTML(entry.comentario) : "";
-    const userBlock = usuario ? `<span class="lead-history__user"><strong>Responsável:</strong> ${usuario}</span>` : "";
-    const commentBlock = comentario ? `<p class="lead-history__comment">${comentario}</p>` : "";
+    const commentBlock = comentario
+      ? `<p class="lead-history__comment">${comentario}</p>`
+      : `<p class="lead-history__comment lead-history__comment--empty">Sem comentário registrado.</p>`;
     return `<li class="lead-history__item">
       <div class="lead-history__meta">
         <span class="lead-history__date">${data}</span>
-        <span class="lead-history__channel">${canal}</span>
-        <span class="lead-history__status">${status}</span>
+        <span class="lead-history__user">${usuario}</span>
       </div>
-      ${userBlock}
       ${commentBlock}
     </li>`;
   }).join("")}</ul>`;
@@ -461,62 +512,18 @@ function renderLeadDetailPanel(lead){
     return `<p class="lead-detail__empty">Selecione um lead para ver o histórico e os detalhes completos.</p>`;
   }
 
-  const databaseLabel = formatBRDate(lead.dataBase) || "—";
   const empresa = escapeHTML(lead.empresa || "—");
-  const produto = escapeHTML(lead.produtoNome || lead.prodOrSub || "—");
-  const familiaLabel = limparTexto(lead.familiaNome || lead.familia) ? escapeHTML(lead.familiaNome || lead.familia) : "";
-  const secaoLabel = limparTexto(lead.secaoNome || lead.secaoId) ? escapeHTML(lead.secaoNome || lead.secaoId) : "";
-  const contexto = [
-    { label:"Diretoria", value: lead.diretoriaNome || lead.diretoria },
-    { label:"Regional", value: lead.regional || lead.gerenciaRegional },
-    { label:"Agência", value: lead.agenciaNome || lead.agencia },
-    { label:"Gerente de gestão", value: lead.gerenteGestaoNome || lead.gerenteGestao },
-    { label:"Gerente", value: lead.gerenteNome || lead.gerente },
-  ].filter(item => limparTexto(item.value));
-  const contextHtml = contexto.length
-    ? contexto.map(item => `<span><strong>${escapeHTML(item.label)}:</strong> ${escapeHTML(item.value)}</span>`).join("")
-    : `<span class="lead-detail__empty">Contexto não disponível.</span>`;
-
-  const credit = fmtBRL.format(lead.creditoPreAprovado || 0);
-  const originKey = simplificarTexto(lead.origem || lead.origemLabel || "");
-  const originLabel = escapeHTML(lead.origemLabel || (originKey === "link" ? "Link" : originKey === "smart" ? "Smart" : (lead.origem || "—")));
-  const responsavel = lead.ultimoUsuario ? escapeHTML(lead.ultimoUsuario) : "—";
-  const ultimoContato = lead.ultimoContatoData ? formatBRDate(lead.ultimoContatoData) : "Sem contato registrado";
+  const cnaeLabel = limparTexto(lead.cnae) ? escapeHTML(lead.cnae) : "—";
   const historyHtml = renderLeadHistoryList(lead.historico);
-  const commentHtml = renderLeadComment(lead);
 
   return `
     <div class="lead-detail__header">
-      <span class="lead-detail__eyebrow">Database ${escapeHTML(databaseLabel)}</span>
       <h5>${empresa}</h5>
-      <p class="lead-detail__product">${produto}${familiaLabel ? ` • ${familiaLabel}` : ""}${secaoLabel ? ` • ${secaoLabel}` : ""}</p>
+      <p class="lead-detail__cnae"><strong>CNAE:</strong> ${cnaeLabel}</p>
     </div>
-    <div class="lead-detail__meta">
-      <div class="lead-detail__meta-item">
-        <span class="lead-detail__label">Crédito pré-aprovado</span>
-        <strong>${credit}</strong>
-      </div>
-      <div class="lead-detail__meta-item">
-        <span class="lead-detail__label">Origem do lead</span>
-        <span class="lead-origin-badge" data-origin="${escapeHTML(originKey || "outro")}">${originLabel}</span>
-      </div>
-      <div class="lead-detail__meta-item">
-        <span class="lead-detail__label">Último contato</span>
-        <strong>${escapeHTML(ultimoContato)}</strong>
-      </div>
-      <div class="lead-detail__meta-item">
-        <span class="lead-detail__label">Responsável</span>
-        <strong>${responsavel}</strong>
-      </div>
-    </div>
-    <div class="lead-detail__context">${contextHtml}</div>
     <div class="lead-detail__block">
-      <h6>Histórico de contatos</h6>
+      <h6>Histórico de interações</h6>
       ${historyHtml}
-    </div>
-    <div class="lead-detail__block">
-      <h6>Último comentário</h6>
-      ${commentHtml}
     </div>
   `;
 }
@@ -579,15 +586,20 @@ function renderOpportunityModal(){
   if (!modal || !state.opportunities.open) return;
 
   const dataset = ensureOpportunityDataset();
-  const lineage = Array.isArray(state.opportunities.lineage) ? state.opportunities.lineage : [];
   const baseFilters = state.opportunities.baseFilters instanceof Map ? state.opportunities.baseFilters : new Map();
-  const level = sanitizeOpportunityLevel(state.opportunities.selectedLevel, lineage, baseFilters);
-  state.opportunities.selectedLevel = level;
-  const filtered = filterOpportunityLeads(level, dataset, baseFilters);
+  const contextualLeads = filterLeadsByBaseFilters(dataset, baseFilters);
+  let selectedProduct = state.opportunities.selectedProduct || "";
+  const productOptions = buildOpportunityProductOptions(contextualLeads);
+  if (selectedProduct && !productOptions.some(opt => productsMatch(opt.value, selectedProduct))) {
+    selectedProduct = "";
+    state.opportunities.selectedProduct = "";
+  }
+  const filtered = filterLeadsByProduct(contextualLeads, selectedProduct);
   state.opportunities.filtered = filtered;
 
+  populateOpportunityProductFilter(modal, productOptions, selectedProduct);
+
   const subtitleEl = modal.querySelector("#leads-modal-subtitle");
-  const contextWrap = modal.querySelector("#leads-modal-context");
   const summaryEl = modal.querySelector("#leads-modal-summary");
   const listWrap = modal.querySelector("#leads-modal-list");
   if (!state.opportunities.detail) state.opportunities.detail = { selectedId:null };
@@ -609,44 +621,22 @@ function renderOpportunityModal(){
     detailState.selectedId = null;
   }
 
-  const levelLabel = OPPORTUNITY_LEVEL_LABELS[level] || "Contexto";
-  const lineageMap = new Map(lineage.map(entry => [entry.levelKey, entry]));
-  const focusEntry = lineageMap.get(level) || lineage[lineage.length - 1] || null;
-  const focusLabel = focusEntry ? (focusEntry.label || focusEntry.value || "") : "";
-
   if (subtitleEl) {
-    if (focusEntry && focusLabel) {
-      subtitleEl.textContent = `${levelLabel} selecionado: ${focusLabel}. Os leads exibidos respeitam o contexto atual dos filtros.`;
-    } else {
-      subtitleEl.textContent = "Empresas com maior propensão considerando o contexto atual dos filtros aplicados.";
-    }
-  }
-
-  if (contextWrap) {
-    if (lineage.length) {
-      contextWrap.innerHTML = lineage
-        .map(entry => {
-          const label = entry?.label || entry?.value || "";
-          if (!label) return "";
-          const levelText = OPPORTUNITY_LEVEL_LABELS[entry.levelKey] || entry.levelKey || "";
-          return `<span class="lead-context-badge"><strong>${escapeHTML(levelText)}:</strong> ${escapeHTML(label)}</span>`;
-        })
-        .filter(Boolean)
-        .join("");
-    } else {
-      contextWrap.innerHTML = `<p class="lead-empty">Contexto geral do funil selecionado.</p>`;
-    }
+    subtitleEl.textContent = "Selecione um indicador para priorizar os leads dentro dos filtros ativos do detalhamento.";
   }
 
   if (summaryEl) {
     const totalCredit = filtered.reduce((acc, lead) => acc + (lead.creditoPreAprovado || 0), 0);
     const countLabel = filtered.length === 1 ? "1 lead propenso" : `${fmtINT.format(filtered.length)} leads propensos`;
-    summaryEl.innerHTML = `<strong>${countLabel}</strong> no nível <strong>${levelLabel}</strong> • Crédito pré-aprovado total: <strong>${fmtBRL.format(totalCredit)}</strong>`;
+    const productLabel = selectedProduct
+      ? (productOptions.find(opt => productsMatch(opt.value, selectedProduct))?.label || selectedProduct)
+      : "todos os indicadores";
+    summaryEl.innerHTML = `<strong>${countLabel}</strong> em <strong>${escapeHTML(productLabel)}</strong> • Crédito pré-aprovado total: <strong>${fmtBRL.format(totalCredit)}</strong>`;
   }
 
   if (listWrap) {
     if (!filtered.length) {
-      listWrap.innerHTML = `<p class="lead-empty">Nenhum lead propenso encontrado para o nível selecionado com os filtros atuais.</p>`;
+      listWrap.innerHTML = `<p class="lead-empty">Nenhum lead propenso encontrado para o indicador selecionado com os filtros atuais.</p>`;
       if (state.opportunities.contact?.open) {
         closeLeadContactDrawer({ silent: true });
       }
@@ -672,17 +662,6 @@ function renderOpportunityModal(){
   }
 }
 
-function setOpportunityLevel(levelKey){
-  const modal = document.getElementById("leads-modal");
-  if (!modal || !state.opportunities.open) return;
-  const lineage = Array.isArray(state.opportunities.lineage) ? state.opportunities.lineage : [];
-  const baseFilters = state.opportunities.baseFilters instanceof Map ? state.opportunities.baseFilters : new Map();
-  const sanitized = sanitizeOpportunityLevel(levelKey, lineage, baseFilters);
-  if (state.opportunities.selectedLevel === sanitized) return;
-  state.opportunities.selectedLevel = sanitized;
-  renderOpportunityModal();
-}
-
 function closeOpportunityModal(){
   const modal = document.getElementById("leads-modal");
   if (!modal) return;
@@ -696,7 +675,7 @@ function closeOpportunityModal(){
   state.opportunities.lineage = [];
   state.opportunities.baseFilters = new Map();
   state.opportunities.filtered = [];
-  state.opportunities.selectedLevel = defaultOpportunityLevel([], new Map());
+  state.opportunities.selectedProduct = "";
   state.opportunities.trail = [];
   state.opportunities.contact = { open:false, leadId:null, trigger:null };
   state.opportunities.detail = { selectedId:null };
@@ -717,12 +696,15 @@ async function openOpportunityModal(detail = {}){
     }
   });
 
+  const defaultProduct = determineDefaultOpportunityProduct(detail);
+  if (baseFilters.has("prodsub")) baseFilters.delete("prodsub");
+
   state.opportunities.open = true;
   state.opportunities.node = node;
   state.opportunities.lineage = lineage;
   state.opportunities.baseFilters = baseFilters;
   state.opportunities.trail = Array.isArray(detail?.trail) ? [...detail.trail] : [];
-  state.opportunities.selectedLevel = defaultOpportunityLevel(lineage, baseFilters);
+  state.opportunities.selectedProduct = defaultProduct;
   state.opportunities.contact = { open:false, leadId:null, trigger:null };
   state.opportunities.detail = { selectedId:null };
 
@@ -749,6 +731,12 @@ async function setupOpportunityModal(){
   if (listWrap && !listWrap.dataset.wired) {
     listWrap.addEventListener("click", handleOpportunityTableClick);
     listWrap.dataset.wired = "1";
+  }
+
+  const productSelect = modal.querySelector(`#${OPPORTUNITY_PRODUCT_FILTER_ID}`);
+  if (productSelect && !productSelect.dataset.wired) {
+    productSelect.addEventListener("change", handleOpportunityProductChange);
+    productSelect.dataset.wired = "1";
   }
 
   const drawer = modal.querySelector("#lead-contact-drawer");
