@@ -129,6 +129,7 @@ let FACT_METAS = [];
 let FACT_VARIAVEL = [];
 let FACT_CAMPANHAS = [];
 let DIM_CALENDARIO = [];
+let FACT_HISTORICO_GDAD = [];
 let AVAILABLE_DATE_MAX = "";
 
 // Aqui eu guardo qual recorte o usuário escolheu para conseguir lembrar quando mudar de aba.
@@ -1343,6 +1344,79 @@ function normalizarLinhasStatus(rows){
   return normalized;
 }
 
+function normalizarLinhasHistoricoGdad(rows){
+  if (!Array.isArray(rows)) return [];
+
+  const mapNivel = (value) => {
+    const simple = simplificarTexto(value);
+    if (simple === "diretoria") return "diretoria";
+    if (simple === "gerencia" || simple === "gerenciaregional") return "gerencia";
+    if (simple === "agencia") return "agencia";
+    if (simple === "gerente") return "gerente";
+    return "";
+  };
+
+  return rows.map(raw => {
+    const nivel = mapNivel(lerCelula(raw, ["nivel", "Nivel", "Nível", "level"]));
+    if (!nivel) return null;
+
+    const anoText = lerCelula(raw, ["ano", "Ano", "year", "Year"]);
+    const anoNum = Number(anoText);
+    const ano = Number.isFinite(anoNum) ? anoNum : null;
+    const database = converterDataISO(lerCelula(raw, ["database", "competencia", "Competencia", "data", "Data"]));
+
+    const segmento = lerCelula(raw, ["segmento", "Segmento"]);
+    const segmentoId = lerCelula(raw, ["segmentoId", "SegmentoId", "segmento_id", "Id Segmento"]);
+    const diretoria = lerCelula(raw, ["diretoria", "Diretoria", "diretoriaId", "DiretoriaId", "ID Diretoria"]);
+    const diretoriaNome = lerCelula(raw, ["diretoriaNome", "DiretoriaNome", "Diretoria Nome", "diretoria_nome"]);
+    const gerenciaRegional = lerCelula(raw, ["gerenciaRegional", "GerenciaRegional", "gerencia", "Gerencia", "Gerencia ID"]);
+    const gerenciaNome = lerCelula(raw, ["gerenciaNome", "GerenciaNome", "Regional Nome", "regionalNome"]);
+    const agencia = lerCelula(raw, ["agencia", "Agencia", "agenciaId", "AgenciaId"]);
+    const agenciaNome = lerCelula(raw, ["agenciaNome", "AgenciaNome", "Agencia Nome"]);
+    const agenciaCodigo = lerCelula(raw, ["agenciaCodigo", "AgenciaCodigo", "Codigo Agencia", "Agencia Codigo"]);
+    const gerenteGestao = lerCelula(raw, ["gerenteGestao", "GerenteGestao", "gerenteGestaoId", "GerenteGestaoId"]);
+    const gerenteGestaoNome = lerCelula(raw, ["gerenteGestaoNome", "GerenteGestaoNome", "Gerente Gestao Nome"]);
+    const gerente = lerCelula(raw, ["gerente", "Gerente", "gerenteId", "GerenteId"]);
+    const gerenteNome = lerCelula(raw, ["gerenteNome", "GerenteNome", "Gerente Nome"]);
+
+    const participantesNum = Number(lerCelula(raw, ["participantes", "Participantes", "totalParticipantes"]));
+    const participantes = Number.isFinite(participantesNum) && participantesNum > 0 ? participantesNum : null;
+
+    const rankNum = Number(lerCelula(raw, ["rank", "Rank", "posicao", "posição", "classificacao"]));
+    const rank = Number.isFinite(rankNum) && rankNum > 0 ? rankNum : null;
+
+    const pontosNum = Number(lerCelula(raw, ["pontos", "Pontos", "pontuacao", "Pontuacao", "p_acum"]));
+    const pontos = Number.isFinite(pontosNum) ? pontosNum : null;
+
+    const realizadoNum = Number(lerCelula(raw, ["realizado", "Realizado", "real_acum", "Real_acum", "resultado"]));
+    const metaNum = Number(lerCelula(raw, ["meta", "Meta", "meta_acum", "Meta_acum"]));
+
+    return {
+      nivel,
+      ano,
+      database: database || (ano ? `${ano}-12-31` : ""),
+      segmento,
+      segmentoId,
+      diretoria,
+      diretoriaNome: diretoriaNome || diretoria,
+      gerenciaRegional,
+      gerenciaNome: gerenciaNome || gerenciaRegional,
+      agencia,
+      agenciaNome: agenciaNome || agencia,
+      agenciaCodigo: agenciaCodigo || agencia,
+      gerenteGestao,
+      gerenteGestaoNome: gerenteGestaoNome || gerenteGestao,
+      gerente,
+      gerenteNome: gerenteNome || gerente,
+      participantes,
+      rank,
+      pontos,
+      realizado: Number.isFinite(realizadoNum) ? realizadoNum : null,
+      meta: Number.isFinite(metaNum) ? metaNum : null,
+    };
+  }).filter(Boolean);
+}
+
 function rebuildStatusIndex(rows) {
   const cleaned = [];
   const map = new Map();
@@ -1487,6 +1561,7 @@ async function loadBaseData(){
       campanhasRaw,
       calendarioRaw,
       leadsRaw,
+      historicoRaw,
     ] = await Promise.all([
       loadCSVAuto(`${basePath}mesu.csv`),
       loadCSVAuto(`${basePath}Produto.csv`),
@@ -1497,6 +1572,7 @@ async function loadBaseData(){
       loadCSVAuto(`${basePath}fCampanhas.csv`).catch(() => []),
       loadCSVAuto(`${basePath}dCalendario.csv`).catch(() => []),
       loadCSVAuto(`${basePath}leads_propensos.csv`).catch(() => []),
+      loadCSVAuto(`${basePath}fHistoricoGdad.csv`).catch(() => []),
     ]);
 
     const mesuRows = normalizarLinhasMesu(mesuRaw);
@@ -1524,6 +1600,8 @@ async function loadBaseData(){
     OPPORTUNITY_LEADS_RAW = Array.isArray(leadsRaw) ? leadsRaw : [];
     ingestOpportunityLeadRows(OPPORTUNITY_LEADS_RAW);
 
+    FACT_HISTORICO_GDAD = normalizarLinhasHistoricoGdad(historicoRaw);
+
     const availableDatesSource = (DIM_CALENDARIO.length
       ? DIM_CALENDARIO.map(row => row.data)
       : [
@@ -1546,6 +1624,7 @@ async function loadBaseData(){
       variavel: FACT_VARIAVEL,
       campanhas: FACT_CAMPANHAS,
       calendario: DIM_CALENDARIO,
+      historico: FACT_HISTORICO_GDAD,
     };
   } finally {
     hideLoader();
@@ -2844,7 +2923,7 @@ async function getData(){
       summary: baseDashboard.summary,
       ranking,
       period,
-      facts: { dados: factRows, variavel: fVariavel, campanhas: campanhaFacts }
+      facts: { dados: factRows, variavel: fVariavel, campanhas: campanhaFacts, historico: FACT_HISTORICO_GDAD }
     };
   }
 
@@ -3048,7 +3127,7 @@ async function getData(){
     summary: baseDashboard.summary,
     ranking,
     period,
-    facts: { dados: fDados, variavel: fVariavel, campanhas: fCampanhas }
+    facts: { dados: fDados, variavel: fVariavel, campanhas: fCampanhas, historico: FACT_HISTORICO_GDAD }
   };
 }
 
@@ -3057,7 +3136,7 @@ async function getData(){
 const state = {
   _dataset:null,
   _rankingRaw:[],
-  facts:{ dados:[], campanhas:[], variavel:[] },
+  facts:{ dados:[], campanhas:[], variavel:[], historico:[] },
   dashboard:{ sections:[], summary:{} },
   activeView:"cards",
   tableView:"diretoria",
@@ -8491,18 +8570,49 @@ function renderRanking(){
       return;
     }
 
-    const rowsHistory = filterRowsExcept(state._rankingRaw, except, { searchTerm: "", ignoreDate: true });
+    const historySource = Array.isArray(state.facts?.historico) && state.facts.historico.length
+      ? state.facts.historico
+      : FACT_HISTORICO_GDAD;
+
+    if (!historySource.length) {
+      hostSum.innerHTML = `<div class="rk-badges"><span class="rk-badge rk-badge--warn">Sem dados históricos para o contexto selecionado.</span></div>`;
+      hostTbl.innerHTML = `<p class="rk-empty">Ainda não há registros para montar o histórico anual.</p>`;
+      return;
+    }
+
+    const filters = getFilterValues();
+    const normalizedUnit = simplificarTexto(myUnit);
+    const keyField = RANKING_KEY_FIELDS[level] || "agencia";
+    const labelField = RANKING_LABEL_FIELDS[level] || keyField;
+
+    const matchesHierarchy = (filterValue, ...candidates) => {
+      if (selecaoPadrao(filterValue)) return true;
+      return matchesSelection(filterValue, ...candidates);
+    };
+
+    const rowsHistory = historySource.filter(entry => {
+      if (!entry || typeof entry !== "object") return false;
+      const rowLevel = simplificarTexto(entry.nivel || "");
+      if (rowLevel && rowLevel !== level) return false;
+      if (!matchesHierarchy(filters.segmento, entry.segmento, entry.segmentoId)) return false;
+      if (!matchesHierarchy(filters.ggestao, entry.gerenteGestao, entry.gerenteGestaoNome)) return false;
+      if (!except.diretoria && !matchesHierarchy(filters.diretoria, entry.diretoria, entry.diretoriaNome)) return false;
+      if (!except.gerencia && !matchesHierarchy(filters.gerencia, entry.gerenciaRegional, entry.gerenciaNome)) return false;
+      if (!except.agencia && !matchesHierarchy(filters.agencia, entry.agencia, entry.agenciaCodigo, entry.agenciaNome)) return false;
+      if (!except.gerente && !matchesHierarchy(filters.gerente, entry.gerente, entry.gerenteNome)) return false;
+      return true;
+    });
+
     if (!rowsHistory.length) {
       hostSum.innerHTML = `<div class="rk-badges"><span class="rk-badge rk-badge--warn">Sem dados históricos para o contexto selecionado.</span></div>`;
       hostTbl.innerHTML = `<p class="rk-empty">Ainda não há registros para montar o histórico anual.</p>`;
       return;
     }
 
-    const normalizedUnit = simplificarTexto(myUnit);
     const yearsSet = new Set();
     rowsHistory.forEach(row => {
-      const year = extractRankingRowYear(row);
-      if (year) yearsSet.add(year);
+      const year = Number(row.ano ?? extractRankingRowYear(row));
+      if (Number.isFinite(year)) yearsSet.add(year);
     });
     const sortedYears = [...yearsSet].sort((a, b) => b - a).slice(0, 5);
     if (!sortedYears.length) {
@@ -8511,36 +8621,58 @@ function renderRanking(){
       return;
     }
 
-    const keyField = RANKING_KEY_FIELDS[level] || "agencia";
-    const labelField = RANKING_LABEL_FIELDS[level] || keyField;
+    const unitMatcher = (row = {}) => {
+      const keyMatch = simplificarTexto(row[keyField]);
+      const labelMatch = simplificarTexto(row[labelField]);
+      return keyMatch === normalizedUnit || labelMatch === normalizedUnit;
+    };
+
     let unitLabel = "";
+
+    const scoreValue = (row = {}) => {
+      if (Number.isFinite(Number(row.pontos))) return Number(row.pontos);
+      if (Number.isFinite(Number(row.realizado)) && Number.isFinite(Number(row.meta)) && Number(row.meta)) {
+        return (Number(row.realizado) / Number(row.meta)) * 100;
+      }
+      return 0;
+    };
+
     const records = sortedYears.map(year => {
-      const yearRows = rowsHistory.filter(row => extractRankingRowYear(row) === year);
+      const yearRows = rowsHistory.filter(row => Number(row.ano ?? extractRankingRowYear(row)) === year);
       if (!yearRows.length) {
         return { year, rank: null, points: null, participants: 0 };
       }
-      const aggregated = aggRanking(yearRows, level);
-      aggregated.sort((a, b) => b.p_acum - a.p_acum);
-      const idx = aggregated.findIndex(entry => simplificarTexto(entry.unidade) === normalizedUnit);
-      const entry = idx >= 0 ? aggregated[idx] : null;
-      if (!unitLabel && entry?.label) {
-        unitLabel = entry.label;
+
+      const uniqueParticipants = new Set();
+      yearRows.forEach(row => {
+        const normalized = simplificarTexto(row[keyField]) || simplificarTexto(row[labelField]);
+        if (normalized) uniqueParticipants.add(normalized);
+      });
+      const participants = uniqueParticipants.size || yearRows.length;
+
+      const entry = yearRows.find(unitMatcher) || null;
+      if (entry && !unitLabel) {
+        unitLabel = entry[labelField] || entry[keyField] || myUnit;
       }
-      return {
-        year,
-        rank: idx >= 0 ? idx + 1 : null,
-        points: entry ? entry.p_acum : null,
-        participants: aggregated.length,
-      };
+
+      let rank = Number.isFinite(Number(entry?.rank)) ? Number(entry.rank) : null;
+      if (!Number.isFinite(rank) && entry) {
+        const ordered = yearRows.slice().sort((a, b) => scoreValue(b) - scoreValue(a));
+        const idx = ordered.findIndex(unitMatcher);
+        if (idx >= 0) rank = idx + 1;
+      }
+
+      let points = Number.isFinite(Number(entry?.pontos)) ? Number(entry.pontos) : null;
+      if (points == null && entry && Number.isFinite(Number(entry.realizado)) && Number.isFinite(Number(entry.meta)) && Number(entry.meta)) {
+        points = (Number(entry.realizado) / Number(entry.meta)) * 100;
+      }
+
+      return { year, rank: Number.isFinite(rank) ? rank : null, points, participants };
     });
 
     if (!unitLabel) {
-      const matchRow = rowsHistory.find(row => simplificarTexto(row?.[keyField]) === normalizedUnit);
-      if (matchRow) {
-        unitLabel = matchRow?.[labelField] || matchRow?.[keyField] || myUnit;
-      } else {
-        unitLabel = myUnit;
-      }
+      const fallback = rowsHistory.find(unitMatcher);
+      unitLabel = fallback?.[labelField] || fallback?.[keyField] || myUnit;
     }
 
     const rangeLabel = sortedYears.length > 1
