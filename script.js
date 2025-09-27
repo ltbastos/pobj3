@@ -9067,6 +9067,12 @@ async function loadCSVAuto(url) {
     text = new TextDecoder("iso-8859-1").decode(buf);
   }
   text = text.trim();
+  if (!text) return [];
+
+  // Se o Papa ainda não carregou (ex.: offline ou CDN bloqueada), faz o parse manual.
+  if (typeof Papa === "undefined" || typeof Papa.parse !== "function") {
+    return converterCSV(text);
+  }
 
   // Descobre o separador pela 1ª linha (conta ; e ,)
   const first = (text.split(/\r?\n/)[0] || "");
@@ -9081,11 +9087,30 @@ async function loadCSVAuto(url) {
     skipEmptyLines: true
   });
 
-  if (parsed.errors && parsed.errors.length) {
-    console.warn(`Avisos ao ler ${url}:`, parsed.errors);
+  if (!parsed || !Array.isArray(parsed.data)) {
+    return converterCSV(text);
   }
 
-  return parsed.data; // array de objetos {coluna:valor}
+  if (parsed.errors && parsed.errors.length) {
+    const simplified = parsed.errors.map(err => ({
+      type: err?.type,
+      code: err?.code,
+      row: err?.row,
+      message: err?.message,
+    }));
+    console.warn(`Avisos ao ler ${url}:`, simplified);
+  }
+
+  return parsed.data.map(record => {
+    if (!record || typeof record !== "object") return record;
+    const normalized = {};
+    Object.keys(record).forEach(key => {
+      const safeKey = typeof key === "string" ? key.trim() : key;
+      const value = record[key];
+      normalized[safeKey] = typeof value === "string" ? value.trim() : value;
+    });
+    return normalized;
+  });
 }
 
 
