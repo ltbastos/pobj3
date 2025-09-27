@@ -153,13 +153,19 @@
               <textarea id="omega-form-observation" class="omega-textarea" rows="6" placeholder="Descreva a situação" required></textarea>
             </label>
 
-            <label class="omega-field omega-field--file" for="omega-form-file">
-              <span class="omega-field__label">Arquivo</span>
-              <div class="omega-file-input">
-                <input id="omega-form-file" class="omega-input omega-input--file" type="file"/>
-                <span class="omega-file-input__hint">Nenhum ficheiro selecionado</span>
+            <div class="omega-field omega-field--attachments">
+              <span class="omega-field__label" id="omega-form-file-label">Arquivos</span>
+              <input id="omega-form-file" class="sr-only" type="file" multiple aria-labelledby="omega-form-file-label"/>
+              <div class="omega-attachments">
+                <div class="omega-attachments__actions">
+                  <button class="omega-btn" type="button" data-omega-add-file>
+                    <i class="ti ti-paperclip"></i>
+                    <span>Adicionar arquivo</span>
+                  </button>
+                </div>
+                <ul id="omega-form-attachments" class="omega-attachments__list" aria-live="polite"></ul>
               </div>
-            </label>
+            </div>
 
             <input id="omega-form-product" type="hidden"/>
             <input id="omega-form-subject" type="hidden"/>

@@ -62,20 +62,41 @@ const OMEGA_PRIORITY_META = {
 };
 
 const OMEGA_QUEUE_OPTIONS = [
-  "POBJ Produções",
-  "POBJ Norte",
-  "Sprint PJ",
-  "Mesa Corporate",
+  "Encarteiramento",
+  "Meta",
+  "Orçamento",
+  "POBJ",
+  "Matriz",
+  "Outros",
 ];
 
-const OMEGA_TICKET_CATEGORIES = [
-  "Análise de elegibilidade",
-  "Cadastro e manutenção",
-  "Ajuste de meta",
-  "Contestação de pontuação",
-  "Suporte técnico",
-  "Integração com sistemas",
-];
+const OMEGA_TICKET_TYPES_BY_DEPARTMENT = {
+  Encarteiramento: [
+    "Inclusão - Conta Empresas",
+    "Inclusão - Conta Varejo",
+    "Transferência - Empresas para Empresas",
+    "Transferência - Empresas para Varejo",
+    "Transferência - Mesma Agência",
+    "Transferência - Varejo para Empresas",
+  ],
+  Meta: ["Contestar Meta"],
+  Metas: ["Contestar Meta"],
+  "Orçamento": ["A construir"],
+  POBJ: [
+    "Adicionais",
+    "Financeiro",
+    "Melhoria de Processos",
+    "Negócios",
+    "Relacionamento",
+  ],
+  Matriz: [
+    "Relatório/Dashboard",
+    "Bases",
+    "Estudos",
+    "Portal PJ",
+  ],
+  Outros: ["A construir"],
+};
 
 const OMEGA_LEVEL_LABELS = {
   diretoria: "Diretoria",
@@ -124,6 +145,7 @@ const omegaState = {
   contextDetail: null,
   selectedTicketId: null,
   drawerOpen: false,
+  formAttachments: [],
 };
 
 let OMEGA_TICKETS = [];
@@ -497,14 +519,35 @@ function setupOmegaModule(root){
     handleNewTicketSubmit(form);
   });
 
+  const departmentSelect = root.querySelector('#omega-form-department');
   const typeSelect = root.querySelector('#omega-form-type');
   const companyInput = root.querySelector('#omega-form-company');
   const fileInput = root.querySelector('#omega-form-file');
+  const addFileBtn = root.querySelector('[data-omega-add-file]');
+  const attachmentsList = root.querySelector('#omega-form-attachments');
+  departmentSelect?.addEventListener('change', (ev) => {
+    syncTicketTypeOptions(root, ev.target.value);
+    updateOmegaFormSubject(root);
+  });
   typeSelect?.addEventListener('change', () => updateOmegaFormSubject(root));
   companyInput?.addEventListener('input', () => updateOmegaFormSubject(root));
+  addFileBtn?.addEventListener('click', () => {
+    if (fileInput) fileInput.click();
+  });
   fileInput?.addEventListener('change', () => {
-    const hint = root.querySelector('.omega-file-input__hint');
-    if (hint) hint.textContent = fileInput.files?.[0]?.name || 'Nenhum ficheiro selecionado';
+    addFormAttachments(root, fileInput.files);
+    try {
+      fileInput.value = '';
+    } catch (err) {
+      /* noop */
+    }
+  });
+  attachmentsList?.addEventListener('click', (ev) => {
+    const btn = ev.target.closest?.('[data-omega-remove-attachment]');
+    if (!btn) return;
+    const id = btn.dataset.omegaRemoveAttachment;
+    if (!id) return;
+    removeFormAttachment(root, id);
   });
 
   const userSelect = root.querySelector('#omega-user-select');
@@ -958,6 +1001,104 @@ function escapeHTML(value){
     .replace(/'/g, '&#39;');
 }
 
+function createLocalId(prefix = 'id'){
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+}
+
+function formatFileSize(bytes){
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function getTicketTypesForDepartment(department){
+  if (!department) return OMEGA_TICKET_TYPES_BY_DEPARTMENT.Outros || ['A construir'];
+  const list = OMEGA_TICKET_TYPES_BY_DEPARTMENT[department];
+  if (Array.isArray(list) && list.length) return list;
+  return OMEGA_TICKET_TYPES_BY_DEPARTMENT.Outros || ['A construir'];
+}
+
+function syncTicketTypeOptions(container, department){
+  const typeSelect = container?.querySelector?.('#omega-form-type');
+  if (!typeSelect) return;
+  const options = getTicketTypesForDepartment(department);
+  typeSelect.innerHTML = options
+    .map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`)
+    .join('');
+  typeSelect.disabled = !options.length;
+  if (options.length) {
+    typeSelect.selectedIndex = 0;
+  }
+}
+
+function renderFormAttachments(root){
+  const list = root?.querySelector?.('#omega-form-attachments');
+  if (!list) return;
+  const attachments = Array.isArray(omegaState.formAttachments) ? omegaState.formAttachments : [];
+  if (!attachments.length) {
+    list.innerHTML = '<li class="omega-attachments__empty">Nenhum arquivo adicionado</li>';
+    return;
+  }
+  list.innerHTML = attachments.map((item) => {
+    const size = item.size ? `<span class="omega-attachments__size">${escapeHTML(formatFileSize(item.size))}</span>` : '';
+    return `<li class="omega-attachments__item" data-attachment-id="${escapeHTML(item.id)}">
+      <div class="omega-attachments__meta">
+        <i class="ti ti-paperclip" aria-hidden="true"></i>
+        <span class="omega-attachments__name">${escapeHTML(item.name)}</span>
+        ${size}
+      </div>
+      <button type="button" class="omega-attachments__remove" data-omega-remove-attachment="${escapeHTML(item.id)}" aria-label="Remover ${escapeHTML(item.name)}">
+        <i class="ti ti-x" aria-hidden="true"></i>
+      </button>
+    </li>`;
+  }).join('');
+}
+
+function resetFormAttachments(root){
+  omegaState.formAttachments = [];
+  const fileInput = root?.querySelector?.('#omega-form-file');
+  if (fileInput) {
+    try {
+      fileInput.value = '';
+    } catch (err) {
+      /* noop */
+    }
+  }
+  renderFormAttachments(root);
+}
+
+function addFormAttachments(root, fileList){
+  if (!fileList || !fileList.length) return;
+  if (!Array.isArray(omegaState.formAttachments)) {
+    omegaState.formAttachments = [];
+  }
+  const entries = Array.from(fileList).filter(Boolean).map((file) => ({
+    id: createLocalId('att'),
+    name: file.name || 'Arquivo sem nome',
+    size: Number.isFinite(file.size) ? file.size : null,
+    file,
+  }));
+  if (!entries.length) return;
+  omegaState.formAttachments = [...omegaState.formAttachments, ...entries];
+  renderFormAttachments(root);
+}
+
+function removeFormAttachment(root, attachmentId){
+  if (!attachmentId || !Array.isArray(omegaState.formAttachments)) return;
+  omegaState.formAttachments = omegaState.formAttachments.filter((item) => item.id !== attachmentId);
+  renderFormAttachments(root);
+}
+
 function formatDateTime(value, { withTime = false } = {}){
   if (!value) return '—';
   const date = new Date(value);
@@ -981,6 +1122,7 @@ function setDrawerOpen(open){
   } else {
     const form = root.querySelector('#omega-form');
     if (form) form.reset();
+    resetFormAttachments(root);
     clearFormFeedback(root);
   }
 }
@@ -1008,14 +1150,18 @@ function populateUserSelect(root){
 }
 
 function populateFormOptions(root){
-  const departmentSelect = root.querySelector('#omega-form-department');
-  const typeSelect = root.querySelector('#omega-form-type');
+  const form = root.querySelector('#omega-form');
+  if (!form) return;
+  const departmentSelect = form.querySelector('#omega-form-department');
   if (departmentSelect && !departmentSelect.options.length) {
     departmentSelect.innerHTML = OMEGA_QUEUE_OPTIONS.map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`).join('');
+    if (OMEGA_QUEUE_OPTIONS.length) {
+      departmentSelect.value = OMEGA_QUEUE_OPTIONS[0];
+    }
   }
-  if (typeSelect && !typeSelect.options.length) {
-    typeSelect.innerHTML = OMEGA_TICKET_CATEGORIES.map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`).join('');
-  }
+  const department = departmentSelect?.value || OMEGA_QUEUE_OPTIONS[0] || '';
+  syncTicketTypeOptions(form, department);
+  renderFormAttachments(root);
 }
 
 function buildOmegaSubject({ typeLabel = '', productLabel = '', company = '' } = {}){
@@ -1046,13 +1192,11 @@ function updateOmegaFormSubject(root){
 function prefillTicketForm(root){
   const form = root.querySelector('#omega-form');
   if (!form) return;
+  resetFormAttachments(root);
   const productInput = form.querySelector('#omega-form-product');
   const departmentSelect = form.querySelector('#omega-form-department');
-  const typeSelect = form.querySelector('#omega-form-type');
   const companyInput = form.querySelector('#omega-form-company');
   const observationInput = form.querySelector('#omega-form-observation');
-  const fileInput = form.querySelector('#omega-form-file');
-  const fileHint = form.querySelector('.omega-file-input__hint');
   const contextList = form.querySelector('#omega-form-context');
 
   const detail = omegaState.contextDetail;
@@ -1075,11 +1219,14 @@ function prefillTicketForm(root){
   }
   if (departmentSelect) {
     const user = getCurrentUser();
-    if (user?.queue && OMEGA_QUEUE_OPTIONS.includes(user.queue)) departmentSelect.value = user.queue;
-    else departmentSelect.selectedIndex = 0;
-  }
-  if (typeSelect) {
-    typeSelect.selectedIndex = 0;
+    if (user?.queue && OMEGA_QUEUE_OPTIONS.includes(user.queue)) {
+      departmentSelect.value = user.queue;
+    } else {
+      departmentSelect.selectedIndex = 0;
+    }
+    syncTicketTypeOptions(form, departmentSelect.value || OMEGA_QUEUE_OPTIONS[0] || '');
+  } else {
+    syncTicketTypeOptions(form, OMEGA_QUEUE_OPTIONS[0] || '');
   }
   if (companyInput) {
     companyInput.value = detail?.label && (detail.levelKey === 'contrato' || detail.levelKey === 'cliente') ? detail.label : '';
@@ -1087,12 +1234,6 @@ function prefillTicketForm(root){
   updateOmegaFormSubject(root);
   if (observationInput) {
     observationInput.value = '';
-  }
-  if (fileInput) {
-    try { fileInput.value = ''; } catch (err) { /* ignore reset issues */ }
-  }
-  if (fileHint) {
-    fileHint.textContent = 'Nenhum ficheiro selecionado';
   }
   if (contextList) {
     const user = getCurrentUser();
@@ -1121,8 +1262,9 @@ function handleNewTicketSubmit(form){
   const queue = form.querySelector('#omega-form-department')?.value;
   const subject = form.querySelector('#omega-form-subject')?.value?.trim();
   const description = form.querySelector('#omega-form-observation')?.value?.trim();
-  const fileInput = form.querySelector('#omega-form-file');
-  const fileName = fileInput?.files?.[0]?.name || '';
+  const attachments = Array.isArray(omegaState.formAttachments)
+    ? omegaState.formAttachments.map((item) => item.name)
+    : [];
   if (!company || !productId || !category || !queue || !subject || !description) {
     showFormFeedback(root, 'Preencha todos os campos obrigatórios para registrar o chamado.', 'warning');
     return;
@@ -1162,7 +1304,7 @@ function handleNewTicketSubmit(form){
     ownerId: ['atendente', 'supervisor', 'admin'].includes(user.role) ? user.id : null,
     teamId: user.teamId || null,
     context,
-    attachments: fileName ? [fileName] : [],
+    attachments,
     history: [
       {
         date: now.toISOString(),
