@@ -8932,7 +8932,20 @@ function openDetailTicket(node = {}, trail = []){
     console.warn("Não foi possível notificar o módulo de chamados:", err);
   }
   console.info("Detalhamento — chamado", detail);
-  if (!handled) window.open(TICKET_URL, "_blank");
+  if (!handled) {
+    try {
+      if (typeof window.openOmegaModule === "function") {
+        window.openOmegaModule(detail);
+      } else if (typeof window.openOmega === "function") {
+        window.openOmega(detail);
+      } else {
+        window.open(TICKET_URL, "_blank");
+      }
+    } catch (err) {
+      console.warn("Falha ao abrir Omega; usando fallback padrão.", err);
+      window.open(TICKET_URL, "_blank");
+    }
+  }
 }
 
 function openDetailOpportunities(node = {}, trail = []){

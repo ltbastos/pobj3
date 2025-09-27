@@ -111,55 +111,47 @@
         <form id="omega-form" class="omega-form">
           <div class="omega-form__context">
             <h4>Contexto detectado</h4>
-            <ul id="omega-form-context" class="omega-tags"></ul>
+            <div class="omega-form__context-grid">
+              <label class="omega-field" for="omega-form-company">
+                <span class="omega-field__label">Empresa</span>
+                <input id="omega-form-company" class="omega-input" type="text" placeholder="Ex.: Pães &amp; Cia Ltda" required/>
+              </label>
+              <ul id="omega-form-context" class="omega-tags"></ul>
+            </div>
           </div>
 
-          <label class="omega-field" for="omega-form-company">
-            <span class="omega-field__label">Empresa</span>
-            <input id="omega-form-company" class="omega-input" type="text" placeholder="Ex.: Pães &amp; Cia Ltda" required/>
-          </label>
-
-          <label class="omega-field" for="omega-form-product">
-            <span class="omega-field__label">Produto relacionado</span>
-            <select id="omega-form-product" class="omega-select" required></select>
-          </label>
-
-          <label class="omega-field" for="omega-form-category">
-            <span class="omega-field__label">Categoria</span>
-            <select id="omega-form-category" class="omega-select" required></select>
-          </label>
-
-          <label class="omega-field" for="omega-form-queue">
-            <span class="omega-field__label">Fila de atendimento</span>
-            <select id="omega-form-queue" class="omega-select" required></select>
-          </label>
-
-          <div class="omega-form__row">
-            <label class="omega-field" for="omega-form-priority">
-              <span class="omega-field__label">Prioridade</span>
-              <select id="omega-form-priority" class="omega-select" required></select>
+          <div class="omega-form__grid">
+            <label class="omega-field" for="omega-form-department">
+              <span class="omega-field__label">Departamento</span>
+              <select id="omega-form-department" class="omega-select" required></select>
             </label>
-            <label class="omega-field" for="omega-form-due">
-              <span class="omega-field__label">Prazo desejado</span>
-              <input id="omega-form-due" class="omega-input" type="date"/>
+            <label class="omega-field" for="omega-form-type">
+              <span class="omega-field__label">Tipo de chamado</span>
+              <select id="omega-form-type" class="omega-select" required></select>
             </label>
           </div>
 
-          <label class="omega-field" for="omega-form-subject">
-            <span class="omega-field__label">Assunto</span>
-            <input id="omega-form-subject" class="omega-input" type="text" placeholder="Descreva resumidamente" required/>
+          <label class="omega-field" for="omega-form-observation">
+            <span class="omega-field__label">Observação</span>
+            <textarea id="omega-form-observation" class="omega-textarea" rows="6" placeholder="Descreva a situação" required></textarea>
           </label>
 
-          <label class="omega-field" for="omega-form-description">
-            <span class="omega-field__label">Detalhes do chamado</span>
-            <textarea id="omega-form-description" class="omega-textarea" rows="5" placeholder="Explique o que motivou o chamado" required></textarea>
+          <label class="omega-field omega-field--file" for="omega-form-file">
+            <span class="omega-field__label">Arquivo</span>
+            <div class="omega-file-input">
+              <input id="omega-form-file" class="omega-input omega-input--file" type="file"/>
+              <span class="omega-file-input__hint">Nenhum ficheiro selecionado</span>
+            </div>
           </label>
+
+          <input id="omega-form-product" type="hidden"/>
+          <input id="omega-form-subject" type="hidden"/>
 
           <footer class="omega-form__actions">
             <button class="omega-btn" type="button" data-omega-drawer-close>Cancelar</button>
             <button class="omega-btn omega-btn--primary" type="submit">
-              <i class="ti ti-send"></i>
-              <span>Enviar chamado</span>
+              <i class="ti ti-device-floppy"></i>
+              <span>Salvar</span>
             </button>
           </footer>
         </form>

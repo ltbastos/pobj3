@@ -61,13 +61,6 @@ const OMEGA_PRIORITY_META = {
   critica: { label: "Crítica", tone: "danger", icon: "ti ti-alert-octagon" },
 };
 
-const OMEGA_PRIORITY_OPTIONS = [
-  { id: "baixa", label: "Baixa" },
-  { id: "media", label: "Média" },
-  { id: "alta", label: "Alta" },
-  { id: "critica", label: "Crítica" },
-];
-
 const OMEGA_QUEUE_OPTIONS = [
   "POBJ Produções",
   "POBJ Norte",
@@ -128,677 +121,149 @@ const omegaState = {
   drawerOpen: false,
 };
 
-let OMEGA_TICKETS = [
-  {
-    id: "OME-2025-0048",
-    subject: "Atualizar limite de Capital de Giro",
-    company: "Café Encantado Ltda",
-    productId: "capital_giro_flex",
-    product: "Capital de Giro Flex",
-    family: "Crédito PJ",
-    section: "Crédito",
-    queue: "POBJ Produções",
-    status: "em_atendimento",
-    category: "Ajuste de meta",
-    priority: "alta",
-    opened: "2025-03-01T09:20:00",
-    updated: "2025-03-05T14:45:00",
-    requesterId: "usr-01",
-    ownerId: "usr-02",
-    teamId: "sudeste",
-    context: {
-      diretoria: "Diretoria Sudeste",
-      gerencia: "Regional Campinas",
-      gerente: "Ana Paula Prado",
-      familia: "Crédito PJ",
-      secao: "Crédito",
-      prodsub: "Capital de Giro Flex",
-    },
-    history: [
-      {
-        date: "2025-03-05T14:45:00",
-        actorId: "usr-02",
-        action: "Contato com gerente PJ",
-        comment: "Solicitou última DRE e anexou documentação no chamado.",
-        status: "em_atendimento",
-      },
-      {
-        date: "2025-03-02T11:05:00",
-        actorId: "usr-02",
-        action: "Análise inicial",
-        comment: "Validou elegibilidade e encaminhou proposta à mesa de crédito.",
-        status: "aguardando",
-      },
-      {
-        date: "2025-03-01T09:20:00",
-        actorId: "usr-01",
-        action: "Abertura do chamado",
-        comment: "Gerente reportou necessidade de ampliar limite para rodada de capital de giro.",
-        status: "aberto",
-      },
-    ],
-  },
-  {
-    id: "OME-2025-0049",
-    subject: "Solicitar kit adicional da Maquininha Plus",
-    company: "Mercado Estrela do Sul Ltda",
-    productId: "maquininha_plus",
-    product: "Maquininha Plus",
-    family: "Meios de pagamento",
-    section: "Recebíveis",
-    queue: "POBJ Produções",
-    status: "aguardando",
-    category: "Suporte técnico",
-    priority: "media",
-    opened: "2025-02-27T16:18:00",
-    updated: "2025-03-04T10:12:00",
-    requesterId: "usr-07",
-    ownerId: "usr-02",
-    teamId: "sudeste",
-    context: {
-      diretoria: "Diretoria Sudeste",
-      gerencia: "Regional São Paulo",
-      gerente: "Bruno Mesquita",
-      familia: "Meios de pagamento",
-      secao: "Recebíveis",
-      prodsub: "Maquininha Plus",
-    },
-    history: [
-      {
-        date: "2025-03-04T10:12:00",
-        actorId: "usr-02",
-        action: "Aguardando retorno do parceiro",
-        comment: "Solicitação enviada à fornecedora, previsão de entrega em 3 dias úteis.",
-        status: "aguardando",
-      },
-      {
-        date: "2025-02-27T16:18:00",
-        actorId: "usr-07",
-        action: "Abertura do chamado",
-        comment: "Cliente pediu dois terminais extras para nova filial.",
-        status: "aberto",
-      },
-    ],
-  },
-  {
-    id: "OME-2025-0050",
-    subject: "Erro de integração com PIX Empresas",
-    company: "Tech Valley Solutions",
-    productId: "plataforma_pix",
-    product: "Plataforma PIX Empresas",
-    family: "Pagamentos digitais",
-    section: "Recebíveis",
-    queue: "Sprint PJ",
-    status: "resolvido",
-    category: "Integração com sistemas",
-    priority: "alta",
-    opened: "2025-02-18T08:40:00",
-    updated: "2025-02-25T17:35:00",
-    requesterId: "usr-02",
-    ownerId: "usr-02",
-    teamId: "sudeste",
-    context: {
-      diretoria: "Diretoria Sudeste",
-      gerencia: "Regional Campinas",
-      gerente: "Ana Paula Prado",
-      familia: "Pagamentos digitais",
-      secao: "Recebíveis",
-      prodsub: "Plataforma PIX Empresas",
-    },
-    history: [
-      {
-        date: "2025-02-25T17:35:00",
-        actorId: "usr-02",
-        action: "Encerramento",
-        comment: "Integração estabilizada após ajuste de webhook. Cliente homologou o fluxo.",
-        status: "resolvido",
-      },
-      {
-        date: "2025-02-23T15:28:00",
-        actorId: "usr-03",
-        action: "Escalonamento para tecnologia",
-        comment: "Chamado direcionado à equipe de APIs para análise profunda.",
-        status: "em_atendimento",
-      },
-      {
-        date: "2025-02-18T08:40:00",
-        actorId: "usr-02",
-        action: "Abertura do chamado",
-        comment: "Cliente relata falhas intermitentes ao registrar cobranças via PIX.",
-        status: "aberto",
-      },
-    ],
-  },
-  {
-    id: "OME-2025-0051",
-    subject: "Incluir seguro empresarial na carteira",
-    company: "Rede Hotel Prime",
-    productId: "seguros_empresariais",
-    product: "Seguros Empresariais",
-    family: "Seguros e proteção",
-    section: "Seguros",
-    queue: "Mesa Corporate",
-    status: "aberto",
-    category: "Análise de elegibilidade",
-    priority: "media",
-    opened: "2025-03-06T11:12:00",
-    updated: "2025-03-06T11:12:00",
-    requesterId: "usr-03",
-    ownerId: null,
-    teamId: "sudeste",
-    context: {
-      diretoria: "Diretoria Centro",
-      gerencia: "Regional Goiânia",
-      gerente: "Patrícia Lemos",
-      familia: "Seguros e proteção",
-      secao: "Seguros",
-      prodsub: "Seguros Empresariais",
-    },
-    history: [
-      {
-        date: "2025-03-06T11:12:00",
-        actorId: "usr-03",
-        action: "Abertura do chamado",
-        comment: "Gerente solicita apoio para incluir seguro patrimonial na carteira PJ.",
-        status: "aberto",
-      },
-    ],
-  },
-  {
-    id: "OME-2025-0052",
-    subject: "Contestação de pontos Sprint PJ",
-    company: "Transportes Amazônia Norte",
-    productId: "antecipacao_recebiveis",
-    product: "Antecipação de Recebíveis PJ",
-    family: "Recebíveis",
-    section: "Recebíveis",
-    queue: "POBJ Norte",
-    status: "em_atendimento",
-    category: "Contestação de pontuação",
-    priority: "critica",
-    opened: "2025-03-03T13:05:00",
-    updated: "2025-03-05T19:10:00",
-    requesterId: "usr-06",
-    ownerId: "usr-05",
-    teamId: "norte",
-    context: {
-      diretoria: "Diretoria Norte",
-      gerencia: "Regional Belém",
-      gerente: "Camila Lopes",
-      familia: "Recebíveis",
-      secao: "Recebíveis",
-      prodsub: "Antecipação de Recebíveis PJ",
-    },
-    history: [
-      {
-        date: "2025-03-05T19:10:00",
-        actorId: "usr-05",
-        action: "Contato com mesa Sprint",
-        comment: "Repassou evidências ao comitê e aguarda revisão da pontuação.",
-        status: "em_atendimento",
-      },
-      {
-        date: "2025-03-04T08:30:00",
-        actorId: "usr-05",
-        action: "Validação inicial",
-        comment: "Pontuação divergente confirmada com o gerente regional.",
-        status: "aguardando",
-      },
-      {
-        date: "2025-03-03T13:05:00",
-        actorId: "usr-06",
-        action: "Abertura do chamado",
-        comment: "Empresa não recebeu pontos da antecipação homologada em fevereiro.",
-        status: "aberto",
-      },
-    ],
-  },
-  {
-    id: "OME-2025-0053",
-    subject: "Cancelar contrato duplicado",
-    company: "AgroVale Distribuição",
-    productId: "credito_agro",
-    product: "Crédito Agro Clima",
-    family: "Crédito PJ",
-    section: "Crédito",
-    queue: "POBJ Produções",
-    status: "cancelado",
-    category: "Cadastro e manutenção",
-    priority: "media",
-    opened: "2025-02-20T09:18:00",
-    updated: "2025-02-28T17:45:00",
-    requesterId: "usr-02",
-    ownerId: "usr-02",
-    teamId: "sudeste",
-    context: {
-      diretoria: "Diretoria Sudeste",
-      gerencia: "Regional Ribeirão Preto",
-      gerente: "Eduardo Matos",
-      familia: "Crédito PJ",
-      secao: "Crédito",
-      prodsub: "Crédito Agro Clima",
-    },
-    history: [
-      {
-        date: "2025-02-28T17:45:00",
-        actorId: "usr-02",
-        action: "Cancelamento confirmado",
-        comment: "Contrato duplicado removido a pedido do cliente. Nenhum impacto financeiro.",
-        status: "cancelado",
-      },
-      {
-        date: "2025-02-21T10:12:00",
-        actorId: "usr-03",
-        action: "Validação com jurídico",
-        comment: "Equipe jurídica aprovou o cancelamento sem custos.",
-        status: "em_atendimento",
-      },
-      {
-        date: "2025-02-20T09:18:00",
-        actorId: "usr-02",
-        action: "Abertura do chamado",
-        comment: "Detectado contrato Agro duplicado após importação do legado.",
-        status: "aberto",
-      },
-    ],
-  },
-  {
-    id: "OME-2025-0054",
-    subject: "Dúvida sobre meta acumulada",
-    company: "Inova Logística Express",
-    productId: "capital_giro_flex",
-    product: "Capital de Giro Flex",
-    family: "Crédito PJ",
-    section: "Crédito",
-    queue: "POBJ Produções",
-    status: "aguardando",
-    category: "Ajuste de meta",
-    priority: "baixa",
-    opened: "2025-03-04T15:42:00",
-    updated: "2025-03-04T15:42:00",
-    requesterId: "usr-01",
-    ownerId: null,
-    teamId: "sudeste",
-    context: {
-      diretoria: "Diretoria Sudeste",
-      gerencia: "Regional Campinas",
-      gerente: "Ana Paula Prado",
-      familia: "Crédito PJ",
-      secao: "Crédito",
-      prodsub: "Capital de Giro Flex",
-    },
-    history: [
-      {
-        date: "2025-03-04T15:42:00",
-        actorId: "usr-01",
-        action: "Abertura do chamado",
-        comment: "Solicita planilha da meta acumulada para validar projeções.",
-        status: "aberto",
-      },
-    ],
-  },
-  {
-    id: "OME-2025-0055",
-    subject: "Falha no dashboard da campanha",
-    company: "Grupo Horizonte Financeiro",
-    productId: "cobranca_digital",
-    product: "Cobrança Digital PJ",
-    family: "Recebíveis",
-    section: "Recebíveis",
-    queue: "Sprint PJ",
-    status: "em_atendimento",
-    category: "Suporte técnico",
-    priority: "critica",
-    opened: "2025-03-05T07:58:00",
-    updated: "2025-03-06T09:25:00",
-    requesterId: "usr-03",
-    ownerId: "usr-02",
-    teamId: "sudeste",
-    context: {
-      diretoria: "Diretoria Centro",
-      gerencia: "Regional Goiânia",
-      gerente: "Patrícia Lemos",
-      familia: "Recebíveis",
-      secao: "Recebíveis",
-      prodsub: "Cobrança Digital PJ",
-    },
-    history: [
-      {
-        date: "2025-03-06T09:25:00",
-        actorId: "usr-02",
-        action: "Reprocesso agendado",
-        comment: "Dados serão republicados até 12h. Cliente informado por telefone.",
-        status: "em_atendimento",
-      },
-      {
-        date: "2025-03-05T08:22:00",
-        actorId: "usr-03",
-        action: "Escalonamento crítico",
-        comment: "Dashboard apresenta valores zerados para toda a carteira.",
-        status: "aguardando",
-      },
-      {
-        date: "2025-03-05T07:58:00",
-        actorId: "usr-03",
-        action: "Abertura do chamado",
-        comment: "Supervisora detectou inconsistência na visão executiva.",
-        status: "aberto",
-      },
-    ],
-  },
-  {
-    id: "OME-2025-0056",
-    subject: "Treinamento gestão de folha",
-    company: "Hospital Vida Plena",
-    productId: "gestao_folha",
-    product: "Gestão de Folha PJ",
-    family: "Serviços financeiros",
-    section: "Serviços",
-    queue: "POBJ Norte",
-    status: "resolvido",
-    category: "Suporte técnico",
-    priority: "media",
-    opened: "2025-02-10T10:10:00",
-    updated: "2025-02-14T17:45:00",
-    requesterId: "usr-05",
-    ownerId: "usr-05",
-    teamId: "norte",
-    context: {
-      diretoria: "Diretoria Norte",
-      gerencia: "Regional Belém",
-      gerente: "Camila Lopes",
-      familia: "Serviços financeiros",
-      secao: "Serviços",
-      prodsub: "Gestão de Folha PJ",
-    },
-    history: [
-      {
-        date: "2025-02-14T17:45:00",
-        actorId: "usr-05",
-        action: "Treinamento concluído",
-        comment: "Sessão online realizada com equipe do hospital.",
-        status: "resolvido",
-      },
-      {
-        date: "2025-02-12T09:00:00",
-        actorId: "usr-05",
-        action: "Agenda confirmada",
-        comment: "Treinamento agendado para 14/02 às 15h.",
-        status: "em_atendimento",
-      },
-      {
-        date: "2025-02-10T10:10:00",
-        actorId: "usr-05",
-        action: "Abertura do chamado",
-        comment: "Hospital solicitou onboarding para novo módulo.",
-        status: "aberto",
-      },
-    ],
-  },
-  {
-    id: "OME-2025-0057",
-    subject: "Atualizar dados cadastrais",
-    company: "Cooperativa Verdejar",
-    productId: "capital_giro_flex",
-    product: "Capital de Giro Flex",
-    family: "Crédito PJ",
-    section: "Crédito",
-    queue: "POBJ Produções",
-    status: "aberto",
-    category: "Cadastro e manutenção",
-    priority: "baixa",
-    opened: "2025-03-07T09:32:00",
-    updated: "2025-03-07T09:32:00",
-    requesterId: "usr-01",
-    ownerId: null,
-    teamId: "sudeste",
-    context: {
-      diretoria: "Diretoria Sudeste",
-      gerencia: "Regional Campinas",
-      gerente: "Ana Paula Prado",
-      familia: "Crédito PJ",
-      secao: "Crédito",
-      prodsub: "Capital de Giro Flex",
-    },
-    history: [
-      {
-        date: "2025-03-07T09:32:00",
-        actorId: "usr-01",
-        action: "Abertura do chamado",
-        comment: "Solicita atualização de CNAE no cadastro do cliente.",
-        status: "aberto",
-      },
-    ],
-  },
-  {
-    id: "OME-2025-0058",
-    subject: "Acompanhar aprovação de consórcio",
-    company: "Construtora Horizonte Azul",
-    productId: "consorcio_imobiliario",
-    product: "Consórcio Imobiliário PJ",
-    family: "Investimentos",
-    section: "Patrimônio",
-    queue: "Mesa Corporate",
-    status: "aguardando",
-    category: "Análise de elegibilidade",
-    priority: "alta",
-    opened: "2025-02-28T12:05:00",
-    updated: "2025-03-03T18:32:00",
-    requesterId: "usr-03",
-    ownerId: "usr-03",
-    teamId: "sudeste",
-    context: {
-      diretoria: "Diretoria Centro",
-      gerencia: "Regional Goiânia",
-      gerente: "Patrícia Lemos",
-      familia: "Investimentos",
-      secao: "Patrimônio",
-      prodsub: "Consórcio Imobiliário PJ",
-    },
-    history: [
-      {
-        date: "2025-03-03T18:32:00",
-        actorId: "usr-03",
-        action: "Aguardando resposta da administradora",
-        comment: "Processo enviado para análise de crédito da parceira.",
-        status: "aguardando",
-      },
-      {
-        date: "2025-02-28T12:05:00",
-        actorId: "usr-03",
-        action: "Abertura do chamado",
-        comment: "Cliente solicitou acompanhamento de consórcio imobiliário de alto valor.",
-        status: "aberto",
-      },
-    ],
-  },
-  {
-    id: "OME-2025-0059",
-    subject: "Resgatar histórico de cobranças",
-    company: "Serviços Contábeis Norte",
-    productId: "cobranca_digital",
-    product: "Cobrança Digital PJ",
-    family: "Recebíveis",
-    section: "Recebíveis",
-    queue: "POBJ Norte",
-    status: "em_atendimento",
-    category: "Suporte técnico",
-    priority: "media",
-    opened: "2025-03-01T08:18:00",
-    updated: "2025-03-05T10:04:00",
-    requesterId: "usr-06",
-    ownerId: "usr-05",
-    teamId: "norte",
-    context: {
-      diretoria: "Diretoria Norte",
-      gerencia: "Regional Belém",
-      gerente: "Camila Lopes",
-      familia: "Recebíveis",
-      secao: "Recebíveis",
-      prodsub: "Cobrança Digital PJ",
-    },
-    history: [
-      {
-        date: "2025-03-05T10:04:00",
-        actorId: "usr-05",
-        action: "Processo de restauração",
-        comment: "Exportação iniciada. Arquivo será entregue via S3.",
-        status: "em_atendimento",
-      },
-      {
-        date: "2025-03-02T09:12:00",
-        actorId: "usr-05",
-        action: "Contato com TI",
-        comment: "Acionada equipe de dados para restaurar histórico de cobranças.",
-        status: "aguardando",
-      },
-      {
-        date: "2025-03-01T08:18:00",
-        actorId: "usr-06",
-        action: "Abertura do chamado",
-        comment: "Cliente precisa do histórico completo de cobranças para auditoria.",
-        status: "aberto",
-      },
-    ],
-  },
-  {
-    id: "OME-2025-0060",
-    subject: "Divergência no repasse da Maquininha",
-    company: "Empório do Campo",
-    productId: "maquininha_plus",
-    product: "Maquininha Plus",
-    family: "Meios de pagamento",
-    section: "Recebíveis",
-    queue: "POBJ Produções",
-    status: "resolvido",
-    category: "Contestação de pontuação",
-    priority: "media",
-    opened: "2025-02-05T11:30:00",
-    updated: "2025-02-09T16:10:00",
-    requesterId: "usr-07",
-    ownerId: "usr-02",
-    teamId: "sudeste",
-    context: {
-      diretoria: "Diretoria Sudeste",
-      gerencia: "Regional São Paulo",
-      gerente: "Bruno Mesquita",
-      familia: "Meios de pagamento",
-      secao: "Recebíveis",
-      prodsub: "Maquininha Plus",
-    },
-    history: [
-      {
-        date: "2025-02-09T16:10:00",
-        actorId: "usr-02",
-        action: "Repasse confirmado",
-        comment: "Crédito reprocessado e ajustes registrados no extrato.",
-        status: "resolvido",
-      },
-      {
-        date: "2025-02-07T13:45:00",
-        actorId: "usr-02",
-        action: "Validação de comprovantes",
-        comment: "Cliente enviou comprovantes de vendas. Divergência confirmada.",
-        status: "em_atendimento",
-      },
-      {
-        date: "2025-02-05T11:30:00",
-        actorId: "usr-07",
-        action: "Abertura do chamado",
-        comment: "Repasse creditado abaixo do esperado para as vendas da semana.",
-        status: "aberto",
-      },
-    ],
-  },
-  {
-    id: "OME-2025-0061",
-    subject: "Integração PIX com ERP interno",
-    company: "Metalúrgica Horizonte",
-    productId: "plataforma_pix",
-    product: "Plataforma PIX Empresas",
-    family: "Pagamentos digitais",
-    section: "Recebíveis",
-    queue: "Sprint PJ",
-    status: "aguardando",
-    category: "Integração com sistemas",
-    priority: "alta",
-    opened: "2025-03-02T14:22:00",
-    updated: "2025-03-06T08:55:00",
-    requesterId: "usr-03",
-    ownerId: "usr-02",
-    teamId: "sudeste",
-    context: {
-      diretoria: "Diretoria Centro",
-      gerencia: "Regional Goiânia",
-      gerente: "Patrícia Lemos",
-      familia: "Pagamentos digitais",
-      secao: "Recebíveis",
-      prodsub: "Plataforma PIX Empresas",
-    },
-    history: [
-      {
-        date: "2025-03-06T08:55:00",
-        actorId: "usr-02",
-        action: "Aguardando homologação",
-        comment: "Cliente testará novo certificado até 08/03.",
-        status: "aguardando",
-      },
-      {
-        date: "2025-03-02T14:22:00",
-        actorId: "usr-03",
-        action: "Abertura do chamado",
-        comment: "Integração apresentou erro ao autenticar via certificado A3.",
-        status: "aberto",
-      },
-    ],
-  },
-  {
-    id: "OME-2025-0062",
-    subject: "Priorizar renegociação PJ",
-    company: "Rede Atacadista Unidos",
-    productId: "capital_giro_flex",
-    product: "Capital de Giro Flex",
-    family: "Crédito PJ",
-    section: "Crédito",
-    queue: "Mesa Corporate",
-    status: "em_atendimento",
-    category: "Ajuste de meta",
-    priority: "critica",
-    opened: "2025-03-05T18:40:00",
-    updated: "2025-03-06T12:18:00",
-    requesterId: "usr-03",
-    ownerId: "usr-03",
-    teamId: "sudeste",
-    context: {
-      diretoria: "Diretoria Centro",
-      gerencia: "Regional Goiânia",
-      gerente: "Patrícia Lemos",
-      familia: "Crédito PJ",
-      secao: "Crédito",
-      prodsub: "Capital de Giro Flex",
-    },
-    history: [
-      {
-        date: "2025-03-06T12:18:00",
-        actorId: "usr-03",
-        action: "Negociação em andamento",
-        comment: "Mesa retornou com proposta revisada. Aguardando aceite do cliente.",
-        status: "em_atendimento",
-      },
-      {
-        date: "2025-03-05T18:40:00",
-        actorId: "usr-03",
-        action: "Abertura do chamado",
-        comment: "Cliente solicitou renegociação urgente antes do fechamento do trimestre.",
-        status: "aberto",
-      },
-    ],
-  },
-];
-let omegaTicketCounter = OMEGA_TICKETS.reduce((max, ticket) => {
-  const seq = parseInt(String(ticket.id || "").replace(/[^0-9]/g, ""), 10);
-  return Number.isFinite(seq) ? Math.max(max, seq) : max;
-}, 0);
+let OMEGA_TICKETS = [];
+let omegaTicketCounter = 0;
+let omegaDataPromise = null;
+const OMEGA_TICKETS_SOURCE = "Bases/omega_chamados.csv";
+
+function ensureOmegaData(){
+  if (OMEGA_TICKETS.length) return Promise.resolve(OMEGA_TICKETS);
+  if (omegaDataPromise) return omegaDataPromise;
+
+  const loader = (typeof loadCSVAuto === 'function')
+    ? loadCSVAuto(OMEGA_TICKETS_SOURCE).catch((err) => {
+        console.warn('Falha ao carregar CSV da Omega via loader principal:', err);
+        return fallbackLoadOmegaCsv();
+      })
+    : fallbackLoadOmegaCsv();
+
+  omegaDataPromise = loader
+    .then((rows) => {
+      OMEGA_TICKETS = normalizeOmegaTicketRows(Array.isArray(rows) ? rows : []);
+      omegaTicketCounter = OMEGA_TICKETS.reduce((max, ticket) => {
+        const raw = String(ticket.id || '').split('-').pop();
+        const seq = parseInt(raw, 10);
+        return Number.isFinite(seq) ? Math.max(max, seq) : max;
+      }, 0);
+      return OMEGA_TICKETS;
+    })
+    .catch((err) => {
+      console.error('Não foi possível carregar os chamados Omega:', err);
+      omegaDataPromise = null;
+      OMEGA_TICKETS = [];
+      return [];
+    });
+
+  return omegaDataPromise;
+}
+
+function fallbackLoadOmegaCsv(){
+  return fetch(OMEGA_TICKETS_SOURCE)
+    .then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.text();
+    })
+    .then((text) => simpleCsvParse(text));
+}
+
+function simpleCsvParse(text){
+  if (!text) return [];
+  const lines = text.replace(/\r/g, '').split('\n').filter(Boolean);
+  if (!lines.length) return [];
+  const header = lines.shift().split(',').map((cell) => cell.trim());
+  return lines.map((line) => {
+    const cells = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i += 1) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i += 1;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        cells.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    cells.push(current);
+    const row = {};
+    header.forEach((key, idx) => {
+      row[key] = (cells[idx] ?? '').trim();
+    });
+    return row;
+  });
+}
+
+function normalizeOmegaTicketRows(rows){
+  return rows.map((row) => {
+    const id = (row.id || row.ID || '').trim();
+    if (!id) return null;
+    const opened = (row.opened || row.abertura || '').trim();
+    const updated = (row.updated || row.atualizacao || opened || '').trim();
+    const productId = (row.product_id || row.produto_id || '').trim();
+    const productLabel = (row.product_label || row.produto || '').trim();
+    const family = (row.family || row.familia || '').trim();
+    const section = (row.section || row.secao || '').trim();
+    const queue = (row.queue || row.departamento || '').trim();
+    const category = (row.category || row.tipo || '').trim();
+    const dueDate = (row.due_date || row.prazo || '').trim();
+    const historyRaw = row.history || '';
+    const history = parseOmegaHistory(historyRaw);
+    const context = {
+      diretoria: (row.diretoria || '').trim(),
+      gerencia: (row.gerencia || '').trim(),
+      agencia: (row.agencia || '').trim(),
+      ggestao: (row.gerente_gestao || row.gestor_gestao || '').trim(),
+      gerente: (row.gerente || '').trim(),
+      familia: family,
+      secao: section,
+      prodsub: productLabel,
+    };
+    return {
+      id,
+      subject: (row.subject || row.assunto || '').trim() || `${category || 'Chamado'} — ${productLabel || productId || 'Produto'}`,
+      company: (row.company || row.empresa || '').trim(),
+      productId,
+      product: productLabel,
+      family,
+      section,
+      queue,
+      status: (row.status || '').trim().toLowerCase() || 'aberto',
+      category,
+      priority: (row.priority || row.prioridade || '').trim().toLowerCase() || 'media',
+      opened,
+      updated,
+      dueDate: dueDate || null,
+      requesterId: (row.requester_id || row.solicitante || '').trim() || null,
+      ownerId: (row.owner_id || row.responsavel || '').trim() || null,
+      teamId: (row.team_id || row.time || '').trim() || null,
+      context,
+      history,
+      credit: (row.credit || row.credito || '').trim(),
+      attachments: (row.attachment || row.arquivo || '').trim() ? [ (row.attachment || row.arquivo || '').trim() ] : [],
+    };
+  }).filter(Boolean);
+}
+
+function parseOmegaHistory(raw){
+  if (!raw) return [];
+  return String(raw).split('||').map((chunk) => chunk.trim()).filter(Boolean).map((chunk) => {
+    const [date, actorId, action, comment, status] = chunk.split('::');
+    return {
+      date: (date || '').trim(),
+      actorId: (actorId || '').trim(),
+      action: (action || '').trim() || 'Atualização do chamado',
+      comment: (comment || '').trim(),
+      status: (status || '').trim().toLowerCase() || 'aberto',
+    };
+  }).filter((entry) => entry.date && entry.actorId);
+}
 
 function ensureOmegaTemplate(){
   const existing = document.getElementById("omega-modal");
@@ -828,8 +293,8 @@ function ensureOmegaTemplate(){
 }
 
 function openOmega(detail = null){
-  ensureOmegaTemplate()
-    .then((root) => {
+  Promise.all([ensureOmegaTemplate(), ensureOmegaData()])
+    .then(([root]) => {
       if (!root) return;
       setupOmegaModule(root);
       omegaState.contextDetail = detail || null;
@@ -848,7 +313,7 @@ function openOmega(detail = null){
       }
     })
     .catch(() => {
-      /* erro já registrado em ensureOmegaTemplate */
+      /* erros já registrados em ensureOmegaTemplate/ensureOmegaData */
     });
 }
 
@@ -924,6 +389,16 @@ function setupOmegaModule(root){
   form?.addEventListener('submit', (ev) => {
     ev.preventDefault();
     handleNewTicketSubmit(form);
+  });
+
+  const typeSelect = root.querySelector('#omega-form-type');
+  const companyInput = root.querySelector('#omega-form-company');
+  const fileInput = root.querySelector('#omega-form-file');
+  typeSelect?.addEventListener('change', () => updateOmegaFormSubject(root));
+  companyInput?.addEventListener('input', () => updateOmegaFormSubject(root));
+  fileInput?.addEventListener('change', () => {
+    const hint = root.querySelector('.omega-file-input__hint');
+    if (hint) hint.textContent = fileInput.files?.[0]?.name || 'Nenhum ficheiro selecionado';
   });
 
   const userSelect = root.querySelector('#omega-user-select');
@@ -1320,6 +795,8 @@ function gatherTicketTokens(ticket){
     ticket.queue,
     ctx.diretoria,
     ctx.gerencia,
+    ctx.agencia,
+    ctx.ggestao,
     ctx.gerente,
     ctx.familia,
     ctx.secao,
@@ -1383,62 +860,91 @@ function populateUserSelect(root){
 }
 
 function populateFormOptions(root){
-  const productSelect = root.querySelector('#omega-form-product');
-  const categorySelect = root.querySelector('#omega-form-category');
-  const queueSelect = root.querySelector('#omega-form-queue');
-  const prioritySelect = root.querySelector('#omega-form-priority');
-  if (productSelect && !productSelect.options.length) {
-    productSelect.innerHTML = OMEGA_PRODUCT_CATALOG.map((item) => `<option value="${item.id}">${escapeHTML(item.label)}</option>`).join('');
+  const departmentSelect = root.querySelector('#omega-form-department');
+  const typeSelect = root.querySelector('#omega-form-type');
+  if (departmentSelect && !departmentSelect.options.length) {
+    departmentSelect.innerHTML = OMEGA_QUEUE_OPTIONS.map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`).join('');
   }
-  if (categorySelect && !categorySelect.options.length) {
-    categorySelect.innerHTML = OMEGA_TICKET_CATEGORIES.map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`).join('');
+  if (typeSelect && !typeSelect.options.length) {
+    typeSelect.innerHTML = OMEGA_TICKET_CATEGORIES.map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`).join('');
   }
-  if (queueSelect && !queueSelect.options.length) {
-    queueSelect.innerHTML = OMEGA_QUEUE_OPTIONS.map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`).join('');
-  }
-  if (prioritySelect && !prioritySelect.options.length) {
-    prioritySelect.innerHTML = OMEGA_PRIORITY_OPTIONS.map((item) => `<option value="${item.id}">${escapeHTML(item.label)}</option>`).join('');
-  }
+}
+
+function buildOmegaSubject({ typeLabel = '', productLabel = '', company = '' } = {}){
+  const parts = [];
+  if (typeLabel) parts.push(typeLabel);
+  if (productLabel && !parts.includes(productLabel)) parts.push(productLabel);
+  if (company) parts.push(company);
+  return parts.length ? parts.join(' • ') : 'Chamado Omega';
+}
+
+function updateOmegaFormSubject(root){
+  const form = root.querySelector('#omega-form');
+  if (!form) return;
+  const subjectInput = form.querySelector('#omega-form-subject');
+  if (!subjectInput) return;
+  const typeSelect = form.querySelector('#omega-form-type');
+  const productId = form.querySelector('#omega-form-product')?.value;
+  const productMeta = OMEGA_PRODUCT_CATALOG.find((item) => item.id === productId) || null;
+  const typeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim() || '';
+  const company = form.querySelector('#omega-form-company')?.value?.trim() || '';
+  subjectInput.value = buildOmegaSubject({
+    typeLabel,
+    productLabel: productMeta?.label || '',
+    company,
+  });
 }
 
 function prefillTicketForm(root){
   const form = root.querySelector('#omega-form');
   if (!form) return;
-  const productSelect = form.querySelector('#omega-form-product');
-  const queueSelect = form.querySelector('#omega-form-queue');
-  const prioritySelect = form.querySelector('#omega-form-priority');
-  const dueInput = form.querySelector('#omega-form-due');
+  const productInput = form.querySelector('#omega-form-product');
+  const departmentSelect = form.querySelector('#omega-form-department');
+  const typeSelect = form.querySelector('#omega-form-type');
   const companyInput = form.querySelector('#omega-form-company');
-  const subjectInput = form.querySelector('#omega-form-subject');
+  const observationInput = form.querySelector('#omega-form-observation');
+  const fileInput = form.querySelector('#omega-form-file');
+  const fileHint = form.querySelector('.omega-file-input__hint');
   const contextList = form.querySelector('#omega-form-context');
 
   const detail = omegaState.contextDetail;
-  const productMeta = detail?.levelKey === 'prodsub'
-    ? OMEGA_PRODUCT_CATALOG.find((item) => normalizeText(item.label) === normalizeText(detail.label))
-    : null;
-  if (productSelect) {
-    if (productMeta) productSelect.value = productMeta.id;
-    else if (!productSelect.value) productSelect.selectedIndex = 0;
+  let productMeta = null;
+  if (detail?.levelKey === 'prodsub') {
+    productMeta = OMEGA_PRODUCT_CATALOG.find((item) => normalizeText(item.label) === normalizeText(detail.label)) || null;
+  } else if (detail?.levelKey === 'familia') {
+    productMeta = OMEGA_PRODUCT_CATALOG.find((item) => normalizeText(item.family) === normalizeText(detail.label)) || null;
+  } else if (detail?.levelKey === 'secao') {
+    productMeta = OMEGA_PRODUCT_CATALOG.find((item) => normalizeText(item.section) === normalizeText(detail.label)) || null;
   }
-  if (queueSelect) {
+  if (!productMeta) {
+    const trailProduct = detail?.trail?.find?.((entry) => !!entry && typeof entry === 'string') || '';
+    productMeta = OMEGA_PRODUCT_CATALOG.find((item) => normalizeText(item.label) === normalizeText(trailProduct)) || null;
+  }
+  if (!productMeta) productMeta = OMEGA_PRODUCT_CATALOG[0] || null;
+
+  if (productInput) {
+    productInput.value = productMeta?.id || '';
+  }
+  if (departmentSelect) {
     const user = getCurrentUser();
-    if (user?.queue && OMEGA_QUEUE_OPTIONS.includes(user.queue)) queueSelect.value = user.queue;
-    else queueSelect.selectedIndex = 0;
+    if (user?.queue && OMEGA_QUEUE_OPTIONS.includes(user.queue)) departmentSelect.value = user.queue;
+    else departmentSelect.selectedIndex = 0;
   }
-  if (prioritySelect) {
-    prioritySelect.value = 'media';
-  }
-  if (dueInput) {
-    const now = new Date();
-    now.setDate(now.getDate() + 3);
-    dueInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  if (typeSelect) {
+    typeSelect.selectedIndex = 0;
   }
   if (companyInput) {
     companyInput.value = detail?.label && (detail.levelKey === 'contrato' || detail.levelKey === 'cliente') ? detail.label : '';
   }
-  if (subjectInput) {
-    const base = detail?.label ? `Atendimento ${detail.label}` : '';
-    subjectInput.value = base;
+  updateOmegaFormSubject(root);
+  if (observationInput) {
+    observationInput.value = '';
+  }
+  if (fileInput) {
+    try { fileInput.value = ''; } catch (err) { /* ignore reset issues */ }
+  }
+  if (fileHint) {
+    fileHint.textContent = 'Nenhum ficheiro selecionado';
   }
   if (contextList) {
     const user = getCurrentUser();
@@ -1450,7 +956,9 @@ function prefillTicketForm(root){
       });
     }
     if (user?.queue) chips.push(`Fila ${user.queue}`);
-    contextList.innerHTML = chips.map((chip) => `<li>${escapeHTML(chip)}</li>`).join('');
+    contextList.innerHTML = chips.length
+      ? chips.map((chip) => `<li>${escapeHTML(chip)}</li>`).join('')
+      : '<li>Nenhum contexto detectado</li>';
   }
   clearFormFeedback(root);
 }
@@ -1458,14 +966,15 @@ function prefillTicketForm(root){
 function handleNewTicketSubmit(form){
   const root = document.getElementById('omega-modal');
   if (!root) return;
+  updateOmegaFormSubject(root);
   const company = form.querySelector('#omega-form-company')?.value?.trim();
   const productId = form.querySelector('#omega-form-product')?.value;
-  const category = form.querySelector('#omega-form-category')?.value;
-  const queue = form.querySelector('#omega-form-queue')?.value;
-  const priority = form.querySelector('#omega-form-priority')?.value || 'media';
-  const due = form.querySelector('#omega-form-due')?.value;
+  const category = form.querySelector('#omega-form-type')?.value;
+  const queue = form.querySelector('#omega-form-department')?.value;
   const subject = form.querySelector('#omega-form-subject')?.value?.trim();
-  const description = form.querySelector('#omega-form-description')?.value?.trim();
+  const description = form.querySelector('#omega-form-observation')?.value?.trim();
+  const fileInput = form.querySelector('#omega-form-file');
+  const fileName = fileInput?.files?.[0]?.name || '';
   if (!company || !productId || !category || !queue || !subject || !description) {
     showFormFeedback(root, 'Preencha todos os campos obrigatórios para registrar o chamado.', 'warning');
     return;
@@ -1479,6 +988,8 @@ function handleNewTicketSubmit(form){
   const context = {
     diretoria: detail?.lineage?.find?.((entry) => entry.levelKey === 'diretoria')?.label || '',
     gerencia: detail?.lineage?.find?.((entry) => entry.levelKey === 'gerencia')?.label || '',
+    agencia: detail?.lineage?.find?.((entry) => entry.levelKey === 'agencia')?.label || '',
+    ggestao: detail?.lineage?.find?.((entry) => entry.levelKey === 'ggestao')?.label || '',
     gerente: detail?.lineage?.find?.((entry) => entry.levelKey === 'gerente')?.label || '',
     familia: productMeta.family,
     secao: productMeta.section,
@@ -1495,14 +1006,15 @@ function handleNewTicketSubmit(form){
     queue,
     status: 'aberto',
     category,
-    priority,
-    dueDate: due || null,
+    priority: 'media',
+    dueDate: null,
     opened: now.toISOString(),
     updated: now.toISOString(),
     requesterId: user.id,
     ownerId: ['atendente', 'supervisor', 'admin'].includes(user.role) ? user.id : null,
     teamId: user.teamId || null,
     context,
+    attachments: fileName ? [fileName] : [],
     history: [
       {
         date: now.toISOString(),
