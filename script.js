@@ -45,6 +45,7 @@ const definirAbaAtiva = (viewId = "cards") => {
 const fmtBRLParts = fmtBRL.formatToParts(1);
 const CURRENCY_SYMBOL = fmtBRLParts.find(p => p.type === "currency")?.value || "R$";
 const CURRENCY_LITERAL = fmtBRLParts.find(p => p.type === "literal")?.value || " ";
+const CURRENT_CALENDAR_YEAR = new Date().getFullYear();
 // Aqui eu defino as regras de sufixo (mil, milhão...) para simplificar valores grandes.
 const SUFFIX_RULES = [
   { value: 1_000_000_000_000, singular: "trilhão", plural: "trilhões" },
@@ -6627,6 +6628,16 @@ function renderFamilias(sections, summary){
       if (variavelMeta || variavelReal) hasVisibleVar = true;
       varMetaVisiveis += variavelMeta;
       varRealVisiveis += variavelReal;
+      const prodMeta = PRODUCT_INDEX.get(f.id);
+      const familiaMeta = PRODUTO_TO_FAMILIA.get(f.id);
+      const familiaAttr = f.familiaId || familiaMeta?.id || prodMeta?.sectionId || sec.id;
+      const familiaLabelAttr = f.familiaNome
+        || familiaMeta?.nome
+        || FAMILIA_BY_ID.get(familiaAttr)?.nome
+        || sec.label
+        || familiaAttr;
+      const familiaAttrSafe = escapeHTML(familiaAttr || "");
+      const familiaLabelSafe = escapeHTML(familiaLabelAttr || familiaAttr || "");
       const pct = Math.max(0, Math.min(100, f.ating*100)); /* clamp 0..100 */
       const badgeClass = pct < 50 ? "badge--low" : (pct < 100 ? "badge--warn" : "badge--ok");
       const badgeTxt   = pct >= 100 ? `${Math.round(pct)}%` : `${pct.toFixed(1)}%`;
@@ -6650,7 +6661,7 @@ function renderFamilias(sections, summary){
       const pontosAccessible = `${pontosPctLabel} (${pontosRealTxt} de ${pontosMetaTxt})`;
 
       grid.insertAdjacentHTML("beforeend", `
-        <article class="prod-card" tabindex="0" data-prod-id="${f.id}">
+        <article class="prod-card" tabindex="0" data-prod-id="${f.id}" data-familia-id="${familiaAttrSafe}" data-familia-label="${familiaLabelSafe}">
           <div class="prod-card__title">
             <i class="${f.icon}"></i>
             <span class="prod-card__name has-ellipsis" title="${f.nome}">${f.nome}</span>
@@ -6728,33 +6739,36 @@ function renderFamilias(sections, summary){
       if (ev.target?.classList.contains("badge")) return;
       const prodId = card.getAttribute("data-prod-id");
       const meta = PRODUCT_INDEX.get(prodId);
-      const familiaId = meta?.sectionId || null;
+      const familiaId = card.getAttribute("data-familia-id") || meta?.sectionId || "";
+      const familiaLabel = card.getAttribute("data-familia-label") || FAMILIA_BY_ID.get(familiaId)?.nome || familiaId;
       const familiaSelect = $("#f-familia");
       if (familiaSelect){
         if (familiaId){
           let famOpt = Array.from(familiaSelect.options).find(o => o.value === familiaId);
           if (!famOpt){
-            famOpt = new Option(FAMILIA_BY_ID.get(familiaId)?.nome || familiaId, familiaId);
+            famOpt = new Option(familiaLabel || familiaId, familiaId);
             familiaSelect.appendChild(famOpt);
           }
           familiaSelect.value = familiaId;
         } else {
           familiaSelect.value = "Todas";
         }
-        familiaSelect.dispatchEvent(new Event("change"));
       }
 
       const produtoSelect = $("#f-produto");
       if (produtoSelect){
-        let opt = Array.from(produtoSelect.options).find(o => o.value === prodId);
-        if (!opt){
-          opt = new Option(meta?.name || prodId, prodId);
-          produtoSelect.appendChild(opt);
+        if (produtoSelect.value !== "Todos") {
+          const todosOption = Array.from(produtoSelect.options).find(o => o.value === "Todos")
+            || new Option("Todos", "Todos");
+          if (!todosOption.parentElement) {
+            produtoSelect.appendChild(todosOption);
+          }
+          produtoSelect.value = "Todos";
         }
-        produtoSelect.value = prodId;
       }
-      state.tableView = "prodsub";
-      setActiveChip("prodsub");
+      state.tableView = "familia";
+      setActiveChip("familia");
+      autoSnapViewToFilters();
       const tabDet = document.querySelector('.tab[data-view="table"]');
       if (tabDet && !tabDet.classList.contains("is-active")) tabDet.click(); else switchView("table");
       applyFiltersAndRender();
@@ -8630,12 +8644,18 @@ function renderRanking(){
     let unitLabel = "";
 
     const scoreValue = (row = {}) => {
-      if (Number.isFinite(Number(row.pontos))) return Number(row.pontos);
-      if (Number.isFinite(Number(row.realizado)) && Number.isFinite(Number(row.meta)) && Number(row.meta)) {
-        return (Number(row.realizado) / Number(row.meta)) * 100;
+      const pontos = Number(row.pontos);
+      if (Number.isFinite(pontos)) return pontos;
+      const realizado = Number(row.realizado);
+      if (Number.isFinite(realizado)) return realizado;
+      const metaValor = Number(row.meta);
+      if (Number.isFinite(realizado) && Number.isFinite(metaValor) && metaValor) {
+        return (realizado / metaValor) * 100;
       }
       return 0;
     };
+
+    const previewYear = (sortedYears[0] || 0) >= CURRENT_CALENDAR_YEAR ? sortedYears[0] : 0;
 
     const records = sortedYears.map(year => {
       const yearRows = rowsHistory.filter(row => Number(row.ano ?? extractRankingRowYear(row)) === year);
@@ -8663,7 +8683,9 @@ function renderRanking(){
       }
 
       let points = Number.isFinite(Number(entry?.pontos)) ? Number(entry.pontos) : null;
-      if (points == null && entry && Number.isFinite(Number(entry.realizado)) && Number.isFinite(Number(entry.meta)) && Number(entry.meta)) {
+      if (points == null && entry && Number.isFinite(Number(entry.realizado))) {
+        points = Number(entry.realizado);
+      } else if (points == null && entry && Number.isFinite(Number(entry.meta)) && Number(entry.meta)) {
         points = (Number(entry.realizado) / Number(entry.meta)) * 100;
       }
 
@@ -8679,11 +8701,14 @@ function renderRanking(){
       ? `${sortedYears[sortedYears.length - 1]} a ${sortedYears[0]}`
       : `${sortedYears[0]}`;
     const latestParticipants = records[0]?.participants || 0;
+    const participantsYearLabel = previewYear && sortedYears[0] === previewYear
+      ? `${sortedYears[0]} (prévia)`
+      : `${sortedYears[0]}`;
     const summaryItems = [
       `<span class="rk-badge"><strong>Nível:</strong> ${nivelNome}</span>`,
       `<span class="rk-badge"><strong>Unidade:</strong> ${escapeHTML(unitLabel || myUnit)}</span>`,
       `<span class="rk-badge"><strong>Período:</strong> ${rangeLabel}</span>`,
-      `<span class="rk-badge"><strong>Participantes (${sortedYears[0]}):</strong> ${fmtINT.format(latestParticipants)}</span>`,
+      `<span class="rk-badge"><strong>Participantes (${participantsYearLabel}):</strong> ${fmtINT.format(latestParticipants)}</span>`,
     ];
     hostSum.innerHTML = `<div class="rk-badges">${summaryItems.join("")}</div>`;
 
@@ -8703,11 +8728,13 @@ function renderRanking(){
     const tbody = table.querySelector("tbody");
     records.forEach(record => {
       const rankText = typeof record.rank === "number" ? `${fmtINT.format(record.rank)}º` : "—";
-      const pointsText = (typeof record.points === "number") ? `${fmtONE.format(record.points)}%` : "—";
+      const pointsText = (typeof record.points === "number") ? fmtONE.format(record.points) : "—";
       const participantsText = record.participants ? fmtINT.format(record.participants) : "—";
+      const isPreviewYear = previewYear && record.year === previewYear;
+      const yearLabel = isPreviewYear ? `${record.year} (prévia)` : record.year;
       const row = document.createElement("tr");
       row.innerHTML = `
-        <td class="year-col">${record.year}</td>
+        <td class="year-col">${yearLabel}</td>
         <td class="rank-col">${rankText}</td>
         <td>${pointsText}</td>
         <td>${participantsText}</td>
