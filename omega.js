@@ -123,17 +123,18 @@ const OMEGA_PRODUCT_CATALOG = [
 const omegaState = {
   currentUserId: null,
   view: "my",
-  status: "todos",
   search: "",
   contextDetail: null,
   selectedTicketId: null,
   drawerOpen: false,
+  ticketModalOpen: false,
   formAttachments: [],
   filters: {
     id: "",
     departments: [],
     type: "",
     requester: "",
+    statuses: [],
     openedFrom: "",
     openedTo: "",
   },
@@ -269,6 +270,9 @@ function normalizeOmegaUserRows(rows){
       return acc;
     }, []);
     const matrixAccess = queues.includes('Matriz') || parseOmegaBoolean(row.matriz);
+    const positionRaw = (row.cargo || row.funcao || row.cargo_principal || '').trim();
+    const junction = (row.juncao || row.juncao_id || row.matricula || '').trim();
+    const position = positionRaw || (OMEGA_ROLE_LABELS[primaryRole] || 'Usuário');
     return {
       id,
       name,
@@ -276,6 +280,8 @@ function normalizeOmegaUserRows(rows){
       roles,
       matrixAccess,
       avatar: meta.avatar || `https://i.pravatar.cc/160?u=${encodeURIComponent(id)}`,
+      position,
+      junction,
       queues,
       defaultQueue: queues[0] || null,
       teamId: meta.teamId ?? null,
@@ -424,10 +430,10 @@ function openOmega(detail = null){
       populateUserSelect(root);
       omegaState.contextDetail = detail || null;
       omegaState.search = "";
-      omegaState.status = "todos";
       omegaState.selectedTicketId = null;
       resetAdvancedFilters();
       setFilterPanelOpen(false);
+      setTicketModalOpen(false);
       enforceViewForRole();
       root.hidden = false;
       document.body.classList.add("has-omega-open");
@@ -448,10 +454,7 @@ function closeOmega(){
   const root = document.getElementById("omega-modal");
   if (!root) return;
   setDrawerOpen(false);
-  const shell = root.querySelector('.omega-body');
-  if (shell) delete shell.dataset.detailOpen;
-  const detail = root.querySelector('#omega-detail');
-  if (detail) detail.classList.remove('is-visible');
+  setTicketModalOpen(false);
   setFilterPanelOpen(false);
   root.hidden = true;
   document.body.classList.remove("has-omega-open");
@@ -466,6 +469,12 @@ function setupOmegaModule(root){
   const overlay = root.querySelector('.omega-modal__overlay');
   overlay?.addEventListener('click', () => closeOmega());
 
+  root.querySelectorAll('[data-omega-ticket-close]').forEach((btn) => {
+    btn.addEventListener('click', () => setTicketModalOpen(false));
+  });
+  const ticketOverlay = root.querySelector('.omega-ticket-modal__overlay');
+  ticketOverlay?.addEventListener('click', () => setTicketModalOpen(false));
+
   root.querySelectorAll('[data-omega-drawer-close]').forEach((btn) => {
     btn.addEventListener('click', () => setDrawerOpen(false));
   });
@@ -473,9 +482,16 @@ function setupOmegaModule(root){
   const resetBtn = root.querySelector('#omega-reset-filters');
   resetBtn?.addEventListener('click', () => {
     omegaState.search = "";
-    omegaState.status = "todos";
     resetAdvancedFilters();
     setFilterPanelOpen(false);
+    syncFilterFormState(root);
+    renderOmega();
+  });
+
+  const clearFiltersTop = root.querySelector('#omega-clear-filters-top');
+  clearFiltersTop?.addEventListener('click', () => {
+    resetAdvancedFilters();
+    syncFilterFormState(root);
     renderOmega();
   });
 
@@ -485,14 +501,13 @@ function setupOmegaModule(root){
     renderOmega();
   });
 
-  const statusHost = root.querySelector('#omega-status');
-  statusHost?.addEventListener('click', (ev) => {
-    const btn = ev.target.closest?.('.omega-status__btn');
-    if (!btn) return;
-    const status = btn.dataset.status;
-    if (!status) return;
-    omegaState.status = status;
-    renderOmega();
+  const statusFilterHost = root.querySelector('#omega-filter-status');
+  statusFilterHost?.addEventListener('change', (ev) => {
+    const input = ev.target;
+    if (!input || input.type !== 'checkbox') return;
+    const option = input.closest?.('.omega-filter-status__option');
+    if (!option) return;
+    option.dataset.checked = input.checked ? 'true' : 'false';
   });
 
   const navHost = root.querySelector('#omega-nav');
@@ -512,8 +527,7 @@ function setupOmegaModule(root){
     if (!row) return;
     const ticketId = row.dataset.ticketId;
     if (!ticketId) return;
-    omegaState.selectedTicketId = ticketId;
-    renderOmega();
+    openTicketDetail(ticketId);
   });
 
   const newTicketBtn = root.querySelector('#omega-new-ticket');
@@ -603,6 +617,9 @@ function handleOmegaKeydown(ev){
     if (omegaState.drawerOpen) {
       setDrawerOpen(false);
       ev.stopPropagation();
+    } else if (omegaState.ticketModalOpen) {
+      setTicketModalOpen(false);
+      ev.stopPropagation();
     } else if (omegaState.filterPanelOpen) {
       toggleFilterPanel(false);
       ev.stopPropagation();
@@ -639,7 +656,6 @@ function renderOmega(){
   renderBreadcrumb(root, user);
   renderNav(root, user);
   renderContextBar(root, omegaState.contextDetail, contextTickets);
-  renderStatusChips(root, viewTicketsBase);
   updateFilterButtonState(root);
   if (omegaState.filterPanelOpen) {
     populateFilterPanelOptions(root);
@@ -647,7 +663,7 @@ function renderOmega(){
   }
   renderSummary(root, contextTickets, filteredTickets, user);
   renderTable(root, filteredTickets);
-  renderDetail(root, filteredTickets, viewTicketsBase, user);
+  renderTicketModal(root, filteredTickets, viewTicketsBase, user);
   updateEmptyState(root, filteredTickets);
 }
 
@@ -655,9 +671,16 @@ function renderProfile(root, user){
   const avatar = root.querySelector('#omega-avatar');
   const nameLabel = root.querySelector('#omega-user-name');
   const roleLabel = root.querySelector('#omega-user-role');
+  const metaLabel = root.querySelector('#omega-user-meta');
   if (avatar && user?.avatar) avatar.src = user.avatar;
   if (nameLabel) nameLabel.textContent = user?.name || '—';
   if (roleLabel) roleLabel.textContent = getUserRoleLabel(user);
+  if (metaLabel) {
+    const pieces = [];
+    if (user?.position) pieces.push(user.position);
+    if (user?.junction) pieces.push(user.junction);
+    metaLabel.textContent = pieces.length ? pieces.join(' • ') : '—';
+  }
   const select = root.querySelector('#omega-user-select');
   if (select && select.value !== user?.id) select.value = user?.id || '';
 }
@@ -715,27 +738,6 @@ function renderContextBar(root, detail, tickets){
   host.hidden = false;
 }
 
-function renderStatusChips(root, tickets){
-  const host = root.querySelector('#omega-status');
-  if (!host) return;
-  const counts = tickets.reduce((acc, ticket) => {
-    acc[ticket.status] = (acc[ticket.status] || 0) + 1;
-    return acc;
-  }, {});
-  const buttons = OMEGA_STATUS_ORDER.map((status) => {
-    if (status === 'todos') {
-      const total = tickets.length;
-      const active = omegaState.status === 'todos';
-      return `<button type="button" class="omega-status__btn" data-status="todos" data-active="${active}">Todos (${total})</button>`;
-    }
-    const meta = OMEGA_STATUS_META[status] || { label: status, tone: 'neutral' };
-    const total = counts[status] || 0;
-    const active = omegaState.status === status;
-    return `<button type="button" class="omega-status__btn" data-status="${status}" data-active="${active}">${escapeHTML(meta.label)} (${total})</button>`;
-  }).join('');
-  host.innerHTML = buttons;
-}
-
 function populateFilterPanelOptions(root){
   if (!root) return;
   const departmentSelect = root.querySelector('#omega-filter-department');
@@ -771,6 +773,18 @@ function populateFilterPanelOptions(root){
     } else {
       typeSelect.value = '';
     }
+  }
+  const statusHost = root.querySelector('#omega-filter-status');
+  if (statusHost) {
+    const selected = Array.isArray(omegaState.filters.statuses) ? omegaState.filters.statuses : [];
+    const statuses = OMEGA_STATUS_ORDER.filter((status) => status !== 'todos');
+    statusHost.innerHTML = statuses.map((status) => {
+      const meta = OMEGA_STATUS_META[status] || { label: status };
+      const checked = selected.includes(status);
+      const checkedAttr = checked ? ' data-checked="true"' : '';
+      const inputChecked = checked ? ' checked' : '';
+      return `<label class="omega-filter-status__option"${checkedAttr}><input type="checkbox" value="${status}"${inputChecked}/><span>${escapeHTML(meta.label)}</span></label>`;
+    }).join('');
   }
 }
 
@@ -816,6 +830,17 @@ function syncFilterFormState(root){
       typeSelect.value = filters.type;
     }
   }
+  const statusHost = root.querySelector('#omega-filter-status');
+  if (statusHost) {
+    const selected = Array.isArray(filters.statuses) ? filters.statuses : [];
+    statusHost.querySelectorAll('.omega-filter-status__option').forEach((option) => {
+      const input = option.querySelector('input[type="checkbox"]');
+      if (!input) return;
+      const checked = selected.includes(input.value);
+      input.checked = checked;
+      option.dataset.checked = checked ? 'true' : 'false';
+    });
+  }
 }
 
 function applyFiltersFromForm(root){
@@ -825,6 +850,9 @@ function applyFiltersFromForm(root){
   const id = form.querySelector('#omega-filter-id')?.value?.trim() || '';
   const requester = form.querySelector('#omega-filter-user')?.value?.trim() || '';
   const type = form.querySelector('#omega-filter-type')?.value || '';
+  const statuses = Array.from(form.querySelectorAll('#omega-filter-status input[type="checkbox"]:checked'))
+    .map((input) => input.value)
+    .filter(Boolean);
   const departments = Array.from(new Set(Array.from(form.querySelector('#omega-filter-department')?.selectedOptions || [])
     .map((option) => option.value)
     .filter(Boolean)));
@@ -834,6 +862,7 @@ function applyFiltersFromForm(root){
     id,
     requester,
     type,
+    statuses,
     departments,
     openedFrom,
     openedTo,
@@ -847,6 +876,7 @@ function resetAdvancedFilters(){
     id: '',
     requester: '',
     type: '',
+    statuses: [],
     departments: [],
     openedFrom: '',
     openedTo: '',
@@ -868,6 +898,7 @@ function hasActiveFilters(){
   if (filters.id) return true;
   if (filters.requester) return true;
   if (filters.type) return true;
+  if (Array.isArray(filters.statuses) && filters.statuses.length) return true;
   if (filters.openedFrom || filters.openedTo) return true;
   if (Array.isArray(filters.departments) && filters.departments.length) return true;
   return false;
@@ -905,23 +936,30 @@ function renderTable(root, tickets){
   }
   if (!tickets.some((ticket) => ticket.id === omegaState.selectedTicketId)) {
     omegaState.selectedTicketId = null;
+    if (omegaState.ticketModalOpen) setTicketModalOpen(false);
   }
   const rows = tickets.map((ticket) => {
     const meta = OMEGA_STATUS_META[ticket.status] || { label: ticket.status, tone: 'neutral' };
     const requesterDisplay = resolveRequesterDisplay(ticket) || '—';
-    const requesterProfile = resolveUserName(ticket.requesterId);
-    const requesterMetaLabel = requesterProfile && requesterProfile !== '—' ? requesterProfile : requesterDisplay;
-    const ownerName = resolveUserName(ticket.ownerId);
+    const requesterMetaValue = resolveUserMeta(ticket.requesterId);
+    const requesterMetaLabel = requesterMetaValue && requesterMetaValue !== '—' ? requesterMetaValue : requesterDisplay;
+    const ownerResolvedName = resolveUserName(ticket.ownerId);
+    const ownerName = ownerResolvedName && ownerResolvedName !== '—' ? ownerResolvedName : 'Sem responsável';
+    const ownerMetaValue = resolveUserMeta(ticket.ownerId);
+    const ownerMeta = ownerMetaValue && ownerMetaValue !== '—' ? ownerMetaValue : '';
     const priorityMeta = OMEGA_PRIORITY_META[ticket.priority] || OMEGA_PRIORITY_META.media;
     const activeClass = ticket.id === omegaState.selectedTicketId ? ' class="is-active"' : '';
+    const ownerLine = ownerName !== 'Sem responsável' ? `${ownerName}${ownerMeta ? ` • ${ownerMeta}` : ''}` : 'Sem responsável';
+    const categoryLabel = ticket.category || 'Tipo não informado';
     return `<tr data-ticket-id="${ticket.id}"${activeClass}>
+      <td><span class="omega-ticket__id"><i class="ti ti-ticket"></i>${escapeHTML(ticket.id)}</span></td>
       <td>
         <div class="omega-ticket__title">${escapeHTML(ticket.subject)}</div>
-        <div class="omega-ticket__meta"><span><i class="ti ti-ticket"></i>${escapeHTML(ticket.id)}</span><span><i class="ti ${priorityMeta.icon}"></i>${escapeHTML(priorityMeta.label)}</span></div>
+        <div class="omega-ticket__meta"><span><i class="ti ${priorityMeta.icon}"></i>${escapeHTML(priorityMeta.label)}</span><span><i class="ti ti-category"></i>${escapeHTML(categoryLabel)}</span></div>
       </td>
       <td>
         <div class="omega-ticket__user">${escapeHTML(requesterDisplay)}</div>
-        <div class="omega-ticket__meta"><span><i class="ti ti-user"></i>${escapeHTML(requesterMetaLabel)}</span><span><i class="ti ti-user-check"></i>${escapeHTML(ownerName)}</span></div>
+        <div class="omega-ticket__meta"><span><i class="ti ti-user"></i>${escapeHTML(requesterMetaLabel)}</span><span><i class="ti ti-user-check"></i>${escapeHTML(ownerLine)}</span></div>
       </td>
       <td>${escapeHTML(ticket.product)}</td>
       <td>${escapeHTML(ticket.queue || '—')}</td>
@@ -933,108 +971,156 @@ function renderTable(root, tickets){
   body.innerHTML = rows;
 }
 
-function renderDetail(root, tickets, baseTickets, user){
-  const host = root.querySelector('#omega-detail');
-  const shell = root.querySelector('.omega-body');
-  if (!host) return;
-  if (!tickets.length) {
-    host.classList.remove('is-visible');
-    if (shell) shell.dataset.detailOpen = 'false';
-    if (baseTickets.length) {
-      host.innerHTML = `<div class="omega-detail__empty"><i class="ti ti-info-circle"></i><span>Ajuste os filtros para visualizar os chamados desta visão.</span></div>`;
-    } else {
-      host.innerHTML = `<div class="omega-detail__empty"><i class="ti ti-ticket"></i><span>Nenhum chamado disponível para o recorte atual.</span></div>`;
-    }
+function renderTicketModal(root, tickets, baseTickets){
+  const modal = root.querySelector('#omega-ticket-modal');
+  if (!modal) return;
+  if (!omegaState.ticketModalOpen || !omegaState.selectedTicketId) {
+    modal.hidden = true;
     return;
   }
-  const ticket = tickets.find((item) => item.id === omegaState.selectedTicketId) || null;
+  const pool = Array.isArray(baseTickets) && baseTickets.length ? baseTickets : tickets;
+  const lookup = Array.isArray(pool) ? pool : [];
+  const ticket = lookup.find((item) => item.id === omegaState.selectedTicketId)
+    || OMEGA_TICKETS.find((item) => item.id === omegaState.selectedTicketId);
   if (!ticket) {
-    host.classList.remove('is-visible');
-    if (shell) shell.dataset.detailOpen = 'false';
-    host.innerHTML = `<div class="omega-detail__empty"><i class="ti ti-ticket"></i><span>Selecione um chamado na lista ao lado.</span></div>`;
+    setTicketModalOpen(false);
     return;
   }
-  host.classList.add('is-visible');
-  if (shell) shell.dataset.detailOpen = 'true';
+
   const statusMeta = OMEGA_STATUS_META[ticket.status] || { label: ticket.status, tone: 'neutral' };
-  const requesterDisplay = resolveRequesterDisplay(ticket) || '—';
-  const requesterProfile = resolveUserName(ticket.requesterId);
-  const requesterMetaLabel = requesterProfile && requesterProfile !== '—' ? requesterProfile : requesterDisplay;
-  const owner = resolveUserName(ticket.ownerId) || 'Sem responsável';
   const priorityMeta = OMEGA_PRIORITY_META[ticket.priority] || OMEGA_PRIORITY_META.media;
-  const timeline = Array.isArray(ticket.history) ? ticket.history : [];
-  const timelineHtml = timeline.length
-    ? timeline.map((entry) => {
-        const actor = resolveUserName(entry.actorId);
-        const label = OMEGA_STATUS_META[entry.status]?.label || entry.status;
-        return `<li class="omega-timeline__item">
-          <span class="omega-timeline__marker"></span>
-          <div class="omega-timeline__body">
-            <strong>${escapeHTML(actor)}</strong>
-            <time datetime="${escapeHTML(entry.date)}">${formatDateTime(entry.date, { withTime: true })}</time>
-            <p>${escapeHTML(entry.action)} — ${escapeHTML(label)}</p>
-            ${entry.comment ? `<p>${escapeHTML(entry.comment)}</p>` : ''}
-          </div>
-        </li>`;
-      }).join('')
-    : '<li class="omega-timeline__item"><span class="omega-timeline__marker"></span><div class="omega-timeline__body"><p>Ainda não há histórico registrado.</p></div></li>';
-  const contextChips = Object.entries(ticket.context || {})
-    .filter(([, value]) => !!value)
-    .map(([key, value]) => {
-      const label = OMEGA_LEVEL_LABELS[key] || key;
-      return `<span class="omega-tag">${escapeHTML(label)}: ${escapeHTML(value)}</span>`;
-    }).join('');
+  const requesterDisplay = resolveRequesterDisplay(ticket) || '—';
+  const requesterMetaValue = resolveUserMeta(ticket.requesterId);
+  const requesterMeta = requesterMetaValue && requesterMetaValue !== '—' ? requesterMetaValue : requesterDisplay;
+  const ownerResolvedName = resolveUserName(ticket.ownerId);
+  const ownerName = ownerResolvedName && ownerResolvedName !== '—' ? ownerResolvedName : 'Sem responsável';
+  const ownerMetaValue = resolveUserMeta(ticket.ownerId);
+  const ownerMeta = ownerMetaValue && ownerMetaValue !== '—' ? ownerMetaValue : '—';
+  const productLabel = ticket.product || '—';
+  const queueLabel = ticket.queue ? `Fila ${ticket.queue}` : 'Sem fila atribuída';
+  const openedDate = formatDateTime(ticket.opened);
+  const openedDateTime = formatDateTime(ticket.opened, { withTime: true });
+  const updatedDateTime = formatDateTime(ticket.updated, { withTime: true });
+  const dueDateLabel = ticket.dueDate ? formatDateTime(ticket.dueDate) : 'Sem prazo definido';
 
-  const canAssign = ['atendente', 'supervisor', 'admin'].includes(user.role);
-  const canClose = ['supervisor', 'admin'].includes(user.role);
-  const canComment = user.role !== 'usuario' || ticket.requesterId === user.id;
+  const title = modal.querySelector('#omega-ticket-modal-title');
+  if (title) title.textContent = `Detalhe do chamado ${ticket.id}`;
+  const metaLabel = modal.querySelector('#omega-ticket-modal-meta');
+  if (metaLabel) metaLabel.textContent = buildTicketMeta(ticket);
+  const idLabel = modal.querySelector('#omega-ticket-id');
+  if (idLabel) idLabel.textContent = ticket.id;
+  const requesterLabel = modal.querySelector('#omega-ticket-requester');
+  if (requesterLabel) requesterLabel.textContent = requesterDisplay;
+  const requesterMetaLabel = modal.querySelector('#omega-ticket-requester-meta');
+  if (requesterMetaLabel) requesterMetaLabel.textContent = requesterMeta;
+  const ownerLabel = modal.querySelector('#omega-ticket-owner');
+  if (ownerLabel) ownerLabel.textContent = ownerName;
+  const ownerMetaLabel = modal.querySelector('#omega-ticket-owner-meta');
+  if (ownerMetaLabel) ownerMetaLabel.textContent = ownerName === 'Sem responsável'
+    ? 'Sem responsável'
+    : ownerMeta !== '—' ? ownerMeta : 'Sem identificação';
+  const productField = modal.querySelector('#omega-ticket-product');
+  if (productField) productField.textContent = productLabel;
+  const queueField = modal.querySelector('#omega-ticket-queue');
+  if (queueField) queueField.textContent = queueLabel;
+  const openedField = modal.querySelector('#omega-ticket-opened');
+  if (openedField) openedField.textContent = openedDate;
+  const openedTimeField = modal.querySelector('#omega-ticket-opened-time');
+  if (openedTimeField) openedTimeField.textContent = openedDateTime;
+  const statusField = modal.querySelector('#omega-ticket-status');
+  if (statusField) statusField.textContent = statusMeta.label;
+  const updatedField = modal.querySelector('#omega-ticket-updated');
+  if (updatedField) updatedField.textContent = `Última atualização em ${updatedDateTime}`;
+  const priorityField = modal.querySelector('#omega-ticket-priority');
+  if (priorityField) priorityField.textContent = priorityMeta.label;
+  const dueField = modal.querySelector('#omega-ticket-due');
+  if (dueField) dueField.textContent = dueDateLabel;
 
-  const actions = [];
-  if (canAssign) {
-    actions.push({ id: 'assign', label: ticket.ownerId === user.id ? 'Acompanhar' : 'Assumir chamado', primary: ticket.ownerId !== user.id });
+  const descriptionField = modal.querySelector('#omega-ticket-description');
+  if (descriptionField) {
+    const timeline = Array.isArray(ticket.history) ? [...ticket.history] : [];
+    const originEntry = timeline.length
+      ? [...timeline].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0]
+      : null;
+    const descriptionParts = [];
+    if (originEntry?.action) descriptionParts.push(originEntry.action);
+    if (originEntry?.comment && originEntry.comment !== originEntry.action) descriptionParts.push(originEntry.comment);
+    descriptionField.innerHTML = descriptionParts.length
+      ? descriptionParts.map((part) => `<p>${escapeHTML(part)}</p>`).join('')
+      : '<p>Sem observações registradas.</p>';
   }
-  if (canComment) {
-    actions.push({ id: 'progress', label: 'Registrar atualização', primary: true });
+
+  const progressHost = modal.querySelector('#omega-ticket-progress');
+  if (progressHost) progressHost.innerHTML = buildTicketProgress(ticket.status);
+
+  const timelineHost = modal.querySelector('#omega-ticket-timeline');
+  if (timelineHost) timelineHost.innerHTML = buildTicketTimeline(ticket);
+
+  modal.hidden = false;
+}
+
+function buildTicketMeta(ticket){
+  const pieces = [];
+  const opened = formatDateTime(ticket.opened, { withTime: true });
+  if (opened && opened !== '—') pieces.push(`Aberto em ${opened}`);
+  if (ticket.queue) pieces.push(`Fila ${ticket.queue}`);
+  if (ticket.product) pieces.push(ticket.product);
+  return pieces.length ? pieces.join(' • ') : `Chamado ${ticket.id}`;
+}
+
+function buildTicketProgress(status){
+  const order = ['aberto', 'aguardando', 'em_atendimento', 'resolvido', 'cancelado'];
+  const currentIndex = order.indexOf(status);
+  return order.map((step, index) => {
+    let state = 'pending';
+    if (currentIndex === -1) {
+      state = index === 0 ? 'current' : 'pending';
+    } else if (index < currentIndex) {
+      state = 'complete';
+    } else if (index === currentIndex) {
+      state = 'current';
+    }
+    const meta = OMEGA_STATUS_META[step] || { label: step };
+    return `<li class="omega-progress__step" data-state="${state}"><span class="omega-progress__marker">${index + 1}</span><span class="omega-progress__label">${escapeHTML(meta.label)}</span></li>`;
+  }).join('');
+}
+
+function buildTicketTimeline(ticket){
+  const entries = Array.isArray(ticket.history) ? [...ticket.history] : [];
+  if (!entries.length) {
+    return '<li class="omega-timeline__item" data-side="usuario"><div class="omega-timeline__content"><p>Ainda não há histórico registrado.</p></div></li>';
   }
-  if (canClose) {
-    actions.push({ id: ticket.status === 'resolvido' ? 'reopen' : 'close', label: ticket.status === 'resolvido' ? 'Reabrir chamado' : 'Encerrar chamado', primary: ticket.status !== 'resolvido' });
-  }
+  entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  return entries.map((entry) => {
+    const actorName = resolveUserName(entry.actorId);
+    const side = resolveTimelineSide(ticket, entry.actorId);
+    const statusMeta = OMEGA_STATUS_META[entry.status] || { label: entry.status, tone: 'neutral' };
+    const action = entry.action ? `<p>${escapeHTML(entry.action)}</p>` : '';
+    const comment = entry.comment ? `<p>${escapeHTML(entry.comment)}</p>` : '';
+    return `<li class="omega-timeline__item" data-side="${side}">
+      <div class="omega-timeline__content">
+        <div class="omega-timeline__heading"><strong>${escapeHTML(actorName)}</strong><span class="omega-status-badge" data-tone="${statusMeta.tone}">${escapeHTML(statusMeta.label)}</span></div>
+        <time datetime="${escapeHTML(entry.date)}">${formatDateTime(entry.date, { withTime: true })}</time>
+        ${action}${comment}
+      </div>
+    </li>`;
+  }).join('');
+}
 
-  const actionsHtml = actions.length
-    ? `<div class="omega-detail__actions">${actions.map((action) => `<button type="button" class="omega-btn${action.primary ? ' omega-btn--primary' : ''}" data-omega-action="${action.id}">${escapeHTML(action.label)}</button>`).join('')}</div>`
-    : '';
+function resolveTimelineSide(ticket, actorId){
+  if (!ticket || !actorId) return 'atendente';
+  if (actorId === ticket.requesterId) return 'usuario';
+  const user = OMEGA_USERS.find((item) => item.id === actorId);
+  if (!user) return 'atendente';
+  const isOnlyUser = user.roles?.usuario && !user.roles.atendente && !user.roles.supervisor && !user.roles.admin;
+  return isOnlyUser ? 'usuario' : 'atendente';
+}
 
-  host.innerHTML = `
-    <header class="omega-detail__head">
-      <span class="omega-status-badge" data-tone="${statusMeta.tone}">${escapeHTML(statusMeta.label)}</span>
-      <button type="button" class="omega-icon-btn" aria-label="Fechar Omega" data-omega-close><i class="ti ti-x"></i></button>
-    </header>
-    <div class="omega-detail__title">
-      <h3>${escapeHTML(ticket.subject)}</h3>
-      <p>${escapeHTML(requesterDisplay)} • ${escapeHTML(ticket.product)}</p>
-    </div>
-    <div class="omega-detail__meta">
-      <span><i class="ti ti-user"></i>${escapeHTML(requesterMetaLabel)}</span>
-      <span><i class="ti ti-user-check"></i>${escapeHTML(owner)}</span>
-      <span><i class="ti ti-flag-3"></i>${escapeHTML(priorityMeta.label)}</span>
-      <span><i class="ti ti-clock-hour-5"></i>Atualizado ${formatDateTime(ticket.updated, { withTime: true })}</span>
-      ${ticket.dueDate ? `<span><i class="ti ti-calendar-event"></i>Prazo ${formatDateTime(ticket.dueDate)}</span>` : ''}
-      <span><i class="ti ti-building-bank"></i>${escapeHTML(ticket.queue || 'Sem fila')}</span>
-    </div>
-    <div class="omega-detail__tags">${contextChips}</div>
-    <section>
-      <h4 class="sr-only">Histórico</h4>
-      <ol class="omega-timeline">${timelineHtml}</ol>
-    </section>
-    ${actionsHtml}
-  `;
-
-  host.querySelectorAll('[data-omega-action]').forEach((btn) => {
-    btn.addEventListener('click', () => handleDetailAction(btn.dataset.omegaAction, ticket, user));
-  });
-  host.querySelectorAll('[data-omega-close]').forEach((btn) => {
-    btn.addEventListener('click', () => closeOmega());
-  });
+function openTicketDetail(ticketId){
+  if (!ticketId) return;
+  omegaState.selectedTicketId = ticketId;
+  setTicketModalOpen(true);
+  renderOmega();
 }
 
 function updateEmptyState(root, tickets){
@@ -1079,8 +1165,10 @@ function filterTicketsByView(tickets, user){
 
 function applyStatusAndSearch(tickets){
   let output = [...tickets];
-  if (omegaState.status !== 'todos') {
-    output = output.filter((ticket) => ticket.status === omegaState.status);
+  const filters = omegaState.filters || {};
+  const statusFilters = Array.isArray(filters.statuses) ? filters.statuses.filter(Boolean) : [];
+  if (statusFilters.length) {
+    output = output.filter((ticket) => statusFilters.includes(ticket.status));
   }
   output = applyAdvancedFilters(output);
   const term = normalizeText(omegaState.search);
@@ -1159,6 +1247,17 @@ function resolveUserName(userId){
   if (!userId) return '—';
   const user = OMEGA_USERS.find((item) => item.id === userId);
   return user?.name || '—';
+}
+
+function resolveUserMeta(userId){
+  if (!userId) return '—';
+  const user = OMEGA_USERS.find((item) => item.id === userId);
+  if (!user) return '—';
+  const parts = [];
+  if (user.position) parts.push(user.position);
+  if (user.junction) parts.push(user.junction);
+  if (!parts.length) parts.push(getUserRoleLabel(user));
+  return parts.join(' • ');
 }
 
 function resolveRequesterDisplay(ticket){
@@ -1366,6 +1465,15 @@ function setDrawerOpen(open){
   }
 }
 
+function setTicketModalOpen(open){
+  omegaState.ticketModalOpen = !!open;
+  const modal = document.getElementById('omega-ticket-modal');
+  if (!modal) return;
+  if (!omegaState.ticketModalOpen) {
+    modal.hidden = true;
+  }
+}
+
 function setFilterPanelOpen(open){
   omegaState.filterPanelOpen = !!open;
   const root = document.getElementById('omega-modal');
@@ -1400,8 +1508,12 @@ function populateUserSelect(root){
     return a.name.localeCompare(b.name, 'pt-BR');
   });
   select.innerHTML = options.map((user) => {
-    const label = getUserRoleLabel(user);
-    return `<option value="${user.id}">${escapeHTML(user.name)} — ${escapeHTML(label)}</option>`;
+    const roleLabel = getUserRoleLabel(user);
+    const meta = [];
+    if (user.position) meta.push(user.position);
+    if (user.junction) meta.push(user.junction);
+    const descriptor = meta.length ? meta.join(' • ') : roleLabel;
+    return `<option value="${user.id}">${escapeHTML(user.name)} — ${escapeHTML(descriptor)}</option>`;
   }).join('');
   const defaultId = omegaState.currentUserId || options[0]?.id || '';
   select.value = defaultId;
@@ -1581,7 +1693,6 @@ function handleNewTicketSubmit(form){
   OMEGA_TICKETS.unshift(newTicket);
   omegaState.selectedTicketId = newTicket.id;
   omegaState.view = 'my';
-  omegaState.status = 'todos';
   omegaState.search = '';
   setDrawerOpen(false);
   renderOmega();
@@ -1601,58 +1712,6 @@ function clearFormFeedback(root){
   feedback.hidden = true;
   feedback.textContent = '';
   feedback.className = 'omega-feedback';
-}
-
-function handleDetailAction(action, ticket, user){
-  if (!ticket) return;
-  if (action === 'assign') {
-    ticket.ownerId = user.id;
-    appendTicketHistory(ticket, {
-      actorId: user.id,
-      action: 'Chamado assumido',
-      comment: 'Responsável atualizado automaticamente.',
-      status: 'em_atendimento',
-    });
-    ticket.status = 'em_atendimento';
-  } else if (action === 'progress') {
-    appendTicketHistory(ticket, {
-      actorId: user.id,
-      action: 'Atualização registrada',
-      comment: 'Contato realizado com o cliente para avanço do caso.',
-      status: 'em_atendimento',
-    });
-    ticket.status = ticket.status === 'resolvido' ? 'em_atendimento' : ticket.status;
-  } else if (action === 'close') {
-    ticket.status = 'resolvido';
-    appendTicketHistory(ticket, {
-      actorId: user.id,
-      action: 'Chamado encerrado',
-      comment: 'Solicitação concluída e validada com o solicitante.',
-      status: 'resolvido',
-    });
-  } else if (action === 'reopen') {
-    ticket.status = 'em_atendimento';
-    appendTicketHistory(ticket, {
-      actorId: user.id,
-      action: 'Chamado reaberto',
-      comment: 'Reaberto pela supervisão para nova análise.',
-      status: 'em_atendimento',
-    });
-  }
-  renderOmega();
-}
-
-function appendTicketHistory(ticket, entry){
-  const now = new Date().toISOString();
-  const historyEntry = {
-    date: entry.date || now,
-    actorId: entry.actorId,
-    action: entry.action,
-    comment: entry.comment,
-    status: entry.status,
-  };
-  ticket.history = [historyEntry, ...(Array.isArray(ticket.history) ? ticket.history : [])];
-  ticket.updated = historyEntry.date;
 }
 
 document.addEventListener('detail:open-ticket', (event) => {

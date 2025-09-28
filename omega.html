@@ -43,6 +43,7 @@
                 <h3 id="omega-profile-title">Perfil atual</h3>
                 <strong id="omega-user-name">—</strong>
                 <span id="omega-user-role">—</span>
+                <span id="omega-user-meta">—</span>
               </div>
             </div>
             <label class="omega-field" for="omega-user-select">
@@ -72,6 +73,10 @@
                     <i class="ti ti-adjustments-horizontal"></i>
                     <span>Filtros</span>
                   </button>
+                  <button id="omega-clear-filters-top" class="omega-btn omega-btn--ghost" type="button">
+                    <i class="ti ti-x"></i>
+                    <span>Limpar filtros</span>
+                  </button>
                   <div id="omega-filter-panel" class="omega-filter-panel" role="dialog" aria-modal="false" hidden>
                     <form id="omega-filter-form" class="omega-filter-form">
                       <div class="omega-filter-form__grid">
@@ -92,6 +97,11 @@
                           <span class="omega-field__label">Tipo de chamado</span>
                           <select id="omega-filter-type" class="omega-select"></select>
                         </label>
+                        <fieldset class="omega-field omega-filter-form__status" aria-describedby="omega-filter-status-hint">
+                          <span class="omega-field__label">Situação do chamado</span>
+                          <div id="omega-filter-status" class="omega-filter-status"></div>
+                          <small id="omega-filter-status-hint" class="omega-hint">Selecione uma ou mais situações</small>
+                        </fieldset>
                         <div class="omega-filter-form__dates">
                           <label class="omega-field" for="omega-filter-from">
                             <span class="omega-field__label">Abertura desde</span>
@@ -113,7 +123,6 @@
                     </form>
                   </div>
                 </div>
-                <div id="omega-status" class="omega-status" role="tablist" aria-label="Situação do chamado"></div>
               </div>
               <button id="omega-new-ticket" class="omega-btn omega-btn--primary" type="button">
                 <i class="ti ti-plus"></i>
@@ -130,6 +139,7 @@
                 <caption id="omega-table-caption" class="sr-only">Chamados filtrados pela visão atual</caption>
                 <thead>
                   <tr>
+                    <th scope="col">ID</th>
                     <th scope="col">Chamado</th>
                     <th scope="col">Usuário</th>
                     <th scope="col">Produto</th>
@@ -150,7 +160,6 @@
           </div>
         </section>
 
-        <aside id="omega-detail" class="omega-detail" aria-live="polite"></aside>
       </div>
 
       <div id="omega-drawer" class="omega-drawer" hidden>
@@ -213,6 +222,72 @@
               </button>
             </footer>
           </form>
+        </section>
+      </div>
+
+      <div id="omega-ticket-modal" class="omega-ticket-modal" hidden>
+        <div class="omega-ticket-modal__overlay" data-omega-ticket-close></div>
+        <section class="omega-ticket-modal__panel" role="dialog" aria-modal="true" aria-labelledby="omega-ticket-modal-title">
+          <header class="omega-ticket-modal__header">
+            <div class="omega-ticket-modal__titles">
+              <h3 id="omega-ticket-modal-title">Detalhe do chamado</h3>
+              <p id="omega-ticket-modal-meta">—</p>
+            </div>
+            <button class="omega-icon-btn" type="button" data-omega-ticket-close title="Fechar detalhamento">
+              <i class="ti ti-x"></i>
+            </button>
+          </header>
+          <div class="omega-ticket-modal__body">
+            <section class="omega-ticket-progress" aria-live="polite">
+              <ol id="omega-ticket-progress" class="omega-progress"></ol>
+            </section>
+            <section class="omega-ticket-overview" aria-labelledby="omega-ticket-overview-title">
+              <h4 id="omega-ticket-overview-title">Informações do chamado</h4>
+              <div class="omega-ticket-overview__grid">
+                <article class="omega-ticket-card">
+                  <span class="omega-ticket-card__label">Solicitante</span>
+                  <strong id="omega-ticket-requester">—</strong>
+                  <small id="omega-ticket-requester-meta">—</small>
+                </article>
+                <article class="omega-ticket-card">
+                  <span class="omega-ticket-card__label">Responsável</span>
+                  <strong id="omega-ticket-owner">—</strong>
+                  <small id="omega-ticket-owner-meta">—</small>
+                </article>
+                <article class="omega-ticket-card">
+                  <span class="omega-ticket-card__label">Produto</span>
+                  <strong id="omega-ticket-product">—</strong>
+                  <small id="omega-ticket-queue">—</small>
+                </article>
+                <article class="omega-ticket-card">
+                  <span class="omega-ticket-card__label">Abertura</span>
+                  <strong id="omega-ticket-opened">—</strong>
+                  <small id="omega-ticket-opened-time">—</small>
+                </article>
+                <article class="omega-ticket-card">
+                  <span class="omega-ticket-card__label">Situação</span>
+                  <strong id="omega-ticket-status">—</strong>
+                  <small id="omega-ticket-updated">—</small>
+                </article>
+                <article class="omega-ticket-card">
+                  <span class="omega-ticket-card__label">Prioridade</span>
+                  <strong id="omega-ticket-priority">—</strong>
+                  <small id="omega-ticket-due">—</small>
+                </article>
+              </div>
+            </section>
+            <section class="omega-ticket-description" aria-labelledby="omega-ticket-description-title">
+              <div class="omega-ticket-description__header">
+                <h4 id="omega-ticket-description-title">Descrição</h4>
+                <span id="omega-ticket-id">—</span>
+              </div>
+              <div id="omega-ticket-description" class="omega-ticket-description__content">—</div>
+            </section>
+            <section class="omega-ticket-timeline" aria-labelledby="omega-ticket-timeline-title">
+              <h4 id="omega-ticket-timeline-title">Linha do tempo</h4>
+              <ol id="omega-ticket-timeline" class="omega-timeline"></ol>
+            </section>
+          </div>
         </section>
       </div>
     </section>
