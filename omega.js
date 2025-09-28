@@ -44,6 +44,15 @@ const OMEGA_QUEUE_OPTIONS = [
   "Outros",
 ];
 
+const OMEGA_QUEUE_FIELD_MAP = {
+  Encarteiramento: "encarteiramento",
+  Meta: "meta",
+  "Orçamento": "orcamento",
+  POBJ: "pobj",
+  Matriz: "matriz",
+  Outros: "outros",
+};
+
 const OMEGA_TICKET_TYPES_BY_DEPARTMENT = {
   Encarteiramento: [
     "Inclusão - Conta Empresas",
@@ -87,14 +96,14 @@ const OMEGA_LEVEL_LABELS = {
 const OMEGA_USERS_SOURCE = "Bases/omega_usuarios.csv";
 
 const OMEGA_USER_METADATA = {
-  "usr-01": { avatar: "https://i.pravatar.cc/160?img=47", queue: null, teamId: "sudeste" },
-  "usr-02": { avatar: "https://i.pravatar.cc/160?img=12", queue: "POBJ Produções", teamId: "sudeste" },
-  "usr-03": { avatar: "https://i.pravatar.cc/160?img=32", queue: "POBJ Produções", teamId: "sudeste" },
-  "usr-04": { avatar: "https://i.pravatar.cc/160?img=8", queue: null, teamId: null },
-  "usr-05": { avatar: "https://i.pravatar.cc/160?img=21", queue: "POBJ Norte", teamId: "norte" },
-  "usr-06": { avatar: "https://i.pravatar.cc/160?img=36", queue: null, teamId: "norte" },
-  "usr-07": { avatar: "https://i.pravatar.cc/160?img=55", queue: null, teamId: "sudeste" },
-  "usr-08": { avatar: "https://i.pravatar.cc/160?img=41", queue: "Mesa Corporate", teamId: "corporate" },
+  "usr-01": { avatar: "https://i.pravatar.cc/160?img=47", teamId: "sudeste" },
+  "usr-02": { avatar: "https://i.pravatar.cc/160?img=12", teamId: "sudeste" },
+  "usr-03": { avatar: "https://i.pravatar.cc/160?img=32", teamId: "sudeste" },
+  "usr-04": { avatar: "https://i.pravatar.cc/160?img=8", teamId: null },
+  "usr-05": { avatar: "https://i.pravatar.cc/160?img=21", teamId: "norte" },
+  "usr-06": { avatar: "https://i.pravatar.cc/160?img=36", teamId: "norte" },
+  "usr-07": { avatar: "https://i.pravatar.cc/160?img=55", teamId: "sudeste" },
+  "usr-08": { avatar: "https://i.pravatar.cc/160?img=41", teamId: "corporate" },
 };
 
 let OMEGA_USERS = [];
@@ -120,6 +129,15 @@ const omegaState = {
   selectedTicketId: null,
   drawerOpen: false,
   formAttachments: [],
+  filters: {
+    id: "",
+    departments: [],
+    type: "",
+    requester: "",
+    openedFrom: "",
+    openedTo: "",
+  },
+  filterPanelOpen: false,
 };
 
 let OMEGA_TICKETS = [];
@@ -246,7 +264,11 @@ function normalizeOmegaUserRows(rows){
     };
     const primaryRole = resolvePrimaryRole(roles);
     const meta = OMEGA_USER_METADATA[id] || {};
-    const matrixAccess = parseOmegaBoolean(row.matriz);
+    const queues = Object.entries(OMEGA_QUEUE_FIELD_MAP).reduce((acc, [label, field]) => {
+      if (parseOmegaBoolean(row[field])) acc.push(label);
+      return acc;
+    }, []);
+    const matrixAccess = queues.includes('Matriz') || parseOmegaBoolean(row.matriz);
     return {
       id,
       name,
@@ -254,7 +276,8 @@ function normalizeOmegaUserRows(rows){
       roles,
       matrixAccess,
       avatar: meta.avatar || `https://i.pravatar.cc/160?u=${encodeURIComponent(id)}`,
-      queue: meta.queue ?? null,
+      queues,
+      defaultQueue: queues[0] || null,
       teamId: meta.teamId ?? null,
     };
   }).filter(Boolean).sort((a, b) => {
@@ -311,6 +334,7 @@ function normalizeOmegaTicketRows(rows){
     const dueDate = (row.due_date || row.prazo || '').trim();
     const historyRaw = row.history || '';
     const history = parseOmegaHistory(historyRaw);
+    const requesterDisplay = (row.usuario || row.user || row.requester_name || row.company || row.empresa || '').trim();
     const context = {
       diretoria: (row.diretoria || '').trim(),
       gerencia: (row.gerencia || '').trim(),
@@ -324,7 +348,8 @@ function normalizeOmegaTicketRows(rows){
     return {
       id,
       subject: (row.subject || row.assunto || '').trim() || `${category || 'Chamado'} — ${productLabel || productId || 'Produto'}`,
-      company: (row.company || row.empresa || '').trim(),
+      company: requesterDisplay,
+      requesterName: requesterDisplay,
       productId,
       product: productLabel,
       family,
@@ -401,6 +426,8 @@ function openOmega(detail = null){
       omegaState.search = "";
       omegaState.status = "todos";
       omegaState.selectedTicketId = null;
+      resetAdvancedFilters();
+      setFilterPanelOpen(false);
       enforceViewForRole();
       root.hidden = false;
       document.body.classList.add("has-omega-open");
@@ -425,6 +452,7 @@ function closeOmega(){
   if (shell) delete shell.dataset.detailOpen;
   const detail = root.querySelector('#omega-detail');
   if (detail) detail.classList.remove('is-visible');
+  setFilterPanelOpen(false);
   root.hidden = true;
   document.body.classList.remove("has-omega-open");
 }
@@ -446,6 +474,8 @@ function setupOmegaModule(root){
   resetBtn?.addEventListener('click', () => {
     omegaState.search = "";
     omegaState.status = "todos";
+    resetAdvancedFilters();
+    setFilterPanelOpen(false);
     renderOmega();
   });
 
@@ -497,7 +527,7 @@ function setupOmegaModule(root){
 
   const departmentSelect = root.querySelector('#omega-form-department');
   const typeSelect = root.querySelector('#omega-form-type');
-  const companyInput = root.querySelector('#omega-form-company');
+  const requesterInput = root.querySelector('#omega-form-user');
   const fileInput = root.querySelector('#omega-form-file');
   const addFileBtn = root.querySelector('[data-omega-add-file]');
   const attachmentsList = root.querySelector('#omega-form-attachments');
@@ -506,7 +536,7 @@ function setupOmegaModule(root){
     updateOmegaFormSubject(root);
   });
   typeSelect?.addEventListener('change', () => updateOmegaFormSubject(root));
-  companyInput?.addEventListener('input', () => updateOmegaFormSubject(root));
+  requesterInput?.addEventListener('input', () => updateOmegaFormSubject(root));
   addFileBtn?.addEventListener('click', () => {
     if (fileInput) fileInput.click();
   });
@@ -526,6 +556,22 @@ function setupOmegaModule(root){
     removeFormAttachment(root, id);
   });
 
+  const filterToggle = root.querySelector('#omega-filters-toggle');
+  const filterForm = root.querySelector('#omega-filter-form');
+  const clearFiltersBtn = root.querySelector('#omega-clear-filters');
+  filterToggle?.addEventListener('click', () => {
+    toggleFilterPanel();
+  });
+  filterForm?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    applyFiltersFromForm(root);
+  });
+  clearFiltersBtn?.addEventListener('click', () => {
+    resetAdvancedFilters();
+    syncFilterFormState(root);
+    renderOmega();
+  });
+
   const userSelect = root.querySelector('#omega-user-select');
   userSelect?.addEventListener('change', (ev) => {
     const nextId = ev.target.value || null;
@@ -534,12 +580,16 @@ function setupOmegaModule(root){
     omegaState.currentUserId = nextId;
     enforceViewForRole();
     omegaState.selectedTicketId = null;
+    resetAdvancedFilters();
+    setFilterPanelOpen(false);
     renderOmega();
     populateFormOptions(root);
   });
 
   populateUserSelect(root);
   populateFormOptions(root);
+
+  document.addEventListener('click', handleOmegaDocumentClick, true);
 
   document.addEventListener('keydown', handleOmegaKeydown);
 
@@ -553,6 +603,9 @@ function handleOmegaKeydown(ev){
     if (omegaState.drawerOpen) {
       setDrawerOpen(false);
       ev.stopPropagation();
+    } else if (omegaState.filterPanelOpen) {
+      toggleFilterPanel(false);
+      ev.stopPropagation();
     } else {
       closeOmega();
       ev.stopPropagation();
@@ -560,10 +613,24 @@ function handleOmegaKeydown(ev){
   }
 }
 
+function handleOmegaDocumentClick(ev){
+  if (!omegaState.filterPanelOpen) return;
+  const root = document.getElementById('omega-modal');
+  if (!root || root.hidden) return;
+  const panel = root.querySelector('#omega-filter-panel');
+  const toggle = root.querySelector('#omega-filters-toggle');
+  if (!panel || panel.hidden) return;
+  const clickedInsidePanel = typeof panel.contains === 'function' && panel.contains(ev.target);
+  const clickedToggle = toggle && typeof toggle.contains === 'function' && toggle.contains(ev.target);
+  if (clickedInsidePanel || clickedToggle) return;
+  toggleFilterPanel(false);
+}
+
 function renderOmega(){
   const root = document.getElementById('omega-modal');
   if (!root || root.hidden) return;
   const user = getCurrentUser();
+  reconcileFiltersForUser(user);
   const contextTickets = filterTicketsByContext();
   const viewTicketsBase = filterTicketsByView(contextTickets, user);
   const filteredTickets = applyStatusAndSearch(viewTicketsBase);
@@ -573,6 +640,11 @@ function renderOmega(){
   renderNav(root, user);
   renderContextBar(root, omegaState.contextDetail, contextTickets);
   renderStatusChips(root, viewTicketsBase);
+  updateFilterButtonState(root);
+  if (omegaState.filterPanelOpen) {
+    populateFilterPanelOptions(root);
+    syncFilterFormState(root);
+  }
   renderSummary(root, contextTickets, filteredTickets, user);
   renderTable(root, filteredTickets);
   renderDetail(root, filteredTickets, viewTicketsBase, user);
@@ -664,6 +736,150 @@ function renderStatusChips(root, tickets){
   host.innerHTML = buttons;
 }
 
+function populateFilterPanelOptions(root){
+  if (!root) return;
+  const departmentSelect = root.querySelector('#omega-filter-department');
+  if (departmentSelect) {
+    const user = getCurrentUser();
+    const available = getAvailableDepartmentsForUser(user);
+    const departments = available.length ? available : [...OMEGA_QUEUE_OPTIONS];
+    departmentSelect.innerHTML = departments.map((dept) => `<option value="${escapeHTML(dept)}">${escapeHTML(dept)}</option>`).join('');
+    const selected = (omegaState.filters.departments || []).filter((dept) => departments.includes(dept));
+    Array.from(departmentSelect.options).forEach((option) => {
+      option.selected = selected.includes(option.value);
+    });
+  }
+  const typeSelect = root.querySelector('#omega-filter-type');
+  if (typeSelect) {
+    const categories = getAllTicketCategories();
+    const options = ['<option value="">Todos os tipos</option>'];
+    categories.forEach((category) => {
+      options.push(`<option value="${escapeHTML(category)}">${escapeHTML(category)}</option>`);
+    });
+    typeSelect.innerHTML = options.join('');
+    const current = omegaState.filters.type || '';
+    if (current) {
+      let match = Array.from(typeSelect.options).some((option) => option.value === current);
+      if (!match) {
+        const option = document.createElement('option');
+        option.value = current;
+        option.textContent = current;
+        typeSelect.appendChild(option);
+        match = true;
+      }
+      if (match) typeSelect.value = current;
+    } else {
+      typeSelect.value = '';
+    }
+  }
+}
+
+function getAllTicketCategories(){
+  const categories = new Set();
+  Object.values(OMEGA_TICKET_TYPES_BY_DEPARTMENT || {}).forEach((list) => {
+    if (Array.isArray(list)) {
+      list.forEach((item) => { if (item) categories.add(item); });
+    }
+  });
+  OMEGA_TICKETS.forEach((ticket) => {
+    if (ticket?.category) categories.add(ticket.category);
+  });
+  return Array.from(categories);
+}
+
+function syncFilterFormState(root){
+  if (!root) return;
+  const filters = omegaState.filters || {};
+  const idInput = root.querySelector('#omega-filter-id');
+  if (idInput) idInput.value = filters.id || '';
+  const userInput = root.querySelector('#omega-filter-user');
+  if (userInput) userInput.value = filters.requester || '';
+  const fromInput = root.querySelector('#omega-filter-from');
+  if (fromInput) fromInput.value = filters.openedFrom || '';
+  const toInput = root.querySelector('#omega-filter-to');
+  if (toInput) toInput.value = filters.openedTo || '';
+  const departmentSelect = root.querySelector('#omega-filter-department');
+  if (departmentSelect) {
+    const selected = Array.isArray(filters.departments) ? filters.departments : [];
+    Array.from(departmentSelect.options).forEach((option) => {
+      option.selected = selected.includes(option.value);
+    });
+  }
+  const typeSelect = root.querySelector('#omega-filter-type');
+  if (typeSelect) {
+    typeSelect.value = filters.type || '';
+    if (filters.type && typeSelect.value !== filters.type) {
+      const option = document.createElement('option');
+      option.value = filters.type;
+      option.textContent = filters.type;
+      typeSelect.appendChild(option);
+      typeSelect.value = filters.type;
+    }
+  }
+}
+
+function applyFiltersFromForm(root){
+  if (!root) return;
+  const form = root.querySelector('#omega-filter-form');
+  if (!form) return;
+  const id = form.querySelector('#omega-filter-id')?.value?.trim() || '';
+  const requester = form.querySelector('#omega-filter-user')?.value?.trim() || '';
+  const type = form.querySelector('#omega-filter-type')?.value || '';
+  const departments = Array.from(new Set(Array.from(form.querySelector('#omega-filter-department')?.selectedOptions || [])
+    .map((option) => option.value)
+    .filter(Boolean)));
+  const openedFrom = form.querySelector('#omega-filter-from')?.value || '';
+  const openedTo = form.querySelector('#omega-filter-to')?.value || '';
+  omegaState.filters = {
+    id,
+    requester,
+    type,
+    departments,
+    openedFrom,
+    openedTo,
+  };
+  toggleFilterPanel(false);
+  renderOmega();
+}
+
+function resetAdvancedFilters(){
+  omegaState.filters = {
+    id: '',
+    requester: '',
+    type: '',
+    departments: [],
+    openedFrom: '',
+    openedTo: '',
+  };
+}
+
+function reconcileFiltersForUser(user){
+  const available = getAvailableDepartmentsForUser(user);
+  if (!Array.isArray(available) || !omegaState.filters) return;
+  const current = Array.isArray(omegaState.filters.departments) ? omegaState.filters.departments : [];
+  const filtered = current.filter((dept) => available.includes(dept));
+  if (filtered.length !== current.length) {
+    omegaState.filters.departments = filtered;
+  }
+}
+
+function hasActiveFilters(){
+  const filters = omegaState.filters || {};
+  if (filters.id) return true;
+  if (filters.requester) return true;
+  if (filters.type) return true;
+  if (filters.openedFrom || filters.openedTo) return true;
+  if (Array.isArray(filters.departments) && filters.departments.length) return true;
+  return false;
+}
+
+function updateFilterButtonState(root){
+  if (!root) return;
+  const button = root.querySelector('#omega-filters-toggle');
+  if (!button) return;
+  button.dataset.active = hasActiveFilters() ? 'true' : 'false';
+}
+
 function renderSummary(root, contextTickets, viewTickets, user){
   const host = root.querySelector('#omega-summary');
   if (!host) return;
@@ -692,7 +908,9 @@ function renderTable(root, tickets){
   }
   const rows = tickets.map((ticket) => {
     const meta = OMEGA_STATUS_META[ticket.status] || { label: ticket.status, tone: 'neutral' };
-    const requesterName = resolveUserName(ticket.requesterId);
+    const requesterDisplay = resolveRequesterDisplay(ticket) || '—';
+    const requesterProfile = resolveUserName(ticket.requesterId);
+    const requesterMetaLabel = requesterProfile && requesterProfile !== '—' ? requesterProfile : requesterDisplay;
     const ownerName = resolveUserName(ticket.ownerId);
     const priorityMeta = OMEGA_PRIORITY_META[ticket.priority] || OMEGA_PRIORITY_META.media;
     const activeClass = ticket.id === omegaState.selectedTicketId ? ' class="is-active"' : '';
@@ -702,8 +920,8 @@ function renderTable(root, tickets){
         <div class="omega-ticket__meta"><span><i class="ti ti-ticket"></i>${escapeHTML(ticket.id)}</span><span><i class="ti ${priorityMeta.icon}"></i>${escapeHTML(priorityMeta.label)}</span></div>
       </td>
       <td>
-        <div class="omega-ticket__company">${escapeHTML(ticket.company)}</div>
-        <div class="omega-ticket__meta"><span><i class="ti ti-user"></i>${escapeHTML(requesterName)}</span><span><i class="ti ti-user-check"></i>${escapeHTML(ownerName)}</span></div>
+        <div class="omega-ticket__user">${escapeHTML(requesterDisplay)}</div>
+        <div class="omega-ticket__meta"><span><i class="ti ti-user"></i>${escapeHTML(requesterMetaLabel)}</span><span><i class="ti ti-user-check"></i>${escapeHTML(ownerName)}</span></div>
       </td>
       <td>${escapeHTML(ticket.product)}</td>
       <td>${escapeHTML(ticket.queue || '—')}</td>
@@ -739,7 +957,9 @@ function renderDetail(root, tickets, baseTickets, user){
   host.classList.add('is-visible');
   if (shell) shell.dataset.detailOpen = 'true';
   const statusMeta = OMEGA_STATUS_META[ticket.status] || { label: ticket.status, tone: 'neutral' };
-  const requester = resolveUserName(ticket.requesterId);
+  const requesterDisplay = resolveRequesterDisplay(ticket) || '—';
+  const requesterProfile = resolveUserName(ticket.requesterId);
+  const requesterMetaLabel = requesterProfile && requesterProfile !== '—' ? requesterProfile : requesterDisplay;
   const owner = resolveUserName(ticket.ownerId) || 'Sem responsável';
   const priorityMeta = OMEGA_PRIORITY_META[ticket.priority] || OMEGA_PRIORITY_META.media;
   const timeline = Array.isArray(ticket.history) ? ticket.history : [];
@@ -791,10 +1011,10 @@ function renderDetail(root, tickets, baseTickets, user){
     </header>
     <div class="omega-detail__title">
       <h3>${escapeHTML(ticket.subject)}</h3>
-      <p>${escapeHTML(ticket.company)} • ${escapeHTML(ticket.product)}</p>
+      <p>${escapeHTML(requesterDisplay)} • ${escapeHTML(ticket.product)}</p>
     </div>
     <div class="omega-detail__meta">
-      <span><i class="ti ti-user"></i>${escapeHTML(requester)}</span>
+      <span><i class="ti ti-user"></i>${escapeHTML(requesterMetaLabel)}</span>
       <span><i class="ti ti-user-check"></i>${escapeHTML(owner)}</span>
       <span><i class="ti ti-flag-3"></i>${escapeHTML(priorityMeta.label)}</span>
       <span><i class="ti ti-clock-hour-5"></i>Atualizado ${formatDateTime(ticket.updated, { withTime: true })}</span>
@@ -836,19 +1056,23 @@ function filterTicketsByContext(){
 }
 
 function filterTicketsByView(tickets, user){
-  const role = user?.role || 'usuario';
+  if (!user) return [...tickets];
+  const role = user.role || 'usuario';
   if (role === 'admin') return [...tickets];
+  const queues = Array.isArray(user.queues) ? user.queues : [];
   if (omegaState.view === 'my') {
     return tickets.filter((ticket) => ticket.requesterId === user.id || ticket.ownerId === user.id);
   }
   if (omegaState.view === 'queue') {
-    if (role === 'atendente') {
-      return tickets.filter((ticket) => ticket.queue === user.queue || ticket.ownerId === user.id);
+    if (!queues.length) {
+      return tickets.filter((ticket) => ticket.ownerId === user.id || ticket.teamId === user.teamId);
     }
-    return tickets.filter((ticket) => ticket.queue === user.queue || ticket.teamId === user.teamId);
+    return tickets.filter((ticket) => queues.includes(ticket.queue) || ticket.ownerId === user.id);
   }
   if (omegaState.view === 'team') {
-    return tickets.filter((ticket) => ticket.teamId === user.teamId || ticket.ownerId === user.id);
+    const base = tickets.filter((ticket) => ticket.teamId === user.teamId || ticket.ownerId === user.id);
+    if (!queues.length) return base;
+    return base.filter((ticket) => queues.includes(ticket.queue) || ticket.teamId === user.teamId || ticket.ownerId === user.id);
   }
   return [...tickets];
 }
@@ -858,6 +1082,7 @@ function applyStatusAndSearch(tickets){
   if (omegaState.status !== 'todos') {
     output = output.filter((ticket) => ticket.status === omegaState.status);
   }
+  output = applyAdvancedFilters(output);
   const term = normalizeText(omegaState.search);
   if (term) {
     output = output.filter((ticket) => matchesSearch(ticket, term));
@@ -866,14 +1091,48 @@ function applyStatusAndSearch(tickets){
   return output;
 }
 
+function applyAdvancedFilters(tickets){
+  const filters = omegaState.filters || {};
+  const idTerm = normalizeText(filters.id || '');
+  const requesterTerm = normalizeText(filters.requester || '');
+  const typeTerm = normalizeText(filters.type || '');
+  const departments = Array.isArray(filters.departments) ? filters.departments.filter(Boolean) : [];
+  const openedFrom = filters.openedFrom ? new Date(`${filters.openedFrom}T00:00:00`) : null;
+  const openedTo = filters.openedTo ? new Date(`${filters.openedTo}T23:59:59`) : null;
+  const fromTime = openedFrom && Number.isFinite(openedFrom.getTime()) ? openedFrom.getTime() : null;
+  const toTime = openedTo && Number.isFinite(openedTo.getTime()) ? openedTo.getTime() : null;
+
+  return tickets.filter((ticket) => {
+    if (idTerm && !normalizeText(ticket.id).includes(idTerm)) return false;
+    if (departments.length && !departments.includes(ticket.queue)) return false;
+    if (typeTerm && normalizeText(ticket.category) !== typeTerm) return false;
+    if (requesterTerm) {
+      const requesterTokens = [
+        normalizeText(resolveRequesterDisplay(ticket)),
+        normalizeText(resolveUserName(ticket.requesterId)),
+        normalizeText(ticket.requesterId || ''),
+      ].filter(Boolean);
+      if (!requesterTokens.some((token) => token.includes(requesterTerm))) return false;
+    }
+    if (fromTime || toTime) {
+      const openedTime = ticket.opened ? new Date(ticket.opened).getTime() : NaN;
+      if (fromTime && (!Number.isFinite(openedTime) || openedTime < fromTime)) return false;
+      if (toTime && (!Number.isFinite(openedTime) || openedTime > toTime)) return false;
+    }
+    return true;
+  });
+}
+
 function matchesSearch(ticket, term){
   const values = [
     ticket.id,
-    ticket.company,
+    ticket.requesterName,
     ticket.product,
     ticket.queue,
     ticket.subject,
+    resolveRequesterDisplay(ticket),
     resolveUserName(ticket.requesterId),
+    ticket.requesterId,
     resolveUserName(ticket.ownerId),
   ];
   return values.some((value) => normalizeText(value).includes(term));
@@ -900,6 +1159,13 @@ function resolveUserName(userId){
   if (!userId) return '—';
   const user = OMEGA_USERS.find((item) => item.id === userId);
   return user?.name || '—';
+}
+
+function resolveRequesterDisplay(ticket){
+  if (!ticket) return '';
+  if (ticket.requesterName) return ticket.requesterName;
+  const userName = resolveUserName(ticket.requesterId);
+  return userName === '—' ? '' : userName;
 }
 
 function ticketMatchesContext(ticket, detail){
@@ -931,7 +1197,7 @@ function gatherContextTokens(detail){
 function gatherTicketTokens(ticket){
   const ctx = ticket.context || {};
   const values = [
-    ticket.company,
+    ticket.requesterName,
     ticket.product,
     ticket.family,
     ticket.section,
@@ -992,10 +1258,12 @@ function getTicketTypesForDepartment(department){
 function getAvailableDepartmentsForUser(user){
   const base = Array.isArray(OMEGA_QUEUE_OPTIONS) ? [...OMEGA_QUEUE_OPTIONS] : [];
   if (!base.length) return base;
-  if (!user?.matrixAccess) {
-    return base.filter((item) => item !== 'Matriz');
-  }
-  return base;
+  if (!user) return base;
+  if (user.roles?.admin) return base;
+  const queues = Array.isArray(user.queues) ? user.queues.filter((queue) => base.includes(queue)) : [];
+  if (queues.length) return queues;
+  if (user.matrixAccess) return base;
+  return base.filter((item) => item !== 'Matriz');
 }
 
 function syncTicketTypeOptions(container, department){
@@ -1098,6 +1366,26 @@ function setDrawerOpen(open){
   }
 }
 
+function setFilterPanelOpen(open){
+  omegaState.filterPanelOpen = !!open;
+  const root = document.getElementById('omega-modal');
+  if (!root) return;
+  const panel = root.querySelector('#omega-filter-panel');
+  const toggle = root.querySelector('#omega-filters-toggle');
+  if (panel) panel.hidden = !open;
+  if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    populateFilterPanelOptions(root);
+    syncFilterFormState(root);
+  }
+  updateFilterButtonState(root);
+}
+
+function toggleFilterPanel(force){
+  const next = typeof force === 'boolean' ? force : !omegaState.filterPanelOpen;
+  setFilterPanelOpen(next);
+}
+
 function populateUserSelect(root){
   const select = root.querySelector('#omega-user-select');
   if (!select) return;
@@ -1148,11 +1436,11 @@ function populateFormOptions(root){
   renderFormAttachments(root);
 }
 
-function buildOmegaSubject({ typeLabel = '', productLabel = '', company = '' } = {}){
+function buildOmegaSubject({ typeLabel = '', productLabel = '', requester = '' } = {}){
   const parts = [];
   if (typeLabel) parts.push(typeLabel);
   if (productLabel && !parts.includes(productLabel)) parts.push(productLabel);
-  if (company) parts.push(company);
+  if (requester) parts.push(requester);
   return parts.length ? parts.join(' • ') : 'Chamado Omega';
 }
 
@@ -1165,11 +1453,11 @@ function updateOmegaFormSubject(root){
   const productId = form.querySelector('#omega-form-product')?.value;
   const productMeta = OMEGA_PRODUCT_CATALOG.find((item) => item.id === productId) || null;
   const typeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim() || '';
-  const company = form.querySelector('#omega-form-company')?.value?.trim() || '';
+  const requester = form.querySelector('#omega-form-user')?.value?.trim() || '';
   subjectInput.value = buildOmegaSubject({
     typeLabel,
     productLabel: productMeta?.label || '',
-    company,
+    requester,
   });
 }
 
@@ -1179,7 +1467,7 @@ function prefillTicketForm(root){
   resetFormAttachments(root);
   const productInput = form.querySelector('#omega-form-product');
   const departmentSelect = form.querySelector('#omega-form-department');
-  const companyInput = form.querySelector('#omega-form-company');
+  const requesterInput = form.querySelector('#omega-form-user');
   const observationInput = form.querySelector('#omega-form-observation');
 
   const detail = omegaState.contextDetail;
@@ -1204,17 +1492,20 @@ function prefillTicketForm(root){
     productInput.value = productMeta?.id || '';
   }
   if (departmentSelect) {
-    if (user?.queue && availableDepartments.includes(user.queue)) {
-      departmentSelect.value = user.queue;
-    } else if (!availableDepartments.includes(departmentSelect.value)) {
-      departmentSelect.value = fallbackDepartment;
+    const preferred = user?.defaultQueue && availableDepartments.includes(user.defaultQueue)
+      ? user.defaultQueue
+      : fallbackDepartment;
+    if (!availableDepartments.includes(departmentSelect.value)) {
+      departmentSelect.value = preferred;
     }
-    syncTicketTypeOptions(form, departmentSelect.value || fallbackDepartment);
+    syncTicketTypeOptions(form, departmentSelect.value || preferred);
   } else {
     syncTicketTypeOptions(form, fallbackDepartment);
   }
-  if (companyInput) {
-    companyInput.value = detail?.label && (detail.levelKey === 'contrato' || detail.levelKey === 'cliente') ? detail.label : '';
+  if (requesterInput) {
+    requesterInput.value = detail?.label && (detail.levelKey === 'contrato' || detail.levelKey === 'cliente')
+      ? detail.label
+      : '';
   }
   updateOmegaFormSubject(root);
   if (observationInput) {
@@ -1227,7 +1518,7 @@ function handleNewTicketSubmit(form){
   const root = document.getElementById('omega-modal');
   if (!root) return;
   updateOmegaFormSubject(root);
-  const company = form.querySelector('#omega-form-company')?.value?.trim();
+  const requesterName = form.querySelector('#omega-form-user')?.value?.trim();
   const productId = form.querySelector('#omega-form-product')?.value;
   const category = form.querySelector('#omega-form-type')?.value;
   const queue = form.querySelector('#omega-form-department')?.value;
@@ -1236,7 +1527,7 @@ function handleNewTicketSubmit(form){
   const attachments = Array.isArray(omegaState.formAttachments)
     ? omegaState.formAttachments.map((item) => item.name)
     : [];
-  if (!company || !productId || !category || !queue || !subject || !description) {
+  if (!requesterName || !productId || !category || !queue || !subject || !description) {
     showFormFeedback(root, 'Preencha todos os campos obrigatórios para registrar o chamado.', 'warning');
     return;
   }
@@ -1259,7 +1550,8 @@ function handleNewTicketSubmit(form){
   const newTicket = {
     id: ticketId,
     subject,
-    company,
+    company: requesterName,
+    requesterName,
     productId,
     product: productMeta.label,
     family: productMeta.family,

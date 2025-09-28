@@ -29,9 +29,6 @@
           <button id="omega-notifications" class="omega-icon-btn" type="button" title="Notificações">
             <i class="ti ti-bell"></i>
           </button>
-          <button class="omega-icon-btn" type="button" data-omega-close aria-label="Fechar painel Omega">
-            <i class="ti ti-x"></i>
-          </button>
         </div>
       </header>
 
@@ -66,10 +63,58 @@
           <div class="omega-toolbar" role="group" aria-label="Filtros da central Omega">
             <label class="omega-search" for="omega-search">
               <i class="ti ti-search"></i>
-              <input id="omega-search" type="search" placeholder="Buscar chamado, empresa ou produto" autocomplete="off"/>
+              <input id="omega-search" type="search" placeholder="Buscar chamado ou usuário" autocomplete="off"/>
             </label>
             <div class="omega-toolbar__actions">
-              <div id="omega-status" class="omega-status" role="tablist" aria-label="Situação do chamado"></div>
+              <div class="omega-toolbar__cluster">
+                <div class="omega-filters">
+                  <button id="omega-filters-toggle" class="omega-btn omega-btn--ghost" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="omega-filter-panel">
+                    <i class="ti ti-adjustments-horizontal"></i>
+                    <span>Filtros</span>
+                  </button>
+                  <div id="omega-filter-panel" class="omega-filter-panel" role="dialog" aria-modal="false" hidden>
+                    <form id="omega-filter-form" class="omega-filter-form">
+                      <div class="omega-filter-form__grid">
+                        <label class="omega-field" for="omega-filter-id">
+                          <span class="omega-field__label">ID do chamado</span>
+                          <input id="omega-filter-id" class="omega-input" type="text" placeholder="Ex.: OME-2025-0001" autocomplete="off"/>
+                        </label>
+                        <label class="omega-field" for="omega-filter-user">
+                          <span class="omega-field__label">Usuário</span>
+                          <input id="omega-filter-user" class="omega-input" type="text" placeholder="Digite um nome" autocomplete="off"/>
+                        </label>
+                        <label class="omega-field" for="omega-filter-department">
+                          <span class="omega-field__label">Departamento</span>
+                          <select id="omega-filter-department" class="omega-select" multiple size="6" aria-describedby="omega-filter-department-hint"></select>
+                          <small id="omega-filter-department-hint" class="omega-hint">Selecione uma ou mais filas</small>
+                        </label>
+                        <label class="omega-field" for="omega-filter-type">
+                          <span class="omega-field__label">Tipo de chamado</span>
+                          <select id="omega-filter-type" class="omega-select"></select>
+                        </label>
+                        <div class="omega-filter-form__dates">
+                          <label class="omega-field" for="omega-filter-from">
+                            <span class="omega-field__label">Abertura desde</span>
+                            <input id="omega-filter-from" class="omega-input" type="date"/>
+                          </label>
+                          <label class="omega-field" for="omega-filter-to">
+                            <span class="omega-field__label">Até</span>
+                            <input id="omega-filter-to" class="omega-input" type="date"/>
+                          </label>
+                        </div>
+                      </div>
+                      <footer class="omega-filter-form__actions">
+                        <button id="omega-clear-filters" class="omega-btn omega-btn--ghost" type="button">Limpar filtros</button>
+                        <button class="omega-btn omega-btn--primary" type="submit">
+                          <i class="ti ti-check"></i>
+                          <span>Aplicar</span>
+                        </button>
+                      </footer>
+                    </form>
+                  </div>
+                </div>
+                <div id="omega-status" class="omega-status" role="tablist" aria-label="Situação do chamado"></div>
+              </div>
               <button id="omega-new-ticket" class="omega-btn omega-btn--primary" type="button">
                 <i class="ti ti-plus"></i>
                 <span>Registrar chamado</span>
@@ -86,7 +131,7 @@
                 <thead>
                   <tr>
                     <th scope="col">Chamado</th>
-                    <th scope="col">Empresa</th>
+                    <th scope="col">Usuário</th>
                     <th scope="col">Produto</th>
                     <th scope="col">Fila</th>
                     <th scope="col">Abertura</th>
@@ -122,9 +167,9 @@
           </header>
           <div id="omega-form-feedback" class="omega-feedback" role="alert" hidden></div>
           <form id="omega-form" class="omega-form">
-            <label class="omega-field" for="omega-form-company">
-              <span class="omega-field__label">Empresa</span>
-              <input id="omega-form-company" class="omega-input" type="text" placeholder="Ex.: Pães &amp; Cia Ltda" required/>
+            <label class="omega-field" for="omega-form-user">
+              <span class="omega-field__label">Usuário</span>
+              <input id="omega-form-user" class="omega-input" type="text" placeholder="Digite o solicitante" required/>
             </label>
 
             <div class="omega-form__grid">
