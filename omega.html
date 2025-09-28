@@ -18,6 +18,7 @@
   <div id="omega-modal" class="omega-modal" data-omega-standalone hidden>
     <div class="omega-modal__overlay" data-omega-close></div>
     <section class="omega-modal__panel" role="dialog" aria-modal="true" aria-labelledby="omega-title">
+      <div id="omega-toast-stack" class="omega-toast-stack" aria-live="polite" aria-atomic="true"></div>
       <header class="omega-header">
         <div class="omega-header__left">
           <img class="omega-logo" src="img/logo-omega.png" alt="Logotipo da Omega" width="80" height="80"/>
@@ -210,10 +211,10 @@
           </header>
           <div id="omega-form-feedback" class="omega-feedback" role="alert" hidden></div>
           <form id="omega-form" class="omega-form">
-            <label class="omega-field" for="omega-form-user">
-              <span class="omega-field__label">Usuário</span>
-              <input id="omega-form-user" class="omega-input" type="text" placeholder="Digite o solicitante" required/>
-            </label>
+            <div class="omega-field omega-field--static" aria-live="polite">
+              <span class="omega-field__label">Solicitante</span>
+              <div id="omega-form-requester" class="omega-field__static">—</div>
+            </div>
 
             <div class="omega-form__grid">
               <label class="omega-field" for="omega-form-department">

@@ -52,6 +52,13 @@ const OMEGA_PRIORITY_META = {
   critica: { label: "Crítica", tone: "danger", icon: "ti ti-alert-octagon" },
 };
 
+const OMEGA_TOAST_ICONS = {
+  success: "ti ti-check",
+  info: "ti ti-info-circle",
+  warning: "ti ti-alert-triangle",
+  danger: "ti ti-alert-circle",
+};
+
 const OMEGA_DEFAULT_STATUSES = [
   { id: "aberto", label: "Aberto", tone: "neutral" },
   { id: "aguardando", label: "Aguardando", tone: "warning" },
@@ -1005,7 +1012,6 @@ function setupOmegaModule(root){
 
   const departmentSelect = root.querySelector('#omega-form-department');
   const typeSelect = root.querySelector('#omega-form-type');
-  const requesterInput = root.querySelector('#omega-form-user');
   const fileInput = root.querySelector('#omega-form-file');
   const addFileBtn = root.querySelector('[data-omega-add-file]');
   const attachmentsList = root.querySelector('#omega-form-attachments');
@@ -1014,7 +1020,6 @@ function setupOmegaModule(root){
     updateOmegaFormSubject(root);
   });
   typeSelect?.addEventListener('change', () => updateOmegaFormSubject(root));
-  requesterInput?.addEventListener('input', () => updateOmegaFormSubject(root));
   addFileBtn?.addEventListener('click', () => {
     if (fileInput) fileInput.click();
   });
@@ -1976,6 +1981,7 @@ function handleTicketUpdateSubmit(form){
   }
   initializeTicketUpdateDraft(ticket);
   renderOmega();
+  showOmegaToast('Atualização registrada com sucesso.', 'success');
 }
 
 function handleTicketCancel(){
@@ -2000,6 +2006,7 @@ function handleTicketCancel(){
   });
   initializeTicketUpdateDraft(ticket);
   renderOmega();
+  showOmegaToast('Chamado cancelado.', 'info');
 }
 
 function handleBulkStatusSubmit(status){
@@ -2009,17 +2016,17 @@ function handleBulkStatusSubmit(status){
   if (!selection.length) return;
   const user = getCurrentUser();
   const now = new Date().toISOString();
+  const statusMeta = OMEGA_STATUS_META[status] || { label: status };
   selection.forEach((id) => {
     const ticket = OMEGA_TICKETS.find((item) => item.id === id);
     if (!ticket) return;
     ticket.status = status;
     ticket.updated = now;
     if (!Array.isArray(ticket.history)) ticket.history = [];
-    const meta = OMEGA_STATUS_META[status] || { label: status };
     ticket.history.push({
       date: now,
       actorId: user?.id || '',
-      action: `Situação atualizada em lote para ${meta.label}`,
+      action: `Situação atualizada em lote para ${statusMeta.label}`,
       comment: '',
       status,
       attachments: [],
@@ -2027,6 +2034,7 @@ function handleBulkStatusSubmit(status){
   });
   omegaState.bulkPanelOpen = false;
   renderOmega();
+  showOmegaToast(`Situação atualizada para ${statusMeta.label}.`, 'success');
 }
 
 function buildTicketMeta(ticket){
@@ -2335,6 +2343,36 @@ function escapeHTML(value){
     .replace(/'/g, '&#39;');
 }
 
+function showOmegaToast(message, tone = 'success'){
+  if (!message) return;
+  const root = document.getElementById('omega-modal');
+  if (!root) return;
+  const container = root.querySelector('#omega-toast-stack');
+  if (!container) return;
+  const toneKey = Object.prototype.hasOwnProperty.call(OMEGA_TOAST_ICONS, tone) ? tone : 'info';
+  const icon = OMEGA_TOAST_ICONS[toneKey] || OMEGA_TOAST_ICONS.info;
+  const toast = document.createElement('div');
+  toast.className = `omega-toast omega-toast--${toneKey}`;
+  toast.setAttribute('role', 'status');
+  toast.innerHTML = `<i class="${icon}" aria-hidden="true"></i><span>${escapeHTML(message)}</span>`;
+  container.appendChild(toast);
+  requestAnimationFrame(() => {
+    toast.dataset.visible = 'true';
+  });
+  const lifetime = 3600;
+  window.setTimeout(() => {
+    toast.dataset.visible = 'false';
+    window.setTimeout(() => {
+      if (toast.parentElement === container) toast.remove();
+    }, 220);
+  }, lifetime);
+  while (container.children.length > 3) {
+    const first = container.firstElementChild;
+    if (!first || first === toast) break;
+    first.remove();
+  }
+}
+
 function createLocalId(prefix = 'id'){
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return `${prefix}-${crypto.randomUUID()}`;
@@ -2567,10 +2605,10 @@ function applyPendingIntents(root){
       syncTicketTypeOptions(form, queue);
     }
   }
-  const requesterInput = root.querySelector('#omega-form-user');
-  if (requesterInput) {
+  const firstField = root.querySelector('#omega-form-type') || root.querySelector('#omega-form-product');
+  if (firstField) {
     requestAnimationFrame(() => {
-      try { requesterInput.focus(); } catch (err) { /* noop */ }
+      try { firstField.focus(); } catch (err) { /* noop */ }
     });
   }
   omegaState.pendingNewTicket = null;
@@ -2675,6 +2713,8 @@ function populateUserSelect(root){
   const defaultId = omegaState.currentUserId || options[0]?.id || '';
   select.value = defaultId;
   omegaState.currentUserId = defaultId || null;
+  select.disabled = false;
+  select.removeAttribute('aria-disabled');
 }
 
 function populateFormOptions(root){
@@ -2683,6 +2723,10 @@ function populateFormOptions(root){
   const departmentSelect = form.querySelector('#omega-form-department');
   const user = getCurrentUser();
   const departments = getAvailableDepartmentsForUser(user);
+  const requesterDisplay = form.querySelector('#omega-form-requester');
+  if (requesterDisplay) {
+    requesterDisplay.textContent = user?.name || '—';
+  }
   if (departmentSelect) {
     const previous = departmentSelect.value;
     if (departments.length) {
@@ -2722,7 +2766,7 @@ function updateOmegaFormSubject(root){
   const productId = form.querySelector('#omega-form-product')?.value;
   const productMeta = OMEGA_PRODUCT_CATALOG.find((item) => item.id === productId) || null;
   const typeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim() || '';
-  const requester = form.querySelector('#omega-form-user')?.value?.trim() || '';
+  const requester = getCurrentUser()?.name || '';
   subjectInput.value = buildOmegaSubject({
     typeLabel,
     productLabel: productMeta?.label || '',
@@ -2736,7 +2780,7 @@ function prefillTicketForm(root){
   resetFormAttachments(root);
   const productInput = form.querySelector('#omega-form-product');
   const departmentSelect = form.querySelector('#omega-form-department');
-  const requesterInput = form.querySelector('#omega-form-user');
+  const requesterDisplay = form.querySelector('#omega-form-requester');
   const observationInput = form.querySelector('#omega-form-observation');
 
   const detail = omegaState.contextDetail;
@@ -2777,10 +2821,8 @@ function prefillTicketForm(root){
   } else {
     syncTicketTypeOptions(form, requestedDepartment || fallbackDepartment);
   }
-  if (requesterInput) {
-    requesterInput.value = detail?.label && (detail.levelKey === 'contrato' || detail.levelKey === 'cliente')
-      ? detail.label
-      : '';
+  if (requesterDisplay) {
+    requesterDisplay.textContent = user?.name || '—';
   }
   updateOmegaFormSubject(root);
   if (observationInput) {
@@ -2794,7 +2836,8 @@ function handleNewTicketSubmit(form){
   const root = document.getElementById('omega-modal');
   if (!root) return;
   updateOmegaFormSubject(root);
-  const requesterName = form.querySelector('#omega-form-user')?.value?.trim();
+  const user = getCurrentUser();
+  const requesterName = user?.name?.trim() || '';
   const productId = form.querySelector('#omega-form-product')?.value;
   const category = form.querySelector('#omega-form-type')?.value;
   const queue = form.querySelector('#omega-form-department')?.value;
@@ -2803,7 +2846,7 @@ function handleNewTicketSubmit(form){
   const attachments = Array.isArray(omegaState.formAttachments)
     ? omegaState.formAttachments.map((item) => item.name)
     : [];
-  if (!requesterName || !productId || !category || !queue || !subject || !description) {
+  if (!user || !requesterName || !productId || !category || !queue || !subject || !description) {
     showFormFeedback(root, 'Preencha todos os campos obrigatórios para registrar o chamado.', 'warning');
     return;
   }
@@ -2811,7 +2854,6 @@ function handleNewTicketSubmit(form){
   const now = new Date();
   omegaTicketCounter += 1;
   const ticketId = String(omegaTicketCounter);
-  const user = getCurrentUser();
   const detail = omegaState.contextDetail;
   const context = {
     diretoria: detail?.lineage?.find?.((entry) => entry.levelKey === 'diretoria')?.label || '',
@@ -2860,6 +2902,7 @@ function handleNewTicketSubmit(form){
   omegaState.search = '';
   setDrawerOpen(false);
   renderOmega();
+  showOmegaToast('Chamado registrado com sucesso.', 'success');
 }
 
 function showFormFeedback(root, message, tone = 'info'){
