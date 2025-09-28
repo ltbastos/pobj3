@@ -1,8 +1,8 @@
 departamento_id,departamento,tipo,ordem_departamento,ordem_tipo
-1,Encarteiramento,Inclusão de carteira,1,1
-1,Encarteiramento,Transferência de relacionamento,1,2
-1,Encarteiramento,Atualização cadastral,1,3
-1,Encarteiramento,Treinamento de equipe,1,4
+1,Encarteiramento,Transferência - Empresas para Empresas,1,1
+1,Encarteiramento,Transferência - Empresas para Varejo,1,2
+1,Encarteiramento,Transferência - Mesma Agência,1,3
+1,Encarteiramento,Transferência - Varejo para Empresas,1,4
 2,Metas,Ajuste de meta,2,1
 2,Metas,Contestação de meta,2,2
 2,Metas,Acompanhamento de indicadores,2,3

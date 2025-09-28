@@ -82,6 +82,8 @@ const OMEGA_STATUS_TONE_LABELS = {
 
 const OMEGA_STRUCTURE_SOURCE = "Bases/dEstruturaChamados.csv";
 
+const OMEGA_TRANSFER_EMPRESAS_LABEL = "Transferência - Empresas para Empresas";
+
 const OMEGA_QUEUE_FIELD_MAP = {
   Encarteiramento: "encarteiramento",
   Metas: "meta",
@@ -104,10 +106,10 @@ const OMEGA_DEPARTMENT_META = new Map();
 
 const OMEGA_STRUCTURE_FALLBACK = {
   Encarteiramento: [
-    "Inclusão de carteira",
-    "Transferência de relacionamento",
-    "Atualização cadastral",
-    "Treinamento de equipe",
+    OMEGA_TRANSFER_EMPRESAS_LABEL,
+    "Transferência - Empresas para Varejo",
+    "Transferência - Mesma Agência",
+    "Transferência - Varejo para Empresas",
   ],
   Metas: [
     "Ajuste de meta",
@@ -205,6 +207,15 @@ const OMEGA_USER_METADATA = {
 
 let OMEGA_USERS = [];
 
+const OMEGA_EXTERNAL_CONTACTS = new Map();
+
+const OMEGA_MESU_SOURCE = "Bases/mesu.csv";
+let OMEGA_MESU_DATA = [];
+let omegaMesuPromise = null;
+const OMEGA_MESU_BY_AGENCY = new Map();
+const OMEGA_MESU_BY_MANAGER = new Map();
+const OMEGA_MESU_BY_GESTAO = new Map();
+
 const OMEGA_PRODUCT_CATALOG = [
   { id: "capital_giro_flex", label: "Capital de Giro Flex", family: "Crédito PJ", section: "Crédito" },
   { id: "maquininha_plus", label: "Maquininha Plus", family: "Meios de pagamento", section: "Recebíveis" },
@@ -249,6 +260,13 @@ const omegaState = {
     attachments: [],
   },
   ticketUpdateTicketId: null,
+  cancelDialogOpen: false,
+  formFlow: {
+    department: "",
+    type: "",
+    targetManagerName: "",
+    targetManagerEmail: "",
+  },
   filters: {
     id: "",
     departments: [],
@@ -584,32 +602,48 @@ function fallbackLoadCsv(path){
     .then((text) => simpleCsvParse(text));
 }
 
+function detectCsvDelimiter(headerLine){
+  if (!headerLine) return ',';
+  const commaCount = (headerLine.match(/,/g) || []).length;
+  const semicolonCount = (headerLine.match(/;/g) || []).length;
+  if (semicolonCount && semicolonCount >= commaCount) return ';';
+  return ',';
+}
+
+function splitCsvLine(line, delimiter){
+  const cells = [];
+  if (line == null) return cells;
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === delimiter && !inQuotes) {
+      cells.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current);
+  return cells;
+}
+
 function simpleCsvParse(text){
   if (!text) return [];
-  const lines = text.replace(/\r/g, '').split('\n').filter(Boolean);
+  const lines = text.replace(/\r/g, '').split('\n').filter((line) => line.trim().length);
   if (!lines.length) return [];
-  const header = lines.shift().split(',').map((cell) => cell.trim());
+  const headerLine = lines.shift();
+  const delimiter = detectCsvDelimiter(headerLine);
+  const header = splitCsvLine(headerLine, delimiter).map((cell) => cell.trim());
   return lines.map((line) => {
-    const cells = [];
-    let current = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i += 1) {
-      const char = line[i];
-      if (char === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"';
-          i += 1;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === ',' && !inQuotes) {
-        cells.push(current);
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    cells.push(current);
+    const cells = splitCsvLine(line, delimiter);
     const row = {};
     header.forEach((key, idx) => {
       row[key] = (cells[idx] ?? '').trim();
@@ -924,12 +958,14 @@ function ensureOmegaTemplate(){
 }
 
 function openOmega(detail = null){
+  ensureDefaultExternalContacts();
   Promise.all([
     ensureOmegaTemplate(),
     ensureOmegaStructure(),
     ensureOmegaData(),
     ensureOmegaUsers(),
     ensureOmegaStatuses(),
+    ensureOmegaMesu(),
   ])
     .then(([root]) => {
       if (!root) return;
@@ -979,6 +1015,7 @@ function closeOmega(){
   setManageStatusOpen(false);
   omegaState.pendingNewTicket = null;
   omegaState.prefillDepartment = '';
+  omegaState.cancelDialogOpen = false;
   root.hidden = true;
   document.body.classList.remove("has-omega-open");
 }
@@ -1166,7 +1203,17 @@ function setupOmegaModule(root){
     syncTicketTypeOptions(root, ev.target.value);
     updateOmegaFormSubject(root);
   });
-  typeSelect?.addEventListener('change', () => updateOmegaFormSubject(root));
+  typeSelect?.addEventListener('change', (ev) => {
+    const flow = getFormFlowState();
+    const previous = flow.type;
+    flow.type = ev.target.value || '';
+    if (flow.type !== previous) {
+      flow.targetManagerName = '';
+      flow.targetManagerEmail = '';
+    }
+    updateOmegaFormSubject(root);
+    renderFormFlowExtras(root);
+  });
   addFileBtn?.addEventListener('click', () => {
     if (fileInput) fileInput.click();
   });
@@ -1185,6 +1232,24 @@ function setupOmegaModule(root){
     if (!id) return;
     removeFormAttachment(root, id);
   });
+
+  const flowNameInput = root.querySelector('#omega-flow-target-name');
+  const flowEmailInput = root.querySelector('#omega-flow-target-email');
+  flowNameInput?.addEventListener('input', (ev) => {
+    const flow = getFormFlowState();
+    flow.targetManagerName = ev.target.value || '';
+  });
+  flowEmailInput?.addEventListener('input', (ev) => {
+    const flow = getFormFlowState();
+    flow.targetManagerEmail = ev.target.value || '';
+  });
+  root.querySelectorAll('[data-omega-cancel-dismiss]')?.forEach((btn) => {
+    btn.addEventListener('click', () => dismissTicketCancelDialog());
+  });
+  const cancelOverlay = root.querySelector('[data-omega-cancel-close]');
+  cancelOverlay?.addEventListener('click', () => dismissTicketCancelDialog());
+  const cancelConfirm = root.querySelector('[data-omega-cancel-confirm]');
+  cancelConfirm?.addEventListener('click', () => confirmTicketCancel());
 
   const bulkBtn = root.querySelector('#omega-bulk-status');
   bulkBtn?.addEventListener('click', () => {
@@ -1394,7 +1459,10 @@ function handleOmegaKeydown(ev){
   const root = document.getElementById('omega-modal');
   if (!root || root.hidden) return;
   if (ev.key === 'Escape') {
-    if (omegaState.manageStatusOpen) {
+    if (omegaState.cancelDialogOpen) {
+      dismissTicketCancelDialog();
+      ev.stopPropagation();
+    } else if (omegaState.manageStatusOpen) {
       setManageStatusOpen(false);
       ev.stopPropagation();
     } else if (omegaState.manageAnalystOpen) {
@@ -1460,6 +1528,8 @@ function renderOmega(){
   renderTicketModal(root, filteredTickets, viewTicketsBase, user);
   renderBulkControls(root, user, filteredTickets);
   updateEmptyState(root, filteredTickets);
+  renderFormFlowExtras(root);
+  renderCancelDialog(root);
   if (omegaState.manageAnalystOpen) populateManageAnalystModal(root, user);
   if (omegaState.manageStatusOpen) populateManageStatusModal(root, user);
 }
@@ -2231,14 +2301,38 @@ function handleTicketUpdateSubmit(form){
   showOmegaToast('Atualização registrada com sucesso.', 'success');
 }
 
-function handleTicketCancel(){
+function getCancellableTicket(){
   const ticketId = omegaState.selectedTicketId;
-  if (!ticketId) return;
+  if (!ticketId) return null;
   const ticket = OMEGA_TICKETS.find((item) => item.id === ticketId);
-  if (!ticket) return;
+  if (!ticket) return null;
   const user = getCurrentUser();
-  if (!user || user.id !== ticket.requesterId) return;
-  if (!window.confirm('Deseja realmente cancelar este chamado?')) return;
+  if (!user || user.id !== ticket.requesterId) return null;
+  if (['cancelado', 'resolvido'].includes(ticket.status)) return null;
+  return { ticket, user };
+}
+
+function handleTicketCancel(){
+  const data = getCancellableTicket();
+  if (!data) return;
+  omegaState.cancelDialogOpen = true;
+  renderOmega();
+}
+
+function dismissTicketCancelDialog(){
+  if (!omegaState.cancelDialogOpen) return;
+  omegaState.cancelDialogOpen = false;
+  renderOmega();
+}
+
+function confirmTicketCancel(){
+  const data = getCancellableTicket();
+  omegaState.cancelDialogOpen = false;
+  if (!data) {
+    renderOmega();
+    return;
+  }
+  const { ticket, user } = data;
   const now = new Date().toISOString();
   ticket.status = 'cancelado';
   ticket.updated = now;
@@ -2310,6 +2404,43 @@ function buildTicketProgress(status){
   }).join('');
 }
 
+function renderCancelDialog(root){
+  const dialog = root?.querySelector?.('#omega-cancel-dialog');
+  if (!dialog) return;
+  const open = !!omegaState.cancelDialogOpen;
+  dialog.hidden = !open;
+  if (!open) return;
+  const ticket = OMEGA_TICKETS.find((item) => item.id === omegaState.selectedTicketId) || null;
+  const title = dialog.querySelector('#omega-cancel-title');
+  const message = dialog.querySelector('#omega-cancel-message');
+  const ticketIdEl = dialog.querySelector('#omega-cancel-ticket-id');
+  const ticketSubjectEl = dialog.querySelector('#omega-cancel-ticket-subject');
+  const ticketStatusEl = dialog.querySelector('#omega-cancel-ticket-status');
+  const ticketRequesterEl = dialog.querySelector('#omega-cancel-ticket-requester');
+  if (title) {
+    title.textContent = ticket ? `Cancelar chamado ${ticket.id}` : 'Cancelar chamado';
+  }
+  if (message) {
+    const subject = ticket?.subject || 'este chamado';
+    message.textContent = `Tem certeza de que deseja cancelar ${subject}? Essa ação não poderá ser desfeita.`;
+  }
+  if (ticketIdEl) {
+    ticketIdEl.textContent = ticket?.id ? `#${ticket.id}` : '—';
+  }
+  if (ticketSubjectEl) {
+    ticketSubjectEl.textContent = ticket?.subject || 'Sem assunto';
+  }
+  if (ticketStatusEl) {
+    const statusMeta = ticket?.status ? (OMEGA_STATUS_META[ticket.status] || { label: ticket.status }) : null;
+    ticketStatusEl.textContent = statusMeta?.label || '—';
+  }
+  if (ticketRequesterEl) {
+    ticketRequesterEl.textContent = ticket?.requesterId ? resolveUserName(ticket.requesterId) : '—';
+  }
+  const confirmBtn = dialog.querySelector('[data-omega-cancel-confirm]');
+  if (confirmBtn) confirmBtn.disabled = !ticket;
+}
+
 function buildTicketTimeline(ticket){
   const entries = Array.isArray(ticket.history) ? [...ticket.history] : [];
   if (!entries.length) {
@@ -2342,7 +2473,11 @@ function resolveTimelineSide(ticket, actorId){
   if (!ticket || !actorId) return 'analista';
   if (actorId === ticket.requesterId) return 'usuario';
   const user = OMEGA_USERS.find((item) => item.id === actorId);
-  if (!user) return 'analista';
+  if (!user) {
+    const contact = OMEGA_EXTERNAL_CONTACTS.get(actorId);
+    if (contact?.side === 'usuario') return 'usuario';
+    return 'analista';
+  }
   const isOnlyUser = user.roles?.usuario && !user.roles.analista && !user.roles.supervisor && !user.roles.admin;
   return isOnlyUser ? 'usuario' : 'analista';
 }
@@ -2350,6 +2485,7 @@ function resolveTimelineSide(ticket, actorId){
 function openTicketDetail(ticketId){
   if (!ticketId) return;
   omegaState.selectedTicketId = ticketId;
+  omegaState.cancelDialogOpen = false;
   setTicketModalOpen(true);
   renderOmega();
 }
@@ -2589,18 +2725,28 @@ function getCurrentUser(){
 function resolveUserName(userId){
   if (!userId) return '—';
   const user = OMEGA_USERS.find((item) => item.id === userId);
-  return user?.name || '—';
+  if (user?.name) return user.name;
+  const contact = OMEGA_EXTERNAL_CONTACTS.get(userId);
+  return contact?.name || '—';
 }
 
 function resolveUserMeta(userId){
   if (!userId) return '—';
   const user = OMEGA_USERS.find((item) => item.id === userId);
-  if (!user) return '—';
+  if (user) {
+    const parts = [];
+    if (user.position) parts.push(user.position);
+    if (user.junction) parts.push(user.junction);
+    if (!parts.length) parts.push(getUserRoleLabel(user));
+    return parts.join(' • ');
+  }
+  const contact = OMEGA_EXTERNAL_CONTACTS.get(userId);
+  if (!contact) return '—';
   const parts = [];
-  if (user.position) parts.push(user.position);
-  if (user.junction) parts.push(user.junction);
-  if (!parts.length) parts.push(getUserRoleLabel(user));
-  return parts.join(' • ');
+  if (contact.position) parts.push(contact.position);
+  if (contact.agency) parts.push(contact.agency);
+  if (contact.email) parts.push(contact.email);
+  return parts.join(' • ') || 'Contato externo';
 }
 
 function resolveRequesterDisplay(ticket){
@@ -2707,6 +2853,190 @@ function createLocalId(prefix = 'id'){
   return `${prefix}-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
 }
 
+function normalizePlain(value){
+  return (value ?? '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function normalizeToSlug(value){
+  return normalizePlain(value).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+function registerExternalContact(id, meta = {}){
+  const contactId = id || createLocalId('contact');
+  const existing = OMEGA_EXTERNAL_CONTACTS.get(contactId) || {};
+  const next = { ...existing };
+  if (meta.name) next.name = meta.name;
+  if (meta.position) next.position = meta.position;
+  if (meta.email) next.email = meta.email;
+  if (meta.agency) next.agency = meta.agency;
+  if (meta.type) next.type = meta.type;
+  if (meta.segment) next.segment = meta.segment;
+  if (meta.region) next.region = meta.region;
+  if (meta.side) next.side = meta.side;
+  if (!next.name) next.name = 'Contato externo';
+  if (!next.side) next.side = 'analista';
+  OMEGA_EXTERNAL_CONTACTS.set(contactId, next);
+  return contactId;
+}
+
+function ensureDefaultExternalContacts(){
+  registerExternalContact('omega-flow', {
+    name: 'Fluxo Omega',
+    position: 'Orquestração de processos',
+    email: 'omega@omega.com.br',
+    type: 'system',
+    side: 'analista',
+  });
+}
+
+function buildCorporateEmail(name, domain = 'omega.com.br'){
+  const slug = normalizeToSlug(name).replace(/-/g, '.');
+  if (!slug) return '';
+  return `${slug}@${domain}`;
+}
+
+function isValidEmail(value){
+  if (!value) return false;
+  const normalized = value.toString().trim();
+  if (!normalized) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
+}
+
+function createMesuContactId(type, code, name){
+  if (code && String(code).trim()) {
+    return `mesu-${type}-${String(code).trim()}`;
+  }
+  const slug = normalizeToSlug(name);
+  if (slug) return `mesu-${type}-${slug}`;
+  return createLocalId(`mesu-${type}`);
+}
+
+function applyMesuCatalog(rows){
+  OMEGA_MESU_DATA = [];
+  OMEGA_MESU_BY_AGENCY.clear();
+  OMEGA_MESU_BY_MANAGER.clear();
+  OMEGA_MESU_BY_GESTAO.clear();
+  if (!Array.isArray(rows)) return;
+  rows.forEach((row) => {
+    if (!row) return;
+    const segment = (row.Segmento || row.segmento || '').trim();
+    const segmentId = (row['Id Segmento'] || row['ID Segmento'] || '').toString().trim();
+    const diretoria = (row['Diretoria Regional'] || row.Diretoria || '').trim();
+    const diretoriaId = (row['ID Diretoria'] || row['Id Diretoria'] || '').toString().trim();
+    const gerencia = (row['Gerencia Regional'] || row['Gerência Regional'] || row.Gerencia || '').trim();
+    const gerenciaId = (row['Id Gerencia Regional'] || row['ID Gerencia Regional'] || '').toString().trim();
+    const agencyName = (row.Agencia || row['Agência'] || '').trim();
+    const agencyId = (row['Id Agencia'] || row['ID Agencia'] || row['Id Agência'] || '').toString().trim();
+    const gestorName = (row['Gerente de Gestao'] || row['Gerente de Gestão'] || '').trim();
+    const gestorId = (row['Id Gerente de Gestao'] || row['Id Gerente de Gestão'] || '').toString().trim();
+    const managerName = (row.Gerente || '').trim();
+    const managerId = (row['Id Gerente'] || '').toString().trim();
+    const managerEmail = managerName ? buildCorporateEmail(managerName) : '';
+    const record = {
+      segment,
+      segmentId,
+      diretoria,
+      diretoriaId,
+      gerencia,
+      gerenciaId,
+      agencyName,
+      agencyId,
+      managerGestaoName: gestorName,
+      managerGestaoId: gestorId,
+      managerName,
+      managerId,
+      managerEmail,
+    };
+    OMEGA_MESU_DATA.push(record);
+    if (agencyName) {
+      OMEGA_MESU_BY_AGENCY.set(normalizePlain(agencyName), record);
+    }
+    if (managerName) {
+      OMEGA_MESU_BY_MANAGER.set(normalizePlain(managerName), record);
+      const contactId = registerExternalContact(
+        createMesuContactId('manager', managerId, managerName),
+        {
+          name: managerName,
+          position: 'Gerente da agência',
+          email: managerEmail,
+          agency: agencyName,
+          segment,
+          region: gerencia,
+          type: 'manager',
+          side: 'analista',
+        },
+      );
+      record.managerContactId = contactId;
+    }
+    if (gestorName) {
+      OMEGA_MESU_BY_GESTAO.set(normalizePlain(gestorName), record);
+    }
+  });
+}
+
+function ensureOmegaMesu(){
+  if (OMEGA_MESU_DATA.length) return Promise.resolve(OMEGA_MESU_DATA);
+  if (omegaMesuPromise) return omegaMesuPromise;
+
+  const loader = (typeof loadCSVAuto === 'function')
+    ? loadCSVAuto(OMEGA_MESU_SOURCE).catch((err) => {
+        console.warn('Falha ao carregar MESU via loader principal:', err);
+        return fallbackLoadCsv(OMEGA_MESU_SOURCE);
+      })
+    : fallbackLoadCsv(OMEGA_MESU_SOURCE);
+
+  omegaMesuPromise = loader
+    .then((rows) => {
+      applyMesuCatalog(Array.isArray(rows) ? rows : []);
+      return OMEGA_MESU_DATA;
+    })
+    .catch((err) => {
+      console.warn('Não foi possível carregar a base MESU:', err);
+      OMEGA_MESU_DATA = [];
+      return [];
+    })
+    .finally(() => {
+      omegaMesuPromise = null;
+    });
+
+  return omegaMesuPromise;
+}
+
+function getMesuRecordForUser(user){
+  if (!user || !user.name) return null;
+  const key = normalizePlain(user.name);
+  if (!key) return null;
+  return OMEGA_MESU_BY_GESTAO.get(key) || OMEGA_MESU_BY_MANAGER.get(key) || null;
+}
+
+function getMesuManagerForUser(user){
+  const record = getMesuRecordForUser(user);
+  if (!record || !record.managerName) return null;
+  const contactId = record.managerContactId
+    || registerExternalContact(createMesuContactId('manager', record.managerId, record.managerName), {
+      name: record.managerName,
+      position: 'Gerente da agência',
+      email: buildCorporateEmail(record.managerName),
+      agency: record.agencyName,
+      segment: record.segment,
+      region: record.gerencia,
+      type: 'manager',
+      side: 'analista',
+    });
+  record.managerContactId = contactId;
+  return {
+    record,
+    contactId,
+    name: record.managerName,
+    email: record.managerEmail || buildCorporateEmail(record.managerName),
+  };
+}
+
 function formatFileSize(bytes){
   const value = Number(bytes);
   if (!Number.isFinite(value) || value <= 0) return '';
@@ -2752,6 +3082,77 @@ function syncTicketTypeOptions(container, department){
   typeSelect.disabled = !options.length;
   if (options.length) {
     typeSelect.selectedIndex = 0;
+  }
+  const flow = getFormFlowState();
+  const previousDepartment = flow.department;
+  const previousType = flow.type;
+  flow.department = department || '';
+  flow.type = options.length ? options[0] : '';
+  if (previousDepartment !== flow.department || previousType !== flow.type) {
+    flow.targetManagerName = '';
+    flow.targetManagerEmail = '';
+  }
+  renderFormFlowExtras(container);
+}
+
+function getFormFlowState(){
+  if (!omegaState.formFlow || typeof omegaState.formFlow !== 'object') {
+    omegaState.formFlow = {
+      department: '',
+      type: '',
+      targetManagerName: '',
+      targetManagerEmail: '',
+    };
+  }
+  return omegaState.formFlow;
+}
+
+function resetFormFlowState({ department = '', type = '' } = {}){
+  const flow = getFormFlowState();
+  flow.department = department;
+  flow.type = type;
+  flow.targetManagerName = '';
+  flow.targetManagerEmail = '';
+}
+
+function isTransferEmpresasFlow(flow){
+  if (!flow) return false;
+  const department = normalizePlain(flow.department);
+  const type = normalizePlain(flow.type);
+  return department === normalizePlain('Encarteiramento') && type === normalizePlain(OMEGA_TRANSFER_EMPRESAS_LABEL);
+}
+
+function renderFormFlowExtras(context){
+  const container = context?.querySelector?.('#omega-form-flow') || document.getElementById('omega-form-flow');
+  if (!container) return;
+  const flow = getFormFlowState();
+  const shouldShow = isTransferEmpresasFlow(flow);
+  container.hidden = !shouldShow;
+  const nameInput = container.querySelector('#omega-flow-target-name');
+  const emailInput = container.querySelector('#omega-flow-target-email');
+  const requesterInfo = container.querySelector('#omega-flow-requester-approver');
+  if (nameInput) {
+    if (shouldShow) nameInput.value = flow.targetManagerName || '';
+    nameInput.required = shouldShow;
+    if (!shouldShow) nameInput.value = '';
+  }
+  if (emailInput) {
+    if (shouldShow) emailInput.value = flow.targetManagerEmail || '';
+    emailInput.required = shouldShow;
+    if (!shouldShow) emailInput.value = '';
+  }
+  if (requesterInfo) {
+    if (shouldShow) {
+      const approver = getMesuManagerForUser(getCurrentUser());
+      if (approver?.name) {
+        const email = approver.email || buildCorporateEmail(approver.name);
+        requesterInfo.innerHTML = `<strong>${escapeHTML(approver.name)}</strong>${email ? `<span>${escapeHTML(email)}</span>` : ''}`;
+      } else {
+        requesterInfo.innerHTML = '<em>Gerente não identificado na base MESU</em>';
+      }
+    } else {
+      requesterInfo.innerHTML = '';
+    }
   }
 }
 
@@ -3259,6 +3660,7 @@ function handleManageStatusSubmit(form){
 
 function setTicketModalOpen(open){
   omegaState.ticketModalOpen = !!open;
+  if (!open) omegaState.cancelDialogOpen = false;
   const modal = document.getElementById('omega-ticket-modal');
   if (!modal) return;
   if (!omegaState.ticketModalOpen) {
@@ -3347,6 +3749,10 @@ function populateFormOptions(root){
   }
   const department = departmentSelect?.value || departments[0] || '';
   syncTicketTypeOptions(form, department);
+  const typeSelect = form.querySelector('#omega-form-type');
+  const selectedType = typeSelect?.value || '';
+  resetFormFlowState({ department, type: selectedType });
+  renderFormFlowExtras(form);
   renderFormAttachments(root);
 }
 
@@ -3422,6 +3828,10 @@ function prefillTicketForm(root){
   } else {
     syncTicketTypeOptions(form, requestedDepartment || fallbackDepartment);
   }
+  const currentDepartment = departmentSelect?.value || requestedDepartment || fallbackDepartment || '';
+  const currentType = form.querySelector('#omega-form-type')?.value || '';
+  resetFormFlowState({ department: currentDepartment, type: currentType });
+  renderFormFlowExtras(form);
   if (requesterDisplay) {
     requesterDisplay.textContent = user?.name || '—';
   }
@@ -3431,6 +3841,109 @@ function prefillTicketForm(root){
   }
   clearFormFeedback(root);
   omegaState.prefillDepartment = '';
+}
+
+function applyTransferEmpresasFlow(ticket, extras, user){
+  if (!ticket) return;
+  if (!Array.isArray(ticket.history)) ticket.history = [];
+  const now = new Date();
+  const baseTime = now.getTime();
+  const minute = 60000;
+  let step = 1;
+  const addHistory = (entry) => {
+    const date = new Date(baseTime + step * minute).toISOString();
+    step += 1;
+    ticket.history.push({
+      date,
+      actorId: entry.actorId || 'omega-flow',
+      action: entry.action || '',
+      comment: entry.comment || '',
+      status: entry.status || 'aguardando',
+      attachments: [],
+    });
+    return date;
+  };
+  const approvals = [];
+  const requesterManager = getMesuManagerForUser(user);
+  if (requesterManager?.name) {
+    approvals.push({
+      role: 'solicitante',
+      contactId: requesterManager.contactId,
+      name: requesterManager.name,
+      email: requesterManager.email,
+    });
+    addHistory({
+      actorId: 'omega-flow',
+      action: `Notificação enviada para ${requesterManager.name}`,
+      comment: `O gerente da agência solicitante (${requesterManager.email || 'contato indisponível'}) recebeu o pedido de aprovação.`,
+    });
+    addHistory({
+      actorId: requesterManager.contactId,
+      action: 'Agência solicitante aprovou a transferência',
+      comment: `${requesterManager.name} concedeu o de acordo da agência solicitante.`,
+    });
+  } else {
+    addHistory({
+      actorId: 'omega-flow',
+      action: 'Notificação enviada para o gerente da agência solicitante',
+      comment: 'Não foi possível identificar automaticamente o gerente na base MESU.',
+    });
+  }
+  const targetContactId = registerExternalContact(createLocalId('mesu-target'), {
+    name: extras.name,
+    email: extras.email,
+    position: 'Gerente da agência cedente',
+    type: 'manager',
+    side: 'analista',
+  });
+  approvals.push({
+    role: 'cedente',
+    contactId: targetContactId,
+    name: extras.name,
+    email: extras.email,
+  });
+  addHistory({
+    actorId: 'omega-flow',
+    action: `Solicitação enviada para ${extras.name}`,
+    comment: `Convite encaminhado para ${extras.email} validar a transferência.`,
+  });
+  addHistory({
+    actorId: targetContactId,
+    action: 'Agência cedente aprovou a transferência',
+    comment: `${extras.name} autorizou a transferência da carteira.`,
+  });
+  const analyst = getAssignableAnalystsForQueue(ticket.queue, user)[0] || null;
+  if (analyst) {
+    approvals.push({
+      role: 'analista',
+      contactId: analyst.id,
+      name: analyst.name,
+      email: analyst.functional ? `${analyst.functional}@omega.com.br` : '',
+    });
+    addHistory({
+      actorId: analyst.id,
+      action: 'Chamado encaminhado para análise de encarteiramento',
+      comment: `${analyst.name} receberá o chamado após os de acordo registrados.`,
+    });
+    ticket.ownerId = analyst.id;
+  } else {
+    addHistory({
+      actorId: 'omega-flow',
+      action: 'Chamado aguardando distribuição na fila de encarteiramento',
+      comment: 'Assim que um analista estiver disponível, o chamado será atribuído automaticamente.',
+    });
+  }
+  ticket.status = 'aguardando';
+  const lastEntry = ticket.history[ticket.history.length - 1];
+  ticket.updated = lastEntry?.date || ticket.updated;
+  ticket.flow = {
+    type: 'encarteiramento-transfer-empresas',
+    targetManager: { name: extras.name, email: extras.email, contactId: targetContactId },
+    requesterManager: requesterManager
+      ? { name: requesterManager.name, email: requesterManager.email, contactId: requesterManager.contactId }
+      : null,
+    approvals,
+  };
 }
 
 function handleNewTicketSubmit(form){
@@ -3450,6 +3963,36 @@ function handleNewTicketSubmit(form){
   if (!user || !requesterName || !productId || !category || !queue || !subject || !description) {
     showFormFeedback(root, 'Preencha todos os campos obrigatórios para registrar o chamado.', 'warning');
     return;
+  }
+  const requiresTransferFlow = isTransferEmpresasFlow({ department: queue, type: category });
+  let flowTargetName = '';
+  let flowTargetEmail = '';
+  if (requiresTransferFlow) {
+    const flow = getFormFlowState();
+    flowTargetName = (flow.targetManagerName || '').trim();
+    flowTargetEmail = (flow.targetManagerEmail || '').trim();
+    if (!flowTargetName || !flowTargetEmail) {
+      showFormFeedback(root, 'Informe o nome e o e-mail do gerente da agência cedente para concluir a transferência.', 'warning');
+      const focusInput = !flowTargetName
+        ? root.querySelector('#omega-flow-target-name')
+        : root.querySelector('#omega-flow-target-email');
+      if (focusInput) {
+        requestAnimationFrame(() => {
+          try { focusInput.focus(); } catch (err) { /* noop */ }
+        });
+      }
+      return;
+    }
+    if (!isValidEmail(flowTargetEmail)) {
+      showFormFeedback(root, 'Informe um e-mail corporativo válido para o gerente da agência cedente.', 'warning');
+      const emailInput = root.querySelector('#omega-flow-target-email');
+      if (emailInput) {
+        requestAnimationFrame(() => {
+          try { emailInput.focus(); emailInput.select(); } catch (err) { /* noop */ }
+        });
+      }
+      return;
+    }
   }
   const productMeta = OMEGA_PRODUCT_CATALOG.find((item) => item.id === productId) || { label: productId, family: '', section: '' };
   const now = new Date();
@@ -3496,12 +4039,18 @@ function handleNewTicketSubmit(form){
         status: 'aberto',
       },
     ],
+    flow: null,
   };
+  if (requiresTransferFlow) {
+    applyTransferEmpresasFlow(newTicket, { name: flowTargetName, email: flowTargetEmail }, user);
+  }
   OMEGA_TICKETS.unshift(newTicket);
   omegaState.selectedTicketId = newTicket.id;
   omegaState.view = 'my';
   omegaState.search = '';
   setDrawerOpen(false);
+  resetFormFlowState();
+  renderFormFlowExtras(root);
   renderOmega();
   showOmegaToast('Chamado registrado com sucesso.', 'success');
 }
