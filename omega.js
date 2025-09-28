@@ -6,27 +6,24 @@ let omegaInitialized = false;
 
 const OMEGA_ROLE_LABELS = {
   usuario: "Usuário",
-  atendente: "Atendente",
+  analista: "Analista",
   supervisor: "Supervisor",
   admin: "Administrador",
 };
 
 const OMEGA_NAV_ITEMS = [
-  { id: "my", label: "Meus chamados", icon: "ti ti-user", roles: ["usuario", "atendente", "supervisor", "admin"] },
-  { id: "queue", label: "Fila da equipe", icon: "ti ti-inbox", roles: ["atendente", "supervisor", "admin"] },
+  { id: "my", label: "Meus chamados", icon: "ti ti-user", roles: ["usuario", "analista", "supervisor", "admin"] },
+  { id: "assigned", label: "Meus atendimentos", icon: "ti ti-clipboard-check", roles: ["analista", "supervisor", "admin"] },
+  { id: "queue", label: "Fila da equipe", icon: "ti ti-inbox", roles: ["supervisor", "admin"] },
   { id: "team", label: "Visão da supervisão", icon: "ti ti-users", roles: ["supervisor", "admin"] },
   { id: "admin", label: "Administração", icon: "ti ti-shield-lock", roles: ["admin"] },
 ];
 
-const OMEGA_STATUS_ORDER = ["todos", "aberto", "aguardando", "em_atendimento", "resolvido", "cancelado"];
-
-const OMEGA_STATUS_META = {
-  aberto: { label: "Aberto", tone: "neutral" },
-  aguardando: { label: "Aguardando", tone: "warning" },
-  em_atendimento: { label: "Em atendimento", tone: "progress" },
-  resolvido: { label: "Resolvido", tone: "success" },
-  cancelado: { label: "Cancelado", tone: "danger" },
-};
+let OMEGA_STATUS_ORDER = ["todos"];
+let OMEGA_STATUS_META = {};
+const OMEGA_STATUS_SOURCE = "Bases/dSituacao.csv";
+let OMEGA_STATUS_CATALOG = [];
+let omegaStatusPromise = null;
 
 const OMEGA_PRIORITY_META = {
   baixa: { label: "Baixa", tone: "neutral", icon: "ti ti-arrow-down" },
@@ -34,6 +31,14 @@ const OMEGA_PRIORITY_META = {
   alta: { label: "Alta", tone: "warning", icon: "ti ti-arrow-up" },
   critica: { label: "Crítica", tone: "danger", icon: "ti ti-alert-octagon" },
 };
+
+const OMEGA_DEFAULT_STATUSES = [
+  { id: "aberto", label: "Aberto", tone: "neutral" },
+  { id: "aguardando", label: "Aguardando", tone: "warning" },
+  { id: "em_atendimento", label: "Em atendimento", tone: "progress" },
+  { id: "resolvido", label: "Resolvido", tone: "success" },
+  { id: "cancelado", label: "Cancelado", tone: "danger" },
+];
 
 const OMEGA_QUEUE_OPTIONS = [
   "Encarteiramento",
@@ -126,9 +131,20 @@ const omegaState = {
   search: "",
   contextDetail: null,
   selectedTicketId: null,
+  selectedTicketIds: new Set(),
   drawerOpen: false,
   ticketModalOpen: false,
   formAttachments: [],
+  ticketUpdate: {
+    comment: "",
+    status: "",
+    priority: "",
+    queue: "",
+    category: "",
+    due: "",
+    attachments: [],
+  },
+  ticketUpdateTicketId: null,
   filters: {
     id: "",
     departments: [],
@@ -137,8 +153,11 @@ const omegaState = {
     statuses: [],
     openedFrom: "",
     openedTo: "",
+    priority: "",
   },
   filterPanelOpen: false,
+  bulkPanelOpen: false,
+  bulkStatus: "",
 };
 
 let OMEGA_TICKETS = [];
@@ -162,8 +181,7 @@ function ensureOmegaData(){
     .then((rows) => {
       OMEGA_TICKETS = normalizeOmegaTicketRows(Array.isArray(rows) ? rows : []);
       omegaTicketCounter = OMEGA_TICKETS.reduce((max, ticket) => {
-        const raw = String(ticket.id || '').split('-').pop();
-        const seq = parseInt(raw, 10);
+        const seq = parseInt(ticket.id, 10);
         return Number.isFinite(seq) ? Math.max(max, seq) : max;
       }, 0);
       return OMEGA_TICKETS;
@@ -207,6 +225,121 @@ function ensureOmegaUsers(){
     });
 
   return omegaUsersPromise;
+}
+
+function ensureOmegaStatuses(){
+  if (OMEGA_STATUS_CATALOG.length) return Promise.resolve(OMEGA_STATUS_CATALOG);
+  if (omegaStatusPromise) return omegaStatusPromise;
+
+  const loader = (typeof loadCSVAuto === 'function')
+    ? loadCSVAuto(OMEGA_STATUS_SOURCE).catch((err) => {
+        console.warn('Falha ao carregar situações via loader principal:', err);
+        return fallbackLoadCsv(OMEGA_STATUS_SOURCE);
+      })
+    : fallbackLoadCsv(OMEGA_STATUS_SOURCE);
+
+  omegaStatusPromise = loader
+    .then((rows) => {
+      const normalized = normalizeOmegaStatusRows(Array.isArray(rows) ? rows : []);
+      if (!normalized.length) throw new Error('Nenhuma situação cadastrada');
+      applyStatusCatalog(normalized);
+      return OMEGA_STATUS_CATALOG;
+    })
+    .catch((err) => {
+      console.warn('Aplicando situações padrão da Omega:', err);
+      applyStatusCatalog(OMEGA_DEFAULT_STATUSES);
+      return OMEGA_STATUS_CATALOG;
+    });
+
+  return omegaStatusPromise;
+}
+
+function applyStatusCatalog(entries){
+  const catalog = Array.isArray(entries) ? entries : [];
+  if (!catalog.length) {
+    OMEGA_STATUS_CATALOG = [...OMEGA_DEFAULT_STATUSES];
+  } else {
+    OMEGA_STATUS_CATALOG = catalog.map((item) => ({
+      id: item.id,
+      label: item.label,
+      tone: item.tone || 'neutral',
+      description: item.description || '',
+    }));
+  }
+  const meta = {};
+  const order = ['todos'];
+  OMEGA_STATUS_CATALOG.forEach((entry) => {
+    if (!entry?.id) return;
+    meta[entry.id] = { label: entry.label, tone: entry.tone || 'neutral', description: entry.description || '' };
+    order.push(entry.id);
+  });
+  OMEGA_STATUS_META = meta;
+  OMEGA_STATUS_ORDER = order;
+}
+
+function normalizeOmegaStatusRows(rows){
+  return rows
+    .map((row, index) => {
+      const rawId = (row.id || row.ID || row.codigo || '').trim();
+      const id = rawId ? normalizeStatusId(rawId) : '';
+      if (!id) return null;
+      const label = (row.label || row.nome || row.descricao || '').trim() || rawId || id;
+      const tone = (row.tone || row.cor || '').trim().toLowerCase() || 'neutral';
+      const ordem = parseInt(row.ordem || row.order || index + 1, 10);
+      const order = Number.isFinite(ordem) ? ordem : index + 1;
+      const description = (row.descricao || row.description || '').trim();
+      return { id, label, tone, order, description };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      const diff = (a.order ?? 0) - (b.order ?? 0);
+      if (diff !== 0) return diff;
+      return a.label.localeCompare(b.label, 'pt-BR');
+    });
+}
+
+function normalizeStatusId(value){
+  return value
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    || 'aberto';
+}
+
+function getOrderedStatuses(){
+  const statuses = Array.isArray(OMEGA_STATUS_ORDER)
+    ? OMEGA_STATUS_ORDER.filter((status) => status && status !== 'todos')
+    : [];
+  return statuses.length ? statuses : OMEGA_DEFAULT_STATUSES.map((item) => item.id);
+}
+
+function getSelection(){
+  if (!(omegaState.selectedTicketIds instanceof Set)) {
+    const seed = Array.isArray(omegaState.selectedTicketIds) ? omegaState.selectedTicketIds : [];
+    omegaState.selectedTicketIds = new Set(seed);
+  }
+  return omegaState.selectedTicketIds;
+}
+
+function clearSelection(){
+  const selection = getSelection();
+  selection.clear();
+  omegaState.bulkStatus = "";
+}
+
+function updateSelection(ticketId, selected){
+  const selection = getSelection();
+  if (!ticketId) return;
+  if (selected) selection.add(ticketId);
+  else selection.delete(ticketId);
+}
+
+function shouldAllowSelection(user){
+  if (!user) return false;
+  if (omegaState.view !== 'assigned') return false;
+  return ['analista', 'supervisor', 'admin'].includes(user.role);
 }
 
 function fallbackLoadCsv(path){
@@ -259,7 +392,7 @@ function normalizeOmegaUserRows(rows){
     if (!id || !name) return null;
     const roles = {
       usuario: parseOmegaBoolean(row.usuario),
-      atendente: parseOmegaBoolean(row.atendente),
+      analista: parseOmegaBoolean(row.analista),
       supervisor: parseOmegaBoolean(row.supervisor),
       admin: parseOmegaBoolean(row.admin),
     };
@@ -287,7 +420,7 @@ function normalizeOmegaUserRows(rows){
       teamId: meta.teamId ?? null,
     };
   }).filter(Boolean).sort((a, b) => {
-    const orderMap = { usuario: 0, atendente: 1, supervisor: 2, admin: 3 };
+    const orderMap = { usuario: 0, analista: 1, supervisor: 2, admin: 3 };
     const diff = (orderMap[a.role] ?? 10) - (orderMap[b.role] ?? 10);
     if (diff !== 0) return diff;
     return a.name.localeCompare(b.name, 'pt-BR');
@@ -301,7 +434,7 @@ function parseOmegaBoolean(value){
 }
 
 function resolvePrimaryRole(roles){
-  const priority = ['admin', 'supervisor', 'atendente', 'usuario'];
+  const priority = ['admin', 'supervisor', 'analista', 'usuario'];
   const match = priority.find((role) => roles?.[role]);
   return match || 'usuario';
 }
@@ -313,7 +446,7 @@ function getUserRoles(user){
     .map(([role]) => role);
   if (!roles.length && user.role) roles.push(user.role);
   if (user.role && !roles.includes(user.role)) roles.push(user.role);
-  const order = ['usuario', 'atendente', 'supervisor', 'admin'];
+  const order = ['usuario', 'analista', 'supervisor', 'admin'];
   return roles.sort((a, b) => (order.indexOf(a) - order.indexOf(b)));
 }
 
@@ -423,7 +556,7 @@ function ensureOmegaTemplate(){
 }
 
 function openOmega(detail = null){
-  Promise.all([ensureOmegaTemplate(), ensureOmegaData(), ensureOmegaUsers()])
+  Promise.all([ensureOmegaTemplate(), ensureOmegaData(), ensureOmegaUsers(), ensureOmegaStatuses()])
     .then(([root]) => {
       if (!root) return;
       setupOmegaModule(root);
@@ -518,16 +651,46 @@ function setupOmegaModule(root){
     if (!view || omegaState.view === view) return;
     omegaState.view = view;
     omegaState.selectedTicketId = null;
+    clearSelection();
+    omegaState.bulkPanelOpen = false;
     renderOmega();
   });
 
   const tableBody = root.querySelector('#omega-ticket-rows');
   tableBody?.addEventListener('click', (ev) => {
+    const checkbox = ev.target.closest?.('input[data-omega-select]');
+    if (checkbox) {
+      updateSelection(checkbox.value, checkbox.checked);
+      omegaState.bulkPanelOpen = omegaState.bulkPanelOpen && getSelection().size > 0;
+      ev.stopPropagation();
+      renderOmega();
+      return;
+    }
+    if (ev.target.closest?.('td.col-select')) {
+      ev.preventDefault();
+      return;
+    }
     const row = ev.target.closest?.('tr[data-ticket-id]');
     if (!row) return;
     const ticketId = row.dataset.ticketId;
     if (!ticketId) return;
     openTicketDetail(ticketId);
+  });
+
+  const selectAll = root.querySelector('#omega-select-all');
+  selectAll?.addEventListener('change', (ev) => {
+    const checked = !!ev.target.checked;
+    const selection = getSelection();
+    if (!checked) {
+      selection.clear();
+      omegaState.bulkStatus = "";
+    } else {
+      root.querySelectorAll('#omega-ticket-rows tr[data-ticket-id]').forEach((row) => {
+        if (row?.dataset?.ticketId) selection.add(row.dataset.ticketId);
+      });
+    }
+    omegaState.bulkPanelOpen = checked ? omegaState.bulkPanelOpen : false;
+    renderOmega();
   });
 
   const newTicketBtn = root.querySelector('#omega-new-ticket');
@@ -570,6 +733,119 @@ function setupOmegaModule(root){
     removeFormAttachment(root, id);
   });
 
+  const bulkBtn = root.querySelector('#omega-bulk-status');
+  bulkBtn?.addEventListener('click', () => {
+    const user = getCurrentUser();
+    if (!shouldAllowSelection(user)) return;
+    if (!getSelection().size) return;
+    omegaState.bulkPanelOpen = !omegaState.bulkPanelOpen;
+    renderOmega();
+  });
+
+  const bulkClose = root.querySelector('#omega-bulk-close');
+  bulkClose?.addEventListener('click', () => {
+    omegaState.bulkPanelOpen = false;
+    renderOmega();
+  });
+
+  const bulkCancel = root.querySelector('#omega-bulk-cancel');
+  bulkCancel?.addEventListener('click', () => {
+    omegaState.bulkPanelOpen = false;
+    renderOmega();
+  });
+
+  const bulkStatusSelect = root.querySelector('#omega-bulk-status-select');
+  bulkStatusSelect?.addEventListener('change', (ev) => {
+    omegaState.bulkStatus = ev.target.value || '';
+  });
+
+  const bulkForm = root.querySelector('#omega-bulk-form');
+  bulkForm?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const status = root.querySelector('#omega-bulk-status-select')?.value || '';
+    handleBulkStatusSubmit(status);
+  });
+
+  const ticketUpdateForm = root.querySelector('#omega-ticket-update-form');
+  ticketUpdateForm?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    handleTicketUpdateSubmit(ticketUpdateForm);
+  });
+
+  const ticketUpdateReset = root.querySelector('#omega-ticket-update-reset');
+  ticketUpdateReset?.addEventListener('click', () => {
+    const ticket = OMEGA_TICKETS.find((item) => item.id === omegaState.selectedTicketId);
+    if (!ticket) return;
+    initializeTicketUpdateDraft(ticket);
+    const modal = root.querySelector('#omega-ticket-modal');
+    configureTicketActions(modal, ticket, getCurrentUser());
+  });
+
+  const ticketComment = root.querySelector('#omega-ticket-update-comment');
+  ticketComment?.addEventListener('input', (ev) => {
+    if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
+    omegaState.ticketUpdate.comment = ev.target.value || '';
+  });
+
+  const ticketStatusSelect = root.querySelector('#omega-ticket-update-status');
+  ticketStatusSelect?.addEventListener('change', (ev) => {
+    if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
+    omegaState.ticketUpdate.status = ev.target.value || '';
+  });
+
+  const ticketPrioritySelect = root.querySelector('#omega-ticket-update-priority');
+  ticketPrioritySelect?.addEventListener('change', (ev) => {
+    if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
+    omegaState.ticketUpdate.priority = ev.target.value || '';
+  });
+
+  const ticketQueueSelect = root.querySelector('#omega-ticket-update-queue');
+  ticketQueueSelect?.addEventListener('change', (ev) => {
+    if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
+    omegaState.ticketUpdate.queue = ev.target.value || '';
+  });
+
+  const ticketCategorySelect = root.querySelector('#omega-ticket-update-category');
+  ticketCategorySelect?.addEventListener('change', (ev) => {
+    if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
+    omegaState.ticketUpdate.category = ev.target.value || '';
+  });
+
+  const ticketDueInput = root.querySelector('#omega-ticket-update-due');
+  ticketDueInput?.addEventListener('change', (ev) => {
+    if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
+    omegaState.ticketUpdate.due = ev.target.value || '';
+  });
+
+  const ticketAddFileBtn = root.querySelector('[data-omega-ticket-add-file]');
+  const ticketFileInput = root.querySelector('#omega-ticket-update-file');
+  const ticketAttachmentList = root.querySelector('#omega-ticket-update-attachments');
+  ticketAddFileBtn?.addEventListener('click', () => {
+    ticketFileInput?.click();
+  });
+  ticketFileInput?.addEventListener('change', () => {
+    const modal = root.querySelector('#omega-ticket-modal');
+    addTicketUpdateAttachments(modal, ticketFileInput.files);
+    try {
+      ticketFileInput.value = '';
+    } catch (err) {
+      /* noop */
+    }
+  });
+  ticketAttachmentList?.addEventListener('click', (ev) => {
+    const btn = ev.target.closest?.('[data-omega-remove-update-attachment]');
+    if (!btn) return;
+    const id = btn.dataset.omegaRemoveUpdateAttachment;
+    if (!id) return;
+    const modal = root.querySelector('#omega-ticket-modal');
+    removeTicketUpdateAttachment(modal, id);
+  });
+
+  const cancelTicketBtn = root.querySelector('#omega-ticket-cancel');
+  cancelTicketBtn?.addEventListener('click', () => {
+    handleTicketCancel();
+  });
+
   const filterToggle = root.querySelector('#omega-filters-toggle');
   const filterForm = root.querySelector('#omega-filter-form');
   const clearFiltersBtn = root.querySelector('#omega-clear-filters');
@@ -596,6 +872,8 @@ function setupOmegaModule(root){
     omegaState.selectedTicketId = null;
     resetAdvancedFilters();
     setFilterPanelOpen(false);
+    clearSelection();
+    omegaState.bulkPanelOpen = false;
     renderOmega();
     populateFormOptions(root);
   });
@@ -651,6 +929,11 @@ function renderOmega(){
   const contextTickets = filterTicketsByContext();
   const viewTicketsBase = filterTicketsByView(contextTickets, user);
   const filteredTickets = applyStatusAndSearch(viewTicketsBase);
+  const selectionAllowed = shouldAllowSelection(user);
+  if (!selectionAllowed && getSelection().size) {
+    clearSelection();
+    omegaState.bulkPanelOpen = false;
+  }
 
   renderProfile(root, user);
   renderBreadcrumb(root, user);
@@ -662,8 +945,9 @@ function renderOmega(){
     syncFilterFormState(root);
   }
   renderSummary(root, contextTickets, filteredTickets, user);
-  renderTable(root, filteredTickets);
+  renderTable(root, filteredTickets, user);
   renderTicketModal(root, filteredTickets, viewTicketsBase, user);
+  renderBulkControls(root, user, filteredTickets);
   updateEmptyState(root, filteredTickets);
 }
 
@@ -774,6 +1058,16 @@ function populateFilterPanelOptions(root){
       typeSelect.value = '';
     }
   }
+  const prioritySelect = root.querySelector('#omega-filter-priority');
+  if (prioritySelect) {
+    const current = omegaState.filters.priority || '';
+    const options = ['<option value="">Todas</option>'];
+    Object.entries(OMEGA_PRIORITY_META).forEach(([value, meta]) => {
+      options.push(`<option value="${value}">${escapeHTML(meta.label)}</option>`);
+    });
+    prioritySelect.innerHTML = options.join('');
+    prioritySelect.value = current;
+  }
   const statusHost = root.querySelector('#omega-filter-status');
   if (statusHost) {
     const selected = Array.isArray(omegaState.filters.statuses) ? omegaState.filters.statuses : [];
@@ -812,6 +1106,8 @@ function syncFilterFormState(root){
   if (fromInput) fromInput.value = filters.openedFrom || '';
   const toInput = root.querySelector('#omega-filter-to');
   if (toInput) toInput.value = filters.openedTo || '';
+  const prioritySelect = root.querySelector('#omega-filter-priority');
+  if (prioritySelect) prioritySelect.value = filters.priority || '';
   const departmentSelect = root.querySelector('#omega-filter-department');
   if (departmentSelect) {
     const selected = Array.isArray(filters.departments) ? filters.departments : [];
@@ -850,6 +1146,7 @@ function applyFiltersFromForm(root){
   const id = form.querySelector('#omega-filter-id')?.value?.trim() || '';
   const requester = form.querySelector('#omega-filter-user')?.value?.trim() || '';
   const type = form.querySelector('#omega-filter-type')?.value || '';
+  const priority = form.querySelector('#omega-filter-priority')?.value || '';
   const statuses = Array.from(form.querySelectorAll('#omega-filter-status input[type="checkbox"]:checked'))
     .map((input) => input.value)
     .filter(Boolean);
@@ -862,6 +1159,7 @@ function applyFiltersFromForm(root){
     id,
     requester,
     type,
+    priority,
     statuses,
     departments,
     openedFrom,
@@ -880,6 +1178,7 @@ function resetAdvancedFilters(){
     departments: [],
     openedFrom: '',
     openedTo: '',
+    priority: '',
   };
 }
 
@@ -898,6 +1197,7 @@ function hasActiveFilters(){
   if (filters.id) return true;
   if (filters.requester) return true;
   if (filters.type) return true;
+  if (filters.priority) return true;
   if (Array.isArray(filters.statuses) && filters.statuses.length) return true;
   if (filters.openedFrom || filters.openedTo) return true;
   if (Array.isArray(filters.departments) && filters.departments.length) return true;
@@ -927,9 +1227,12 @@ function renderSummary(root, contextTickets, viewTickets, user){
   host.innerHTML = parts.join('');
 }
 
-function renderTable(root, tickets){
+function renderTable(root, tickets, user){
   const body = root.querySelector('#omega-ticket-rows');
   if (!body) return;
+  const wrapper = root.querySelector('#omega-table-wrapper');
+  const selectionAllowed = shouldAllowSelection(user);
+  if (wrapper) wrapper.dataset.selectionEnabled = selectionAllowed ? 'true' : 'false';
   if (!tickets.length) {
     body.innerHTML = '';
     return;
@@ -938,6 +1241,7 @@ function renderTable(root, tickets){
     omegaState.selectedTicketId = null;
     if (omegaState.ticketModalOpen) setTicketModalOpen(false);
   }
+  const selection = getSelection();
   const rows = tickets.map((ticket) => {
     const meta = OMEGA_STATUS_META[ticket.status] || { label: ticket.status, tone: 'neutral' };
     const requesterDisplay = resolveRequesterDisplay(ticket) || '—';
@@ -951,15 +1255,27 @@ function renderTable(root, tickets){
     const activeClass = ticket.id === omegaState.selectedTicketId ? ' class="is-active"' : '';
     const ownerLine = ownerName !== 'Sem responsável' ? `${ownerName}${ownerMeta ? ` • ${ownerMeta}` : ''}` : 'Sem responsável';
     const categoryLabel = ticket.category || 'Tipo não informado';
-    return `<tr data-ticket-id="${ticket.id}"${activeClass}>
+    const isSelected = selectionAllowed && selection.has(ticket.id);
+    const selectCell = `<td class="col-select">${selectionAllowed ? `<input type="checkbox" data-omega-select value="${ticket.id}"${isSelected ? ' checked' : ''}/>` : ''}</td>`;
+    const ticketMeta = `<div class="omega-ticket__meta"><span class="omega-ticket__priority"><span class="omega-priority-dot" data-priority="${ticket.priority}"></span>${escapeHTML(priorityMeta.label)}</span><span><i class="ti ti-category"></i>${escapeHTML(categoryLabel)}</span></div>`;
+    const userMetaAttr = selectionAllowed ? ' data-analyst-meta="true"' : '';
+    const requesterLine = selectionAllowed && requesterMetaValue && requesterMetaValue !== '—'
+      ? requesterMetaValue
+      : requesterMetaLabel;
+    const userMeta = selectionAllowed
+      ? `<div class="omega-ticket__meta"${userMetaAttr}><span><i class="ti ti-id-badge"></i>${escapeHTML(requesterLine)}</span><span><i class="ti ti-user-check"></i>${escapeHTML(ownerLine)}</span></div>`
+      : `<div class="omega-ticket__meta"><span><i class="ti ti-user"></i>${escapeHTML(requesterMetaLabel)}</span><span><i class="ti ti-user-check"></i>${escapeHTML(ownerLine)}</span></div>`;
+    const selectedAttr = isSelected ? ' data-selected="true"' : '';
+    return `<tr data-ticket-id="${ticket.id}"${activeClass}${selectedAttr}>
+      ${selectCell}
       <td><span class="omega-ticket__id"><i class="ti ti-ticket"></i>${escapeHTML(ticket.id)}</span></td>
       <td>
         <div class="omega-ticket__title">${escapeHTML(ticket.subject)}</div>
-        <div class="omega-ticket__meta"><span><i class="ti ${priorityMeta.icon}"></i>${escapeHTML(priorityMeta.label)}</span><span><i class="ti ti-category"></i>${escapeHTML(categoryLabel)}</span></div>
+        ${ticketMeta}
       </td>
       <td>
         <div class="omega-ticket__user">${escapeHTML(requesterDisplay)}</div>
-        <div class="omega-ticket__meta"><span><i class="ti ti-user"></i>${escapeHTML(requesterMetaLabel)}</span><span><i class="ti ti-user-check"></i>${escapeHTML(ownerLine)}</span></div>
+        ${userMeta}
       </td>
       <td>${escapeHTML(ticket.product)}</td>
       <td>${escapeHTML(ticket.queue || '—')}</td>
@@ -971,7 +1287,7 @@ function renderTable(root, tickets){
   body.innerHTML = rows;
 }
 
-function renderTicketModal(root, tickets, baseTickets){
+function renderTicketModal(root, tickets, baseTickets, user){
   const modal = root.querySelector('#omega-ticket-modal');
   if (!modal) return;
   if (!omegaState.ticketModalOpen || !omegaState.selectedTicketId) {
@@ -1056,7 +1372,272 @@ function renderTicketModal(root, tickets, baseTickets){
   const timelineHost = modal.querySelector('#omega-ticket-timeline');
   if (timelineHost) timelineHost.innerHTML = buildTicketTimeline(ticket);
 
+  configureTicketActions(modal, ticket, user);
+
   modal.hidden = false;
+}
+
+function renderBulkControls(root, user, tickets){
+  const selectionAllowed = shouldAllowSelection(user);
+  const selection = getSelection();
+  if (selectionAllowed) {
+    const visible = new Set((tickets || []).map((ticket) => ticket.id));
+    Array.from(selection).forEach((id) => {
+      if (!visible.has(id)) selection.delete(id);
+    });
+  }
+  const selectedIds = Array.from(selection);
+  const hasSelection = selectionAllowed && selectedIds.length > 0;
+  const bulkBtn = root.querySelector('#omega-bulk-status');
+  if (bulkBtn) {
+    bulkBtn.hidden = !selectionAllowed;
+    bulkBtn.disabled = !hasSelection;
+  }
+  const panel = root.querySelector('#omega-bulk-panel');
+  if (!selectionAllowed) {
+    omegaState.bulkPanelOpen = false;
+    if (panel) panel.hidden = true;
+  } else {
+    if (!hasSelection) omegaState.bulkPanelOpen = false;
+    if (panel) {
+      const shouldShow = omegaState.bulkPanelOpen && hasSelection;
+      panel.hidden = !shouldShow;
+      if (shouldShow) {
+        populateBulkStatusOptions(root);
+        const hint = panel.querySelector('#omega-bulk-hint');
+        if (hint) {
+          const count = selectedIds.length;
+          hint.textContent = count === 1 ? '1 chamado selecionado' : `${count} chamados selecionados`;
+        }
+      }
+    }
+  }
+  const selectAll = root.querySelector('#omega-select-all');
+  if (selectAll) {
+    if (!selectionAllowed || !tickets.length) {
+      selectAll.checked = false;
+      selectAll.indeterminate = false;
+      selectAll.disabled = true;
+    } else {
+      const selectedCount = tickets.filter((ticket) => selection.has(ticket.id)).length;
+      selectAll.disabled = false;
+      selectAll.checked = selectedCount > 0 && selectedCount === tickets.length;
+      selectAll.indeterminate = selectedCount > 0 && selectedCount < tickets.length;
+    }
+  }
+}
+
+function populateBulkStatusOptions(root){
+  const select = root.querySelector('#omega-bulk-status-select');
+  if (!select) return;
+  const statuses = getOrderedStatuses();
+  select.innerHTML = statuses.map((status) => {
+    const meta = OMEGA_STATUS_META[status] || { label: status };
+    return `<option value="${status}">${escapeHTML(meta.label)}</option>`;
+  }).join('');
+  const current = omegaState.bulkStatus && statuses.includes(omegaState.bulkStatus)
+    ? omegaState.bulkStatus
+    : (statuses[0] || '');
+  select.value = current;
+  omegaState.bulkStatus = current;
+}
+
+function configureTicketActions(modal, ticket, user){
+  if (!modal) return;
+  const section = modal.querySelector('#omega-ticket-actions');
+  if (!section) return;
+  const canEdit = ['analista', 'supervisor', 'admin'].includes(user?.role);
+  const canCancel = user?.id && user.id === ticket.requesterId && !['cancelado', 'resolvido'].includes(ticket.status);
+  const advanced = section.querySelector('#omega-ticket-actions-advanced');
+  const cancelBtn = section.querySelector('#omega-ticket-cancel');
+  const commentInput = section.querySelector('#omega-ticket-update-comment');
+  section.hidden = false;
+  if (advanced) advanced.hidden = !canEdit;
+  if (cancelBtn) {
+    cancelBtn.hidden = !canCancel;
+    cancelBtn.disabled = !canCancel;
+  }
+  if (omegaState.ticketUpdateTicketId !== ticket.id) {
+    initializeTicketUpdateDraft(ticket);
+  }
+  if (!omegaState.ticketUpdate) resetTicketUpdateState();
+  const draft = omegaState.ticketUpdate;
+  if (!draft.status) draft.status = ticket.status || (getOrderedStatuses()[0] || 'aberto');
+  if (!draft.priority) draft.priority = ticket.priority || 'media';
+  if (draft.queue == null) draft.queue = ticket.queue || '';
+  if (draft.category == null) draft.category = ticket.category || '';
+  if (!draft.due) draft.due = formatDateInput(ticket.dueDate);
+  if (!Array.isArray(draft.attachments)) draft.attachments = [];
+
+  const statusSelect = section.querySelector('#omega-ticket-update-status');
+  if (statusSelect) {
+    const statuses = getOrderedStatuses();
+    statusSelect.innerHTML = statuses.map((status) => {
+      const meta = OMEGA_STATUS_META[status] || { label: status };
+      return `<option value="${status}">${escapeHTML(meta.label)}</option>`;
+    }).join('');
+    if (!statuses.includes(draft.status)) draft.status = statuses[0] || draft.status;
+    statusSelect.value = draft.status;
+    statusSelect.disabled = !canEdit;
+  }
+
+  const prioritySelect = section.querySelector('#omega-ticket-update-priority');
+  if (prioritySelect) {
+    prioritySelect.innerHTML = Object.entries(OMEGA_PRIORITY_META).map(([value, meta]) => {
+      return `<option value="${value}">${escapeHTML(meta.label)}</option>`;
+    }).join('');
+    if (!Object.prototype.hasOwnProperty.call(OMEGA_PRIORITY_META, draft.priority)) {
+      draft.priority = ticket.priority || 'media';
+    }
+    prioritySelect.value = draft.priority;
+    prioritySelect.disabled = !canEdit;
+  }
+
+  const queueSelect = section.querySelector('#omega-ticket-update-queue');
+  if (queueSelect) {
+    const departments = Array.from(new Set([
+      ...(getAvailableDepartmentsForUser(user) || []),
+      ticket.queue,
+    ].filter(Boolean)));
+    queueSelect.innerHTML = departments.map((dept) => `<option value="${escapeHTML(dept)}">${escapeHTML(dept)}</option>`).join('');
+    if (departments.length && !departments.includes(draft.queue)) {
+      draft.queue = ticket.queue && departments.includes(ticket.queue) ? ticket.queue : departments[0];
+    }
+    queueSelect.value = draft.queue || '';
+    queueSelect.disabled = !canEdit;
+  }
+
+  const categorySelect = section.querySelector('#omega-ticket-update-category');
+  if (categorySelect) {
+    const categories = Array.from(new Set([
+      ...(getAllTicketCategories() || []),
+      ticket.category,
+    ].filter(Boolean)));
+    categorySelect.innerHTML = categories.map((category) => `<option value="${escapeHTML(category)}">${escapeHTML(category)}</option>`).join('');
+    if (categories.length && !categories.includes(draft.category)) {
+      draft.category = ticket.category && categories.includes(ticket.category) ? ticket.category : categories[0];
+    }
+    categorySelect.value = draft.category || '';
+    categorySelect.disabled = !canEdit;
+  }
+
+  const dueInput = section.querySelector('#omega-ticket-update-due');
+  if (dueInput) {
+    dueInput.value = draft.due || '';
+    dueInput.disabled = !canEdit;
+  }
+
+  if (commentInput && commentInput.value !== draft.comment) {
+    commentInput.value = draft.comment || '';
+  }
+
+  renderTicketUpdateAttachments(section);
+}
+
+function handleTicketUpdateSubmit(form){
+  const ticketId = omegaState.selectedTicketId;
+  if (!ticketId) return;
+  const ticket = OMEGA_TICKETS.find((item) => item.id === ticketId);
+  if (!ticket) return;
+  const user = getCurrentUser();
+  const draft = omegaState.ticketUpdate || {};
+  const commentInput = form.querySelector('#omega-ticket-update-comment');
+  const comment = commentInput?.value?.trim() || '';
+  if (!comment) {
+    commentInput?.focus();
+    return;
+  }
+  const canEdit = ['analista', 'supervisor', 'admin'].includes(user?.role);
+  const statuses = getOrderedStatuses();
+  const newStatus = draft.status && statuses.includes(draft.status) ? draft.status : ticket.status;
+  const newPriority = draft.priority && OMEGA_PRIORITY_META[draft.priority] ? draft.priority : ticket.priority;
+  const newQueue = draft.queue || ticket.queue;
+  const newCategory = draft.category || ticket.category;
+  const newDue = draft.due ? `${draft.due}T00:00:00` : null;
+  const attachments = Array.isArray(draft.attachments) ? draft.attachments : [];
+  const now = new Date().toISOString();
+
+  const previousStatus = ticket.status;
+  if (canEdit) {
+    ticket.status = newStatus;
+    ticket.priority = newPriority;
+    ticket.queue = newQueue;
+    ticket.category = newCategory;
+    ticket.dueDate = newDue;
+  }
+  ticket.updated = now;
+  if (!Array.isArray(ticket.history)) ticket.history = [];
+  const statusMeta = OMEGA_STATUS_META[ticket.status] || { label: ticket.status };
+  const actionLabel = canEdit && draft.status && draft.status !== previousStatus
+    ? `Situação atualizada para ${statusMeta.label}`
+    : 'Atualização registrada';
+  ticket.history.push({
+    date: now,
+    actorId: user?.id || '',
+    action: actionLabel,
+    comment,
+    status: ticket.status,
+    attachments: attachments.map((item) => ({ id: item.id, name: item.name })),
+  });
+  if (attachments.length) {
+    const names = attachments.map((item) => item.name);
+    ticket.attachments = Array.isArray(ticket.attachments)
+      ? [...ticket.attachments, ...names]
+      : [...names];
+  }
+  initializeTicketUpdateDraft(ticket);
+  renderOmega();
+}
+
+function handleTicketCancel(){
+  const ticketId = omegaState.selectedTicketId;
+  if (!ticketId) return;
+  const ticket = OMEGA_TICKETS.find((item) => item.id === ticketId);
+  if (!ticket) return;
+  const user = getCurrentUser();
+  if (!user || user.id !== ticket.requesterId) return;
+  if (!window.confirm('Deseja realmente cancelar este chamado?')) return;
+  const now = new Date().toISOString();
+  ticket.status = 'cancelado';
+  ticket.updated = now;
+  if (!Array.isArray(ticket.history)) ticket.history = [];
+  ticket.history.push({
+    date: now,
+    actorId: user.id,
+    action: 'Chamado cancelado pelo solicitante',
+    comment: '',
+    status: 'cancelado',
+    attachments: [],
+  });
+  initializeTicketUpdateDraft(ticket);
+  renderOmega();
+}
+
+function handleBulkStatusSubmit(status){
+  const statuses = getOrderedStatuses();
+  if (!status || !statuses.includes(status)) return;
+  const selection = Array.from(getSelection());
+  if (!selection.length) return;
+  const user = getCurrentUser();
+  const now = new Date().toISOString();
+  selection.forEach((id) => {
+    const ticket = OMEGA_TICKETS.find((item) => item.id === id);
+    if (!ticket) return;
+    ticket.status = status;
+    ticket.updated = now;
+    if (!Array.isArray(ticket.history)) ticket.history = [];
+    const meta = OMEGA_STATUS_META[status] || { label: status };
+    ticket.history.push({
+      date: now,
+      actorId: user?.id || '',
+      action: `Situação atualizada em lote para ${meta.label}`,
+      comment: '',
+      status,
+      attachments: [],
+    });
+  });
+  omegaState.bulkPanelOpen = false;
+  renderOmega();
 }
 
 function buildTicketMeta(ticket){
@@ -1069,7 +1650,7 @@ function buildTicketMeta(ticket){
 }
 
 function buildTicketProgress(status){
-  const order = ['aberto', 'aguardando', 'em_atendimento', 'resolvido', 'cancelado'];
+  const order = getOrderedStatuses();
   const currentIndex = order.indexOf(status);
   return order.map((step, index) => {
     let state = 'pending';
@@ -1097,23 +1678,29 @@ function buildTicketTimeline(ticket){
     const statusMeta = OMEGA_STATUS_META[entry.status] || { label: entry.status, tone: 'neutral' };
     const action = entry.action ? `<p>${escapeHTML(entry.action)}</p>` : '';
     const comment = entry.comment ? `<p>${escapeHTML(entry.comment)}</p>` : '';
+    const attachments = Array.isArray(entry.attachments) && entry.attachments.length
+      ? `<ul class="omega-timeline__attachments">${entry.attachments.map((item) => {
+          const name = typeof item === 'string' ? item : (item?.name || 'Arquivo');
+          return `<li><i class="ti ti-paperclip"></i>${escapeHTML(name)}</li>`;
+        }).join('')}</ul>`
+      : '';
     return `<li class="omega-timeline__item" data-side="${side}">
       <div class="omega-timeline__content">
         <div class="omega-timeline__heading"><strong>${escapeHTML(actorName)}</strong><span class="omega-status-badge" data-tone="${statusMeta.tone}">${escapeHTML(statusMeta.label)}</span></div>
         <time datetime="${escapeHTML(entry.date)}">${formatDateTime(entry.date, { withTime: true })}</time>
-        ${action}${comment}
+        ${action}${comment}${attachments}
       </div>
     </li>`;
   }).join('');
 }
 
 function resolveTimelineSide(ticket, actorId){
-  if (!ticket || !actorId) return 'atendente';
+  if (!ticket || !actorId) return 'analista';
   if (actorId === ticket.requesterId) return 'usuario';
   const user = OMEGA_USERS.find((item) => item.id === actorId);
-  if (!user) return 'atendente';
-  const isOnlyUser = user.roles?.usuario && !user.roles.atendente && !user.roles.supervisor && !user.roles.admin;
-  return isOnlyUser ? 'usuario' : 'atendente';
+  if (!user) return 'analista';
+  const isOnlyUser = user.roles?.usuario && !user.roles.analista && !user.roles.supervisor && !user.roles.admin;
+  return isOnlyUser ? 'usuario' : 'analista';
 }
 
 function openTicketDetail(ticketId){
@@ -1148,6 +1735,9 @@ function filterTicketsByView(tickets, user){
   const queues = Array.isArray(user.queues) ? user.queues : [];
   if (omegaState.view === 'my') {
     return tickets.filter((ticket) => ticket.requesterId === user.id || ticket.ownerId === user.id);
+  }
+  if (omegaState.view === 'assigned') {
+    return tickets.filter((ticket) => ticket.ownerId === user.id);
   }
   if (omegaState.view === 'queue') {
     if (!queues.length) {
@@ -1184,6 +1774,7 @@ function applyAdvancedFilters(tickets){
   const idTerm = normalizeText(filters.id || '');
   const requesterTerm = normalizeText(filters.requester || '');
   const typeTerm = normalizeText(filters.type || '');
+  const priorityTerm = (filters.priority || '').trim();
   const departments = Array.isArray(filters.departments) ? filters.departments.filter(Boolean) : [];
   const openedFrom = filters.openedFrom ? new Date(`${filters.openedFrom}T00:00:00`) : null;
   const openedTo = filters.openedTo ? new Date(`${filters.openedTo}T23:59:59`) : null;
@@ -1194,6 +1785,7 @@ function applyAdvancedFilters(tickets){
     if (idTerm && !normalizeText(ticket.id).includes(idTerm)) return false;
     if (departments.length && !departments.includes(ticket.queue)) return false;
     if (typeTerm && normalizeText(ticket.category) !== typeTerm) return false;
+    if (priorityTerm && ticket.priority !== priorityTerm) return false;
     if (requesterTerm) {
       const requesterTokens = [
         normalizeText(resolveRequesterDisplay(ticket)),
@@ -1436,6 +2028,84 @@ function removeFormAttachment(root, attachmentId){
   renderFormAttachments(root);
 }
 
+function resetTicketUpdateState(){
+  omegaState.ticketUpdate = {
+    comment: '',
+    status: '',
+    priority: '',
+    queue: '',
+    category: '',
+    due: '',
+    attachments: [],
+  };
+  omegaState.ticketUpdateTicketId = null;
+}
+
+function initializeTicketUpdateDraft(ticket){
+  if (!ticket) {
+    resetTicketUpdateState();
+    return;
+  }
+  const statuses = getOrderedStatuses();
+  omegaState.ticketUpdateTicketId = ticket.id;
+  omegaState.ticketUpdate = {
+    comment: '',
+    status: ticket.status && statuses.includes(ticket.status) ? ticket.status : (statuses[0] || 'aberto'),
+    priority: ticket.priority || 'media',
+    queue: ticket.queue || '',
+    category: ticket.category || '',
+    due: formatDateInput(ticket.dueDate),
+    attachments: [],
+  };
+}
+
+function renderTicketUpdateAttachments(container){
+  if (!container) return;
+  const list = container.querySelector('#omega-ticket-update-attachments');
+  if (!list) return;
+  const attachments = Array.isArray(omegaState.ticketUpdate?.attachments) ? omegaState.ticketUpdate.attachments : [];
+  if (!attachments.length) {
+    list.innerHTML = '<li class="omega-attachments__empty">Nenhum arquivo anexado</li>';
+    return;
+  }
+  list.innerHTML = attachments.map((item) => {
+    const size = item.size ? `<span class="omega-attachments__size">${escapeHTML(formatFileSize(item.size))}</span>` : '';
+    return `<li class="omega-attachments__item" data-attachment-id="${escapeHTML(item.id)}">
+      <div class="omega-attachments__meta">
+        <i class="ti ti-paperclip" aria-hidden="true"></i>
+        <span class="omega-attachments__name">${escapeHTML(item.name)}</span>
+        ${size}
+      </div>
+      <button type="button" class="omega-attachments__remove" data-omega-remove-update-attachment="${escapeHTML(item.id)}" aria-label="Remover ${escapeHTML(item.name)}">
+        <i class="ti ti-x" aria-hidden="true"></i>
+      </button>
+    </li>`;
+  }).join('');
+}
+
+function addTicketUpdateAttachments(container, fileList){
+  if (!fileList || !fileList.length) return;
+  if (!Array.isArray(omegaState.ticketUpdate?.attachments)) {
+    if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
+    omegaState.ticketUpdate.attachments = [];
+  }
+  const entries = Array.from(fileList).filter(Boolean).map((file) => ({
+    id: createLocalId('upd'),
+    name: file.name || 'Arquivo sem nome',
+    size: Number.isFinite(file.size) ? file.size : null,
+    file,
+  }));
+  if (!entries.length) return;
+  omegaState.ticketUpdate.attachments = [...omegaState.ticketUpdate.attachments, ...entries];
+  renderTicketUpdateAttachments(container);
+}
+
+function removeTicketUpdateAttachment(container, attachmentId){
+  if (!attachmentId || !Array.isArray(omegaState.ticketUpdate?.attachments)) return;
+  omegaState.ticketUpdate.attachments = omegaState.ticketUpdate.attachments.filter((item) => item.id !== attachmentId);
+  renderTicketUpdateAttachments(container);
+}
+
 function formatDateTime(value, { withTime = false } = {}){
   if (!value) return '—';
   const date = new Date(value);
@@ -1446,6 +2116,19 @@ function formatDateTime(value, { withTime = false } = {}){
     options.minute = '2-digit';
   }
   return new Intl.DateTimeFormat('pt-BR', options).format(date);
+}
+
+function formatDateInput(value){
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    const direct = value.toString().slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(direct) ? direct : '';
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function setDrawerOpen(open){
@@ -1471,6 +2154,7 @@ function setTicketModalOpen(open){
   if (!modal) return;
   if (!omegaState.ticketModalOpen) {
     modal.hidden = true;
+    resetTicketUpdateState();
   }
 }
 
@@ -1501,7 +2185,7 @@ function populateUserSelect(root){
     select.innerHTML = '';
     return;
   }
-  const order = { usuario: 0, atendente: 1, supervisor: 2, admin: 3 };
+  const order = { usuario: 0, analista: 1, supervisor: 2, admin: 3 };
   const options = [...OMEGA_USERS].sort((a, b) => {
     const roleDiff = (order[a.role] ?? 10) - (order[b.role] ?? 10);
     if (roleDiff !== 0) return roleDiff;
@@ -1646,7 +2330,7 @@ function handleNewTicketSubmit(form){
   const productMeta = OMEGA_PRODUCT_CATALOG.find((item) => item.id === productId) || { label: productId, family: '', section: '' };
   const now = new Date();
   omegaTicketCounter += 1;
-  const ticketId = `OME-${now.getFullYear()}-${String(omegaTicketCounter).padStart(4, '0')}`;
+  const ticketId = String(omegaTicketCounter);
   const user = getCurrentUser();
   const detail = omegaState.contextDetail;
   const context = {
@@ -1676,7 +2360,7 @@ function handleNewTicketSubmit(form){
     opened: now.toISOString(),
     updated: now.toISOString(),
     requesterId: user.id,
-    ownerId: ['atendente', 'supervisor', 'admin'].includes(user.role) ? user.id : null,
+    ownerId: ['analista', 'supervisor', 'admin'].includes(user.role) ? user.id : null,
     teamId: user.teamId || null,
     context,
     attachments,

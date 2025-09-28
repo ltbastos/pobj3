@@ -97,6 +97,12 @@
                           <span class="omega-field__label">Tipo de chamado</span>
                           <select id="omega-filter-type" class="omega-select"></select>
                         </label>
+                        <label class="omega-field" for="omega-filter-priority">
+                          <span class="omega-field__label">Prioridade</span>
+                          <select id="omega-filter-priority" class="omega-select">
+                            <option value="">Todas</option>
+                          </select>
+                        </label>
                         <fieldset class="omega-field omega-filter-form__status" aria-describedby="omega-filter-status-hint">
                           <span class="omega-field__label">Situação do chamado</span>
                           <div id="omega-filter-status" class="omega-filter-status"></div>
@@ -124,6 +130,10 @@
                   </div>
                 </div>
               </div>
+              <button id="omega-bulk-status" class="omega-btn omega-btn--ghost" type="button" hidden>
+                <i class="ti ti-arrows-exchange"></i>
+                <span>Alterar situação</span>
+              </button>
               <button id="omega-new-ticket" class="omega-btn omega-btn--primary" type="button">
                 <i class="ti ti-plus"></i>
                 <span>Registrar chamado</span>
@@ -131,14 +141,40 @@
             </div>
           </div>
 
+          <div id="omega-bulk-panel" class="omega-bulk-panel" role="dialog" aria-modal="false" hidden>
+            <form id="omega-bulk-form" class="omega-bulk-form">
+              <header class="omega-bulk-form__header">
+                <strong>Alterar situação</strong>
+                <button type="button" class="omega-icon-btn" id="omega-bulk-close" aria-label="Fechar">
+                  <i class="ti ti-x"></i>
+                </button>
+              </header>
+              <p id="omega-bulk-hint">Selecione os chamados desejados para aplicar a nova situação.</p>
+              <label class="omega-field" for="omega-bulk-status-select">
+                <span class="omega-field__label">Nova situação</span>
+                <select id="omega-bulk-status-select" class="omega-select" required></select>
+              </label>
+              <footer class="omega-bulk-form__actions">
+                <button type="button" class="omega-btn omega-btn--ghost" id="omega-bulk-cancel">Cancelar</button>
+                <button type="submit" class="omega-btn omega-btn--primary">
+                  <i class="ti ti-check"></i>
+                  <span>Aplicar</span>
+                </button>
+              </footer>
+            </form>
+          </div>
+
           <div id="omega-summary" class="omega-summary" aria-live="polite"></div>
 
           <div class="omega-main__content">
             <div id="omega-table-wrapper" class="omega-table-wrapper" role="region" aria-labelledby="omega-table-caption">
-              <table class="omega-table">
+              <table class="omega-table" id="omega-ticket-table">
                 <caption id="omega-table-caption" class="sr-only">Chamados filtrados pela visão atual</caption>
                 <thead>
                   <tr>
+                    <th scope="col" class="col-select" aria-label="Selecionar">
+                      <input id="omega-select-all" type="checkbox" aria-label="Selecionar todos"/>
+                    </th>
                     <th scope="col">ID</th>
                     <th scope="col">Chamado</th>
                     <th scope="col">Usuário</th>
@@ -286,6 +322,63 @@
             <section class="omega-ticket-timeline" aria-labelledby="omega-ticket-timeline-title">
               <h4 id="omega-ticket-timeline-title">Linha do tempo</h4>
               <ol id="omega-ticket-timeline" class="omega-timeline"></ol>
+            </section>
+            <section id="omega-ticket-actions" class="omega-ticket-actions" aria-labelledby="omega-ticket-actions-title" hidden>
+              <h4 id="omega-ticket-actions-title">Registrar atualização</h4>
+              <form id="omega-ticket-update-form" class="omega-ticket-actions__form">
+                <div id="omega-ticket-actions-advanced" class="omega-ticket-actions__advanced" hidden>
+                  <label class="omega-field" for="omega-ticket-update-status">
+                    <span class="omega-field__label">Situação</span>
+                    <select id="omega-ticket-update-status" class="omega-select"></select>
+                  </label>
+                  <label class="omega-field" for="omega-ticket-update-priority">
+                    <span class="omega-field__label">Prioridade</span>
+                    <select id="omega-ticket-update-priority" class="omega-select"></select>
+                  </label>
+                  <label class="omega-field" for="omega-ticket-update-queue">
+                    <span class="omega-field__label">Fila</span>
+                    <select id="omega-ticket-update-queue" class="omega-select"></select>
+                  </label>
+                  <label class="omega-field" for="omega-ticket-update-category">
+                    <span class="omega-field__label">Tipo de chamado</span>
+                    <select id="omega-ticket-update-category" class="omega-select"></select>
+                  </label>
+                  <label class="omega-field" for="omega-ticket-update-due">
+                    <span class="omega-field__label">Prazo</span>
+                    <input id="omega-ticket-update-due" class="omega-input" type="date"/>
+                  </label>
+                </div>
+                <label class="omega-field" for="omega-ticket-update-comment">
+                  <span class="omega-field__label">Comentário</span>
+                  <textarea id="omega-ticket-update-comment" class="omega-textarea" rows="4" placeholder="Descreva o andamento" required></textarea>
+                </label>
+                <div class="omega-field omega-field--attachments">
+                  <span class="omega-field__label" id="omega-ticket-update-file-label">Anexos</span>
+                  <input id="omega-ticket-update-file" class="sr-only" type="file" multiple aria-labelledby="omega-ticket-update-file-label"/>
+                  <div class="omega-attachments">
+                    <div class="omega-attachments__actions">
+                      <button class="omega-btn" type="button" data-omega-ticket-add-file>
+                        <i class="ti ti-paperclip"></i>
+                        <span>Adicionar arquivo</span>
+                      </button>
+                    </div>
+                    <ul id="omega-ticket-update-attachments" class="omega-attachments__list" aria-live="polite"></ul>
+                  </div>
+                </div>
+                <footer class="omega-ticket-actions__footer">
+                  <button id="omega-ticket-cancel" class="omega-btn omega-btn--danger" type="button" hidden>
+                    <i class="ti ti-circle-x"></i>
+                    <span>Cancelar chamado</span>
+                  </button>
+                  <div class="omega-ticket-actions__controls">
+                    <button id="omega-ticket-update-reset" class="omega-btn omega-btn--ghost" type="button">Limpar</button>
+                    <button class="omega-btn omega-btn--primary" type="submit">
+                      <i class="ti ti-message-plus"></i>
+                      <span>Registrar atualização</span>
+                    </button>
+                  </div>
+                </footer>
+              </form>
             </section>
           </div>
         </section>
