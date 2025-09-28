@@ -59,13 +59,26 @@ const OMEGA_TOAST_ICONS = {
   danger: "ti ti-alert-circle",
 };
 
+const OMEGA_STATUS_GLOBAL_DEPARTMENT = "0";
+
 const OMEGA_DEFAULT_STATUSES = [
-  { id: "aberto", label: "Aberto", tone: "neutral" },
-  { id: "aguardando", label: "Aguardando", tone: "warning" },
-  { id: "em_atendimento", label: "Em atendimento", tone: "progress" },
-  { id: "resolvido", label: "Resolvido", tone: "success" },
-  { id: "cancelado", label: "Cancelado", tone: "danger" },
+  { id: "aberto", label: "Aberto", tone: "neutral", departmentId: OMEGA_STATUS_GLOBAL_DEPARTMENT },
+  { id: "aguardando", label: "Aguardando", tone: "warning", departmentId: OMEGA_STATUS_GLOBAL_DEPARTMENT },
+  { id: "em_atendimento", label: "Em atendimento", tone: "progress", departmentId: OMEGA_STATUS_GLOBAL_DEPARTMENT },
+  { id: "resolvido", label: "Resolvido", tone: "success", departmentId: OMEGA_STATUS_GLOBAL_DEPARTMENT },
+  { id: "cancelado", label: "Cancelado", tone: "danger", departmentId: OMEGA_STATUS_GLOBAL_DEPARTMENT },
 ];
+
+const OMEGA_STATUS_TONE_OPTIONS = ["neutral", "info", "progress", "success", "warning", "danger"];
+
+const OMEGA_STATUS_TONE_LABELS = {
+  neutral: "Neutro",
+  info: "Informativo",
+  progress: "Em andamento",
+  success: "Sucesso",
+  warning: "Alerta",
+  danger: "Crítico",
+};
 
 const OMEGA_STRUCTURE_SOURCE = "Bases/dEstruturaChamados.csv";
 
@@ -77,6 +90,17 @@ const OMEGA_QUEUE_FIELD_MAP = {
   Matriz: "matriz",
   Outros: "outros",
 };
+
+const OMEGA_FALLBACK_DEPARTMENT_IDS = {
+  Encarteiramento: "1",
+  Metas: "2",
+  "Orçamento": "3",
+  POBJ: "4",
+  Matriz: "5",
+  Outros: "6",
+};
+
+const OMEGA_DEPARTMENT_META = new Map();
 
 const OMEGA_STRUCTURE_FALLBACK = {
   Encarteiramento: [
@@ -176,6 +200,7 @@ const OMEGA_USER_METADATA = {
   "usr-10": { avatar: "https://i.pravatar.cc/160?img=52", teamId: "pobj" },
   "usr-11": { avatar: "https://i.pravatar.cc/160?img=64", teamId: "orcamento" },
   "usr-12": { avatar: "https://i.pravatar.cc/160?img=57", teamId: "matriz" },
+  "usr-13": { avatar: "https://i.pravatar.cc/160?img=77", teamId: "pobj" },
 };
 
 let OMEGA_USERS = [];
@@ -202,6 +227,13 @@ const omegaState = {
   openNavParents: new Set(),
   drawerOpen: false,
   sidebarCollapsed: false,
+  manageAnalystOpen: false,
+  manageStatusOpen: false,
+  manageAnalystId: null,
+  manageStatus: {
+    departmentId: "",
+    statusId: "",
+  },
   pendingNewTicket: null,
   prefillDepartment: "",
   ticketModalOpen: false,
@@ -365,22 +397,57 @@ function ensureOmegaStatuses(){
 
 function applyStatusCatalog(entries){
   const catalog = Array.isArray(entries) ? entries : [];
-  if (!catalog.length) {
-    OMEGA_STATUS_CATALOG = [...OMEGA_DEFAULT_STATUSES];
-  } else {
-    OMEGA_STATUS_CATALOG = catalog.map((item) => ({
+  let normalized = catalog
+    .map((item, index) => {
+      if (!item) return null;
+      const rawId = (item.id || item.status_id || item.ID || item.codigo || '').toString().trim();
+      const id = rawId ? normalizeStatusId(rawId) : '';
+      if (!id) return null;
+      const label = (item.label || item.nome || item.descricao || rawId || id).toString().trim() || id;
+      const toneRaw = (item.tone || item.cor || '').toString().trim().toLowerCase();
+      const tone = OMEGA_STATUS_TONE_OPTIONS.includes(toneRaw) ? toneRaw : 'neutral';
+      const orderValue = Number.parseFloat(item.order ?? item.ordem ?? item.posicao ?? index + 1);
+      const order = Number.isFinite(orderValue) ? orderValue : index + 1;
+      const description = (item.description || item.descricao || '').toString().trim();
+      const departmentIdRaw = (item.departmentId || item.departamento_id || item.queue_id || '').toString().trim();
+      const departmentId = departmentIdRaw || OMEGA_STATUS_GLOBAL_DEPARTMENT;
+      return { id, label, tone, description, order, departmentId };
+    })
+    .filter(Boolean);
+
+  if (!normalized.length) {
+    normalized = OMEGA_DEFAULT_STATUSES.map((item, index) => ({
       id: item.id,
       label: item.label,
       tone: item.tone || 'neutral',
       description: item.description || '',
+      order: index + 1,
+      departmentId: item.departmentId || OMEGA_STATUS_GLOBAL_DEPARTMENT,
     }));
+  } else {
+    normalized.sort((a, b) => {
+      const diff = (a.order ?? 0) - (b.order ?? 0);
+      if (diff !== 0) return diff;
+      return a.label.localeCompare(b.label, 'pt-BR');
+    });
   }
+
+  OMEGA_STATUS_CATALOG = normalized;
   const meta = {};
   const order = ['todos'];
-  OMEGA_STATUS_CATALOG.forEach((entry) => {
+  const seen = new Set();
+  normalized.forEach((entry) => {
     if (!entry?.id) return;
-    meta[entry.id] = { label: entry.label, tone: entry.tone || 'neutral', description: entry.description || '' };
-    order.push(entry.id);
+    meta[entry.id] = {
+      label: entry.label,
+      tone: entry.tone || 'neutral',
+      description: entry.description || '',
+      departmentId: entry.departmentId || OMEGA_STATUS_GLOBAL_DEPARTMENT,
+    };
+    if (!seen.has(entry.id)) {
+      order.push(entry.id);
+      seen.add(entry.id);
+    }
   });
   OMEGA_STATUS_META = meta;
   OMEGA_STATUS_ORDER = order;
@@ -389,15 +456,18 @@ function applyStatusCatalog(entries){
 function normalizeOmegaStatusRows(rows){
   return rows
     .map((row, index) => {
-      const rawId = (row.id || row.ID || row.codigo || '').trim();
+      const rawId = (row.status_id || row.id || row.ID || row.codigo || '').toString().trim();
       const id = rawId ? normalizeStatusId(rawId) : '';
       if (!id) return null;
-      const label = (row.label || row.nome || row.descricao || '').trim() || rawId || id;
-      const tone = (row.tone || row.cor || '').trim().toLowerCase() || 'neutral';
-      const ordem = parseInt(row.ordem || row.order || index + 1, 10);
+      const label = (row.label || row.nome || row.descricao || rawId || id).toString().trim() || id;
+      const toneRaw = (row.tone || row.cor || '').toString().trim().toLowerCase();
+      const tone = OMEGA_STATUS_TONE_OPTIONS.includes(toneRaw) ? toneRaw : 'neutral';
+      const ordem = Number.parseInt(row.ordem || row.order || row.posicao || index + 1, 10);
       const order = Number.isFinite(ordem) ? ordem : index + 1;
-      const description = (row.descricao || row.description || '').trim();
-      return { id, label, tone, order, description };
+      const description = (row.descricao || row.description || '').toString().trim();
+      const departmentIdRaw = (row.departamento_id || row.department_id || row.queue_id || '').toString().trim();
+      const departmentId = departmentIdRaw || OMEGA_STATUS_GLOBAL_DEPARTMENT;
+      return { id, label, tone, order, description, departmentId };
     })
     .filter(Boolean)
     .sort((a, b) => {
@@ -415,6 +485,21 @@ function normalizeStatusId(value){
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
     || 'aberto';
+}
+
+function getDepartmentIdByName(name){
+  if (!name) return '';
+  const meta = OMEGA_DEPARTMENT_META.get(name);
+  return (meta?.id || '').toString();
+}
+
+function getDepartmentNameById(id){
+  if (!id) return '';
+  const target = id.toString();
+  for (const [name, meta] of OMEGA_DEPARTMENT_META.entries()) {
+    if ((meta?.id || '').toString() === target) return name;
+  }
+  return '';
 }
 
 function getOrderedStatuses(){
@@ -481,8 +566,12 @@ function expandNavForView(viewId){
 
 function shouldAllowSelection(user){
   if (!user) return false;
-  if (normalizeViewId(omegaState.view) !== 'assigned') return false;
-  return ['analista', 'supervisor', 'admin'].includes(user.role);
+  const view = normalizeViewId(omegaState.view);
+  const privilegedRoles = ['analista', 'supervisor', 'admin'];
+  if (!privilegedRoles.includes(user.role)) return false;
+  if (view === 'team') return ['supervisor', 'admin'].includes(user.role);
+  const allowedViews = ['my', 'assigned', 'queue', 'admin'];
+  return allowedViews.includes(view);
 }
 
 function fallbackLoadCsv(path){
@@ -530,6 +619,7 @@ function simpleCsvParse(text){
 
 function applyOmegaStructureCatalog(rows){
   const normalized = Array.isArray(rows) ? rows : [];
+  OMEGA_DEPARTMENT_META.clear();
   const departmentMap = new Map();
   normalized.forEach((row) => {
     const department = (row.departamento || row.department || row.queue || '').trim();
@@ -537,16 +627,22 @@ function applyOmegaStructureCatalog(rows){
     const departmentOrderRaw = Number.parseFloat(row.ordem_departamento ?? row.departamento_ordem ?? row.order_department ?? '');
     const typeLabel = (row.tipo || row.type || row.category || '').trim();
     const typeOrderRaw = Number.parseFloat(row.ordem_tipo ?? row.order_tipo ?? row.ordem_type ?? '');
+    const departmentIdRaw = (row.departamento_id || row.department_id || row.queue_id || row.id || '').toString().trim();
+    const departmentId = departmentIdRaw || OMEGA_FALLBACK_DEPARTMENT_IDS[department] || '';
     let entry = departmentMap.get(department);
     if (!entry) {
       entry = {
         order: Number.isFinite(departmentOrderRaw) ? departmentOrderRaw : Number.POSITIVE_INFINITY,
         types: [],
         seen: new Set(),
+        id: departmentId,
       };
       departmentMap.set(department, entry);
-    } else if (Number.isFinite(departmentOrderRaw) && departmentOrderRaw < entry.order) {
-      entry.order = departmentOrderRaw;
+    } else {
+      if (Number.isFinite(departmentOrderRaw) && departmentOrderRaw < entry.order) {
+        entry.order = departmentOrderRaw;
+      }
+      if (departmentId && !entry.id) entry.id = departmentId;
     }
     if (!typeLabel) return;
     const typeKey = normalizeText(typeLabel);
@@ -561,6 +657,10 @@ function applyOmegaStructureCatalog(rows){
       Object.entries(OMEGA_STRUCTURE_FALLBACK).map(([queue, items]) => [queue, [...items]])
     );
     OMEGA_QUEUE_OPTIONS = Object.keys(OMEGA_TICKET_TYPES_BY_DEPARTMENT);
+    OMEGA_QUEUE_OPTIONS.forEach((queue, index) => {
+      const fallbackId = OMEGA_FALLBACK_DEPARTMENT_IDS[queue] ?? String(index + 1);
+      OMEGA_DEPARTMENT_META.set(queue, { id: fallbackId });
+    });
     omegaStructureReady = true;
     reconcileTicketsWithCatalog();
     return;
@@ -577,13 +677,16 @@ function applyOmegaStructureCatalog(rows){
 
   OMEGA_QUEUE_OPTIONS = sortedDepartments.map(([department]) => department);
   OMEGA_TICKET_TYPES_BY_DEPARTMENT = Object.fromEntries(
-    sortedDepartments.map(([department, meta]) => {
+    sortedDepartments.map(([department, meta], index) => {
       const types = meta.types
         .sort((a, b) => {
           if (a.order !== b.order) return a.order - b.order;
           return a.label.localeCompare(b.label, 'pt-BR');
         })
         .map((item) => item.label);
+      const fallbackId = OMEGA_FALLBACK_DEPARTMENT_IDS[department] ?? String(index + 1);
+      const departmentId = meta.id || fallbackId;
+      OMEGA_DEPARTMENT_META.set(department, { id: departmentId });
       return [department, types];
     })
   );
@@ -871,6 +974,8 @@ function closeOmega(){
   setDrawerOpen(false);
   setTicketModalOpen(false);
   setFilterPanelOpen(false);
+  setManageAnalystOpen(false);
+  setManageStatusOpen(false);
   omegaState.pendingNewTicket = null;
   omegaState.prefillDepartment = '';
   root.hidden = true;
@@ -895,6 +1000,18 @@ function setupOmegaModule(root){
   root.querySelectorAll('[data-omega-drawer-close]').forEach((btn) => {
     btn.addEventListener('click', () => setDrawerOpen(false));
   });
+
+  root.querySelectorAll('[data-omega-manage-analyst-close]').forEach((btn) => {
+    btn.addEventListener('click', () => setManageAnalystOpen(false));
+  });
+  const manageAnalystOverlay = root.querySelector('#omega-manage-analyst .omega-manage-modal__overlay');
+  manageAnalystOverlay?.addEventListener('click', () => setManageAnalystOpen(false));
+
+  root.querySelectorAll('[data-omega-manage-status-close]').forEach((btn) => {
+    btn.addEventListener('click', () => setManageStatusOpen(false));
+  });
+  const manageStatusOverlay = root.querySelector('#omega-manage-status .omega-manage-modal__overlay');
+  manageStatusOverlay?.addEventListener('click', () => setManageStatusOpen(false));
 
   const sidebarToggle = root.querySelector('#omega-sidebar-toggle');
   sidebarToggle?.addEventListener('click', () => {
@@ -940,6 +1057,30 @@ function setupOmegaModule(root){
     const openSet = getOpenNavSet();
     let shouldRender = false;
 
+    if (view === 'team-edit-analyst') {
+      if (parentId) openSet.add(parentId);
+      setManageAnalystOpen(true);
+      omegaState.view = 'team';
+      omegaState.selectedTicketId = null;
+      clearSelection();
+      omegaState.bulkPanelOpen = false;
+      expandNavForView('team');
+      renderOmega();
+      return;
+    }
+
+    if (view === 'team-edit-status') {
+      if (parentId) openSet.add(parentId);
+      setManageStatusOpen(true);
+      omegaState.view = 'team';
+      omegaState.selectedTicketId = null;
+      clearSelection();
+      omegaState.bulkPanelOpen = false;
+      expandNavForView('team');
+      renderOmega();
+      return;
+    }
+
     if (hasChildren) {
       const isExpanded = openSet.has(view);
       if (!isExpanded) {
@@ -954,6 +1095,8 @@ function setupOmegaModule(root){
     }
 
     if (omegaState.view !== view) {
+      setManageAnalystOpen(false);
+      setManageStatusOpen(false);
       omegaState.view = view;
       omegaState.selectedTicketId = null;
       clearSelection();
@@ -1090,6 +1233,40 @@ function setupOmegaModule(root){
     configureTicketActions(modal, ticket, getCurrentUser());
   });
 
+  const manageAnalystForm = root.querySelector('#omega-manage-analyst-form');
+  manageAnalystForm?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    handleManageAnalystSubmit(manageAnalystForm);
+  });
+  const manageAnalystSelect = root.querySelector('#omega-manage-analyst-select');
+  manageAnalystSelect?.addEventListener('change', (ev) => {
+    omegaState.manageAnalystId = ev.target.value || null;
+    populateManageAnalystModal(root, getCurrentUser());
+  });
+
+  const manageStatusForm = root.querySelector('#omega-manage-status-form');
+  manageStatusForm?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    handleManageStatusSubmit(manageStatusForm);
+  });
+  const manageStatusDepartment = root.querySelector('#omega-manage-status-department');
+  manageStatusDepartment?.addEventListener('change', (ev) => {
+    if (!omegaState.manageStatus || typeof omegaState.manageStatus !== 'object') {
+      omegaState.manageStatus = { departmentId: '', statusId: '' };
+    }
+    omegaState.manageStatus.departmentId = ev.target.value || '';
+    omegaState.manageStatus.statusId = '';
+    populateManageStatusModal(root, getCurrentUser());
+  });
+  const manageStatusSelect = root.querySelector('#omega-manage-status-select');
+  manageStatusSelect?.addEventListener('change', (ev) => {
+    if (!omegaState.manageStatus || typeof omegaState.manageStatus !== 'object') {
+      omegaState.manageStatus = { departmentId: '', statusId: '' };
+    }
+    omegaState.manageStatus.statusId = ev.target.value || '';
+    populateManageStatusModal(root, getCurrentUser());
+  });
+
   const ticketComment = root.querySelector('#omega-ticket-update-comment');
   ticketComment?.addEventListener('input', (ev) => {
     if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
@@ -1209,7 +1386,13 @@ function handleOmegaKeydown(ev){
   const root = document.getElementById('omega-modal');
   if (!root || root.hidden) return;
   if (ev.key === 'Escape') {
-    if (omegaState.drawerOpen) {
+    if (omegaState.manageStatusOpen) {
+      setManageStatusOpen(false);
+      ev.stopPropagation();
+    } else if (omegaState.manageAnalystOpen) {
+      setManageAnalystOpen(false);
+      ev.stopPropagation();
+    } else if (omegaState.drawerOpen) {
       setDrawerOpen(false);
       ev.stopPropagation();
     } else if (omegaState.ticketModalOpen) {
@@ -1269,6 +1452,8 @@ function renderOmega(){
   renderTicketModal(root, filteredTickets, viewTicketsBase, user);
   renderBulkControls(root, user, filteredTickets);
   updateEmptyState(root, filteredTickets);
+  if (omegaState.manageAnalystOpen) populateManageAnalystModal(root, user);
+  if (omegaState.manageStatusOpen) populateManageStatusModal(root, user);
 }
 
 function renderProfile(root, user){
@@ -2122,6 +2307,68 @@ function getUserQueues(user){
   return Array.isArray(user.queues) ? user.queues.filter(Boolean) : [];
 }
 
+function getManagedQueues(user){
+  if (!user) return [];
+  if (user.role === 'admin') return [...OMEGA_QUEUE_OPTIONS];
+  const queues = getUserQueues(user);
+  if (user.roles?.supervisor) {
+    return queues.length ? queues : [...OMEGA_QUEUE_OPTIONS];
+  }
+  return queues;
+}
+
+function getManagedDepartments(user){
+  const queues = getManagedQueues(user);
+  const seen = new Set();
+  const departments = [];
+  queues.forEach((queue) => {
+    if (!queue) return;
+    const id = getDepartmentIdByName(queue) || queue;
+    if (seen.has(id)) return;
+    seen.add(id);
+    departments.push({ id: id.toString(), name: queue });
+  });
+  return departments;
+}
+
+function getManagedDepartmentIds(user){
+  return getManagedDepartments(user).map((entry) => entry.id).filter(Boolean);
+}
+
+function getManageableAnalysts(user){
+  if (!user) return [];
+  if (user.role === 'usuario') return [];
+  const managedQueues = new Set(getManagedQueues(user));
+  if (user.role !== 'admin' && !managedQueues.size) return [];
+  return OMEGA_USERS.filter((person) => {
+    if (!person || person.id === user.id) return false;
+    const isAnalyst = !!(person.roles?.analista || person.role === 'analista');
+    if (!isAnalyst) return false;
+    if (user.role === 'admin') return true;
+    const personQueues = Array.isArray(person.queues) ? person.queues : [];
+    if (!personQueues.length) return true;
+    return personQueues.some((queue) => managedQueues.has(queue));
+  }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+}
+
+function getStatusesForDepartment(departmentId){
+  const target = (departmentId || OMEGA_STATUS_GLOBAL_DEPARTMENT).toString();
+  const map = new Map();
+  OMEGA_STATUS_CATALOG.forEach((entry) => {
+    const entryDepartment = (entry.departmentId || OMEGA_STATUS_GLOBAL_DEPARTMENT).toString();
+    if (entryDepartment === OMEGA_STATUS_GLOBAL_DEPARTMENT && !map.has(entry.id)) {
+      map.set(entry.id, entry);
+    }
+  });
+  OMEGA_STATUS_CATALOG.forEach((entry) => {
+    const entryDepartment = (entry.departmentId || OMEGA_STATUS_GLOBAL_DEPARTMENT).toString();
+    if (entryDepartment === target) {
+      map.set(entry.id, entry);
+    }
+  });
+  return Array.from(map.values());
+}
+
 function getUsersByQueues(queues, predicate){
   if (!Array.isArray(queues) || !queues.length) return [];
   const queueSet = new Set(queues);
@@ -2640,6 +2887,78 @@ function setSidebarCollapsed(collapsed){
   applySidebarState();
 }
 
+function initializeManageAnalystState(user){
+  const analysts = getManageableAnalysts(user);
+  if (!analysts.length) {
+    omegaState.manageAnalystId = null;
+    return;
+  }
+  if (!analysts.some((analyst) => analyst.id === omegaState.manageAnalystId)) {
+    omegaState.manageAnalystId = analysts[0].id;
+  }
+}
+
+function setManageAnalystOpen(open){
+  const root = document.getElementById('omega-modal');
+  if (!root) return;
+  const modal = root.querySelector('#omega-manage-analyst');
+  if (!modal) return;
+  omegaState.manageAnalystOpen = !!open;
+  modal.hidden = !omegaState.manageAnalystOpen;
+  if (omegaState.manageAnalystOpen) {
+    const user = getCurrentUser();
+    initializeManageAnalystState(user);
+    populateManageAnalystModal(root, user);
+    const focusTarget = modal.querySelector('#omega-manage-analyst-select');
+    if (focusTarget) {
+      requestAnimationFrame(() => {
+        try { focusTarget.focus(); } catch (err) { /* noop */ }
+      });
+    }
+  }
+}
+
+function initializeManageStatusState(user){
+  if (!omegaState.manageStatus || typeof omegaState.manageStatus !== 'object') {
+    omegaState.manageStatus = { departmentId: '', statusId: '' };
+  }
+  const departments = getManagedDepartments(user);
+  if (!departments.length) {
+    omegaState.manageStatus.departmentId = '';
+    omegaState.manageStatus.statusId = '';
+    return;
+  }
+  if (!departments.some((dept) => dept.id === omegaState.manageStatus.departmentId)) {
+    omegaState.manageStatus.departmentId = departments[0].id;
+  }
+  const statuses = getStatusesForDepartment(omegaState.manageStatus.departmentId);
+  if (!statuses.length) {
+    omegaState.manageStatus.statusId = '';
+  } else if (!statuses.some((status) => status.id === omegaState.manageStatus.statusId)) {
+    omegaState.manageStatus.statusId = statuses[0].id;
+  }
+}
+
+function setManageStatusOpen(open){
+  const root = document.getElementById('omega-modal');
+  if (!root) return;
+  const modal = root.querySelector('#omega-manage-status');
+  if (!modal) return;
+  omegaState.manageStatusOpen = !!open;
+  modal.hidden = !omegaState.manageStatusOpen;
+  if (omegaState.manageStatusOpen) {
+    const user = getCurrentUser();
+    initializeManageStatusState(user);
+    populateManageStatusModal(root, user);
+    const focusTarget = modal.querySelector('#omega-manage-status-department');
+    if (focusTarget) {
+      requestAnimationFrame(() => {
+        try { focusTarget.focus(); } catch (err) { /* noop */ }
+      });
+    }
+  }
+}
+
 function applySidebarState(root = document.getElementById('omega-modal')){
   if (!root) return;
   const collapsed = !!omegaState.sidebarCollapsed;
@@ -2660,6 +2979,203 @@ function applySidebarState(root = document.getElementById('omega-modal')){
       icon.className = collapsed ? 'ti ti-chevron-right' : 'ti ti-chevron-left';
     }
   }
+}
+
+function populateManageAnalystModal(root, user){
+  const modal = root.querySelector('#omega-manage-analyst');
+  if (!modal) return;
+  const form = modal.querySelector('#omega-manage-analyst-form');
+  const select = modal.querySelector('#omega-manage-analyst-select');
+  const queueHost = modal.querySelector('#omega-manage-analyst-queues');
+  const empty = modal.querySelector('#omega-manage-analyst-empty');
+  const managedQueues = getManagedQueues(user);
+  const analysts = getManageableAnalysts(user);
+  const hasQueues = managedQueues.length > 0;
+  const hasAnalysts = analysts.length > 0;
+
+  if (!hasQueues || !hasAnalysts) {
+    if (form) form.hidden = true;
+    if (empty) {
+      empty.hidden = false;
+      empty.textContent = hasQueues
+        ? 'Não há analistas disponíveis para a sua equipe.'
+        : 'Nenhuma fila disponível para gerenciamento.';
+    }
+    if (queueHost) queueHost.innerHTML = '';
+    if (select) select.innerHTML = '';
+    omegaState.manageAnalystId = null;
+    return;
+  }
+
+  if (form) form.hidden = false;
+  if (empty) empty.hidden = true;
+  initializeManageAnalystState(user);
+  if (select) {
+    select.innerHTML = analysts
+      .map((analyst) => {
+        const role = getUserRoleLabel(analyst);
+        return `<option value="${analyst.id}">${escapeHTML(`${analyst.name} — ${role}`)}</option>`;
+      })
+      .join('');
+    if (omegaState.manageAnalystId) select.value = omegaState.manageAnalystId;
+  }
+  const target = analysts.find((item) => item.id === omegaState.manageAnalystId) || analysts[0];
+  const assigned = new Set(Array.isArray(target?.queues) ? target.queues : []);
+  if (queueHost) {
+    queueHost.innerHTML = managedQueues
+      .map((queue) => {
+        const queueId = `omega-manage-analyst-queue-${normalizeStatusId(queue)}`;
+        const checked = assigned.has(queue) ? ' checked' : '';
+        return `<label class="omega-manage-list__option" for="${queueId}">`
+          + `<input type="checkbox" id="${queueId}" name="omega-manage-analyst-queue" value="${escapeHTML(queue)}"${checked}/>`
+          + `<span>${escapeHTML(queue)}</span>`
+          + `</label>`;
+      })
+      .join('');
+  }
+}
+
+function handleManageAnalystSubmit(form){
+  if (!form) return;
+  const root = document.getElementById('omega-modal');
+  if (!root) return;
+  const user = getCurrentUser();
+  const managedQueues = new Set(getManagedQueues(user));
+  const analystId = omegaState.manageAnalystId;
+  if (!analystId) {
+    showOmegaToast('Selecione um analista para atualizar.', 'warning');
+    return;
+  }
+  const analyst = OMEGA_USERS.find((person) => person.id === analystId);
+  if (!analyst) {
+    showOmegaToast('Analista não encontrado.', 'danger');
+    return;
+  }
+  const inputs = form.querySelectorAll('input[name="omega-manage-analyst-queue"]');
+  const selectedQueues = Array.from(inputs)
+    .filter((input) => input.checked && managedQueues.has(input.value))
+    .map((input) => input.value);
+  analyst.queues = selectedQueues;
+  analyst.defaultQueue = selectedQueues[0] || null;
+  analyst.matrixAccess = selectedQueues.includes('Matriz');
+  renderOmega();
+  populateManageAnalystModal(root, getCurrentUser());
+  showOmegaToast('Filas do analista atualizadas.', 'success');
+}
+
+function populateManageStatusModal(root, user){
+  const modal = root.querySelector('#omega-manage-status');
+  if (!modal) return;
+  const form = modal.querySelector('#omega-manage-status-form');
+  const empty = modal.querySelector('#omega-manage-status-empty');
+  const departmentSelect = modal.querySelector('#omega-manage-status-department');
+  const statusSelect = modal.querySelector('#omega-manage-status-select');
+  const labelField = modal.querySelector('#omega-manage-status-label');
+  const toneSelect = modal.querySelector('#omega-manage-status-tone');
+  const descriptionField = modal.querySelector('#omega-manage-status-description');
+  const departments = getManagedDepartments(user);
+
+  if (!departments.length) {
+    if (form) form.hidden = true;
+    if (empty) {
+      empty.hidden = false;
+      empty.textContent = 'Nenhuma fila disponível para gerenciamento.';
+    }
+    omegaState.manageStatus.departmentId = '';
+    omegaState.manageStatus.statusId = '';
+    return;
+  }
+
+  if (form) form.hidden = false;
+  if (empty) empty.hidden = true;
+  initializeManageStatusState(user);
+
+  if (departmentSelect) {
+    departmentSelect.innerHTML = departments
+      .map((dept) => `<option value="${dept.id}">${escapeHTML(dept.name)}</option>`)
+      .join('');
+    departmentSelect.value = omegaState.manageStatus.departmentId || departments[0].id;
+  }
+
+  if (toneSelect) {
+    toneSelect.innerHTML = OMEGA_STATUS_TONE_OPTIONS
+      .map((tone) => `<option value="${tone}">${escapeHTML(OMEGA_STATUS_TONE_LABELS[tone] || tone)}</option>`)
+      .join('');
+  }
+
+  const statuses = getStatusesForDepartment(omegaState.manageStatus.departmentId);
+  if (!statuses.length) {
+    if (statusSelect) statusSelect.innerHTML = '';
+    if (labelField) labelField.value = '';
+    if (toneSelect) toneSelect.value = 'neutral';
+    if (descriptionField) descriptionField.value = '';
+    omegaState.manageStatus.statusId = '';
+    return;
+  }
+
+  if (!statuses.some((status) => status.id === omegaState.manageStatus.statusId)) {
+    omegaState.manageStatus.statusId = statuses[0].id;
+  }
+
+  if (statusSelect) {
+    statusSelect.innerHTML = statuses
+      .map((status) => `<option value="${status.id}">${escapeHTML(status.label)}</option>`)
+      .join('');
+    statusSelect.value = omegaState.manageStatus.statusId || statuses[0].id;
+  }
+
+  const activeStatus = statuses.find((status) => status.id === omegaState.manageStatus.statusId) || statuses[0];
+  if (labelField) labelField.value = activeStatus?.label || '';
+  if (toneSelect) toneSelect.value = activeStatus?.tone || 'neutral';
+  if (descriptionField) descriptionField.value = activeStatus?.description || '';
+}
+
+function handleManageStatusSubmit(form){
+  if (!form) return;
+  const departmentId = (form.querySelector('#omega-manage-status-department')?.value || '').toString();
+  const statusId = form.querySelector('#omega-manage-status-select')?.value || '';
+  const label = form.querySelector('#omega-manage-status-label')?.value?.trim() || '';
+  const toneRaw = form.querySelector('#omega-manage-status-tone')?.value || 'neutral';
+  const description = form.querySelector('#omega-manage-status-description')?.value?.trim() || '';
+  if (!departmentId) {
+    showOmegaToast('Selecione uma fila para editar.', 'warning');
+    return;
+  }
+  if (!statusId) {
+    showOmegaToast('Selecione uma situação para atualizar.', 'warning');
+    return;
+  }
+  const tone = OMEGA_STATUS_TONE_OPTIONS.includes(toneRaw) ? toneRaw : 'neutral';
+  let index = OMEGA_STATUS_CATALOG.findIndex((entry) => {
+    if (!entry) return false;
+    if (entry.id !== statusId) return false;
+    const entryDepartment = (entry.departmentId || OMEGA_STATUS_GLOBAL_DEPARTMENT).toString();
+    return entryDepartment === departmentId;
+  });
+  if (index === -1) {
+    index = OMEGA_STATUS_CATALOG.findIndex((entry) => entry?.id === statusId);
+  }
+  if (index === -1) {
+    showOmegaToast('Situação não encontrada.', 'danger');
+    return;
+  }
+  const updated = { ...OMEGA_STATUS_CATALOG[index] };
+  if (label) updated.label = label;
+  updated.tone = tone;
+  updated.description = description;
+  updated.departmentId = departmentId.toString();
+  OMEGA_STATUS_CATALOG[index] = updated;
+  if (!omegaState.manageStatus || typeof omegaState.manageStatus !== 'object') {
+    omegaState.manageStatus = { departmentId, statusId };
+  } else {
+    omegaState.manageStatus.departmentId = departmentId;
+    omegaState.manageStatus.statusId = statusId;
+  }
+  applyStatusCatalog(OMEGA_STATUS_CATALOG);
+  renderOmega();
+  const root = document.getElementById('omega-modal');
+  if (root) populateManageStatusModal(root, getCurrentUser());
+  showOmegaToast('Situação atualizada.', 'success');
 }
 
 function setTicketModalOpen(open){

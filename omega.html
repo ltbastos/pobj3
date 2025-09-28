@@ -382,6 +382,85 @@
           </div>
         </section>
       </div>
+
+      <div id="omega-manage-analyst" class="omega-manage-modal" hidden>
+        <div class="omega-manage-modal__overlay" data-omega-manage-analyst-close></div>
+        <section class="omega-manage-modal__panel" role="dialog" aria-modal="true" aria-labelledby="omega-manage-analyst-title">
+          <header class="omega-manage-modal__header">
+            <div>
+              <h3 id="omega-manage-analyst-title">Editar analistas</h3>
+              <p>Atualize as filas atendidas pelos analistas da sua equipe.</p>
+            </div>
+            <button type="button" class="omega-icon-btn" data-omega-manage-analyst-close aria-label="Fechar edição de analistas">
+              <i class="ti ti-x"></i>
+            </button>
+          </header>
+          <form id="omega-manage-analyst-form" class="omega-manage-modal__form">
+            <label class="omega-field" for="omega-manage-analyst-select">
+              <span class="omega-field__label">Analista</span>
+              <select id="omega-manage-analyst-select" class="omega-select"></select>
+            </label>
+            <fieldset class="omega-field" aria-describedby="omega-manage-analyst-hint">
+              <legend class="omega-field__label">Filas atendidas</legend>
+              <div id="omega-manage-analyst-queues" class="omega-manage-list"></div>
+              <small id="omega-manage-analyst-hint" class="omega-hint">Marque as filas que o analista deverá acompanhar.</small>
+            </fieldset>
+            <footer class="omega-manage-modal__actions">
+              <button type="button" class="omega-btn" data-omega-manage-analyst-close>Cancelar</button>
+              <button type="submit" class="omega-btn omega-btn--primary">
+                <i class="ti ti-device-floppy"></i>
+                <span>Salvar alterações</span>
+              </button>
+            </footer>
+          </form>
+          <div id="omega-manage-analyst-empty" class="omega-manage-modal__empty" hidden></div>
+        </section>
+      </div>
+
+      <div id="omega-manage-status" class="omega-manage-modal" hidden>
+        <div class="omega-manage-modal__overlay" data-omega-manage-status-close></div>
+        <section class="omega-manage-modal__panel" role="dialog" aria-modal="true" aria-labelledby="omega-manage-status-title">
+          <header class="omega-manage-modal__header">
+            <div>
+              <h3 id="omega-manage-status-title">Editar situações</h3>
+              <p>Personalize as situações disponíveis para as filas selecionadas.</p>
+            </div>
+            <button type="button" class="omega-icon-btn" data-omega-manage-status-close aria-label="Fechar edição de situações">
+              <i class="ti ti-x"></i>
+            </button>
+          </header>
+          <form id="omega-manage-status-form" class="omega-manage-modal__form">
+            <label class="omega-field" for="omega-manage-status-department">
+              <span class="omega-field__label">Fila</span>
+              <select id="omega-manage-status-department" class="omega-select"></select>
+            </label>
+            <label class="omega-field" for="omega-manage-status-select">
+              <span class="omega-field__label">Situação</span>
+              <select id="omega-manage-status-select" class="omega-select"></select>
+            </label>
+            <label class="omega-field" for="omega-manage-status-label">
+              <span class="omega-field__label">Título</span>
+              <input id="omega-manage-status-label" class="omega-input" type="text" placeholder="Nome da situação"/>
+            </label>
+            <label class="omega-field" for="omega-manage-status-tone">
+              <span class="omega-field__label">Tom</span>
+              <select id="omega-manage-status-tone" class="omega-select"></select>
+            </label>
+            <label class="omega-field" for="omega-manage-status-description">
+              <span class="omega-field__label">Descrição</span>
+              <textarea id="omega-manage-status-description" class="omega-textarea" rows="3" placeholder="Quando essa situação deve ser utilizada?"></textarea>
+            </label>
+            <footer class="omega-manage-modal__actions">
+              <button type="button" class="omega-btn" data-omega-manage-status-close>Cancelar</button>
+              <button type="submit" class="omega-btn omega-btn--primary">
+                <i class="ti ti-device-floppy"></i>
+                <span>Salvar alterações</span>
+              </button>
+            </footer>
+          </form>
+          <div id="omega-manage-status-empty" class="omega-manage-modal__empty" hidden></div>
+        </section>
+      </div>
     </section>
   </div>
 

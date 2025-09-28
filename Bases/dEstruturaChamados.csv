@@ -1,52 +1,52 @@
-departamento,tipo,ordem_departamento,ordem_tipo
-Encarteiramento,Inclusão de carteira,1,1
-Encarteiramento,Transferência de relacionamento,1,2
-Encarteiramento,Atualização cadastral,1,3
-Encarteiramento,Treinamento de equipe,1,4
-Metas,Ajuste de meta,2,1
-Metas,Contestação de meta,2,2
-Metas,Acompanhamento de indicadores,2,3
-Orçamento,Revisão orçamentária,3,1
-Orçamento,Reserva de verba,3,2
-Orçamento,Redistribuição de verba,3,3
-POBJ,Recuperação de Vencidos até 59 dias,4,1
-POBJ,Recuperação de Vencidos acima 59 dias,4,2
-POBJ,Recuperação de Crédito,4,3
-POBJ,Captação Bruta (CDB, Isentos, Fundos, Corretora e Previdência),4,4
-POBJ,Captação Líquida (Todos os Produtos),4,5
-POBJ,Isentos,4,6
-POBJ,Fundos,4,7
-POBJ,Previdência Privada,4,8
-POBJ,Portabilidade de Previdência Privada,4,9
-POBJ,Corretora,4,10
-POBJ,COE,4,11
-POBJ,Depósito a Prazo,4,12
-POBJ,InvestFácil,4,13
-POBJ,Poupança,4,14
-POBJ,Depósito à Vista,4,15
-POBJ,Centralização de Caixa (Cash),4,16
-POBJ,Contas a Receber (vol),4,17
-POBJ,Contas a Pagar (vol),4,18
-POBJ,Centralização de Caixa PF (Qtd),4,19
-POBJ,Produção de Crédito PJ,4,20
-POBJ,Produção de Crédito - Spread PF,4,21
-POBJ,Produção de Crédito Total,4,22
-POBJ,Limite Rotativo PF + PJ (Volume),4,23
-POBJ,Cheque Especial PF - volume,4,24
-POBJ,Cheque Empresarial - volume,4,25
-POBJ,Limite Rotativo PF + PJ (Qtd),4,26
-POBJ,Cheque Empresarial - qtd,4,27
-POBJ,Cartões,4,28
-POBJ,Consórcios,4,29
-POBJ,Seguros,4,30
-POBJ,Sucesso de Equipe Crédito,4,31
-POBJ,Conquista Qualificada Gerenciado PF,4,32
-POBJ,Conquista Qualificada Gerenciado PJ,4,33
-POBJ,Conquista de Clientes Folha de Pagamento,4,34
-POBJ,Abertura de Contas PF - Folha de Pagamento Privada,4,35
-POBJ,Bradesco Expresso,4,36
-Matriz,Relatório/Dashboard,5,1
-Matriz,Bases,5,2
-Matriz,Estudos,5,3
-Matriz,Portal PJ,5,4
-Outros,A construir,6,1
+departamento_id,departamento,tipo,ordem_departamento,ordem_tipo
+1,Encarteiramento,Inclusão de carteira,1,1
+1,Encarteiramento,Transferência de relacionamento,1,2
+1,Encarteiramento,Atualização cadastral,1,3
+1,Encarteiramento,Treinamento de equipe,1,4
+2,Metas,Ajuste de meta,2,1
+2,Metas,Contestação de meta,2,2
+2,Metas,Acompanhamento de indicadores,2,3
+3,Orçamento,Revisão orçamentária,3,1
+3,Orçamento,Reserva de verba,3,2
+3,Orçamento,Redistribuição de verba,3,3
+4,POBJ,Recuperação de Vencidos até 59 dias,4,1
+4,POBJ,Recuperação de Vencidos acima 59 dias,4,2
+4,POBJ,Recuperação de Crédito,4,3
+4,POBJ,Captação Bruta (CDB, Isentos, Fundos
+4,POBJ,Captação Líquida (Todos os Produtos),4,5
+4,POBJ,Isentos,4,6
+4,POBJ,Fundos,4,7
+4,POBJ,Previdência Privada,4,8
+4,POBJ,Portabilidade de Previdência Privada,4,9
+4,POBJ,Corretora,4,10
+4,POBJ,COE,4,11
+4,POBJ,Depósito a Prazo,4,12
+4,POBJ,InvestFácil,4,13
+4,POBJ,Poupança,4,14
+4,POBJ,Depósito à Vista,4,15
+4,POBJ,Centralização de Caixa (Cash),4,16
+4,POBJ,Contas a Receber (vol),4,17
+4,POBJ,Contas a Pagar (vol),4,18
+4,POBJ,Centralização de Caixa PF (Qtd),4,19
+4,POBJ,Produção de Crédito PJ,4,20
+4,POBJ,Produção de Crédito - Spread PF,4,21
+4,POBJ,Produção de Crédito Total,4,22
+4,POBJ,Limite Rotativo PF + PJ (Volume),4,23
+4,POBJ,Cheque Especial PF - volume,4,24
+4,POBJ,Cheque Empresarial - volume,4,25
+4,POBJ,Limite Rotativo PF + PJ (Qtd),4,26
+4,POBJ,Cheque Empresarial - qtd,4,27
+4,POBJ,Cartões,4,28
+4,POBJ,Consórcios,4,29
+4,POBJ,Seguros,4,30
+4,POBJ,Sucesso de Equipe Crédito,4,31
+4,POBJ,Conquista Qualificada Gerenciado PF,4,32
+4,POBJ,Conquista Qualificada Gerenciado PJ,4,33
+4,POBJ,Conquista de Clientes Folha de Pagamento,4,34
+4,POBJ,Abertura de Contas PF - Folha de Pagamento Privada,4,35
+4,POBJ,Bradesco Expresso,4,36
+5,Matriz,Relatório/Dashboard,5,1
+5,Matriz,Bases,5,2
+5,Matriz,Estudos,5,3
+5,Matriz,Portal PJ,5,4
+6,Outros,A construir,6,1
