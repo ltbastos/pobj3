@@ -107,8 +107,31 @@ body.has-omega-open{ overflow:hidden; }
   padding:0;
   object-fit:contain;
 }
-#omega-sidebar-toggle{ flex-shrink:0; margin-right:4px; }
-#omega-sidebar-toggle[aria-pressed="true"]{ border-color:rgba(36,107,253,.35); color:var(--info); }
+#omega-sidebar-toggle{
+  flex-shrink:0;
+  margin-left:-12px;
+  margin-right:16px;
+  width:44px;
+  height:44px;
+  border-radius:14px;
+  border:none;
+  background:transparent;
+  box-shadow:none;
+  color:#475569;
+  transition:background .2s ease, color .2s ease;
+}
+#omega-sidebar-toggle i{ font-size:22px; line-height:1; }
+#omega-sidebar-toggle:hover,
+#omega-sidebar-toggle:focus-visible{
+  background:rgba(15,23,42,.08);
+  color:var(--text);
+  border:none;
+  outline:none;
+}
+#omega-sidebar-toggle[aria-pressed="true"]{
+  background:rgba(36,107,253,.16);
+  color:var(--info);
+}
 .omega-user-switch{ display:flex; align-items:center; gap:8px; padding:0; }
 .omega-user-switch select{ min-width:180px; max-width:220px; font-weight:600; font-size:13px; border-radius:12px; }
 
