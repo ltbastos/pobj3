@@ -49,14 +49,7 @@ const OMEGA_DEFAULT_STATUSES = [
   { id: "cancelado", label: "Cancelado", tone: "danger" },
 ];
 
-const OMEGA_QUEUE_OPTIONS = [
-  "Encarteiramento",
-  "Metas",
-  "Orçamento",
-  "POBJ",
-  "Matriz",
-  "Outros",
-];
+const OMEGA_STRUCTURE_SOURCE = "Bases/dEstruturaChamados.csv";
 
 const OMEGA_QUEUE_FIELD_MAP = {
   Encarteiramento: "encarteiramento",
@@ -67,7 +60,7 @@ const OMEGA_QUEUE_FIELD_MAP = {
   Outros: "outros",
 };
 
-const OMEGA_TICKET_TYPES_BY_DEPARTMENT = {
+const OMEGA_STRUCTURE_FALLBACK = {
   Encarteiramento: [
     "Inclusão de carteira",
     "Transferência de relacionamento",
@@ -131,6 +124,13 @@ const OMEGA_TICKET_TYPES_BY_DEPARTMENT = {
   Outros: ["A construir"],
 };
 
+let OMEGA_TICKET_TYPES_BY_DEPARTMENT = Object.fromEntries(
+  Object.entries(OMEGA_STRUCTURE_FALLBACK).map(([queue, items]) => [queue, [...items]])
+);
+let OMEGA_QUEUE_OPTIONS = Object.keys(OMEGA_TICKET_TYPES_BY_DEPARTMENT);
+let omegaStructurePromise = null;
+let omegaStructureReady = false;
+
 const OMEGA_LEVEL_LABELS = {
   diretoria: "Diretoria",
   gerencia: "Regional",
@@ -157,6 +157,8 @@ const OMEGA_USER_METADATA = {
   "usr-09": { avatar: "https://i.pravatar.cc/160?img=55", teamId: "corporate" },
   "usr-10": { avatar: "https://i.pravatar.cc/160?img=52", teamId: "pobj" },
   "usr-11": { avatar: "https://i.pravatar.cc/160?img=64", teamId: "orcamento" },
+  "usr-12": { avatar: "https://i.pravatar.cc/160?img=57", teamId: "matriz" },
+  "usr-13": { avatar: "https://i.pravatar.cc/160?img=14", teamId: "pobj" },
 };
 
 let OMEGA_USERS = [];
@@ -181,6 +183,9 @@ const omegaState = {
   selectedTicketId: null,
   selectedTicketIds: new Set(),
   drawerOpen: false,
+  sidebarCollapsed: false,
+  pendingNewTicket: null,
+  prefillDepartment: "",
   ticketModalOpen: false,
   formAttachments: [],
   ticketUpdate: {
@@ -477,6 +482,98 @@ function simpleCsvParse(text){
   });
 }
 
+function applyOmegaStructureCatalog(rows){
+  const normalized = Array.isArray(rows) ? rows : [];
+  const departmentMap = new Map();
+  normalized.forEach((row) => {
+    const department = (row.departamento || row.department || row.queue || '').trim();
+    if (!department) return;
+    const departmentOrderRaw = Number.parseFloat(row.ordem_departamento ?? row.departamento_ordem ?? row.order_department ?? '');
+    const typeLabel = (row.tipo || row.type || row.category || '').trim();
+    const typeOrderRaw = Number.parseFloat(row.ordem_tipo ?? row.order_tipo ?? row.ordem_type ?? '');
+    let entry = departmentMap.get(department);
+    if (!entry) {
+      entry = {
+        order: Number.isFinite(departmentOrderRaw) ? departmentOrderRaw : Number.POSITIVE_INFINITY,
+        types: [],
+        seen: new Set(),
+      };
+      departmentMap.set(department, entry);
+    } else if (Number.isFinite(departmentOrderRaw) && departmentOrderRaw < entry.order) {
+      entry.order = departmentOrderRaw;
+    }
+    if (!typeLabel) return;
+    const typeKey = normalizeText(typeLabel);
+    if (entry.seen.has(typeKey)) return;
+    entry.seen.add(typeKey);
+    const typeOrder = Number.isFinite(typeOrderRaw) ? typeOrderRaw : entry.types.length;
+    entry.types.push({ label: typeLabel, order: typeOrder });
+  });
+
+  if (!departmentMap.size) {
+    OMEGA_TICKET_TYPES_BY_DEPARTMENT = Object.fromEntries(
+      Object.entries(OMEGA_STRUCTURE_FALLBACK).map(([queue, items]) => [queue, [...items]])
+    );
+    OMEGA_QUEUE_OPTIONS = Object.keys(OMEGA_TICKET_TYPES_BY_DEPARTMENT);
+    omegaStructureReady = true;
+    reconcileTicketsWithCatalog();
+    return;
+  }
+
+  const sortedDepartments = Array.from(departmentMap.entries()).sort((a, b) => {
+    const [deptA, metaA] = a;
+    const [deptB, metaB] = b;
+    const orderA = Number.isFinite(metaA.order) ? metaA.order : Number.POSITIVE_INFINITY;
+    const orderB = Number.isFinite(metaB.order) ? metaB.order : Number.POSITIVE_INFINITY;
+    if (orderA !== orderB) return orderA - orderB;
+    return deptA.localeCompare(deptB, 'pt-BR');
+  });
+
+  OMEGA_QUEUE_OPTIONS = sortedDepartments.map(([department]) => department);
+  OMEGA_TICKET_TYPES_BY_DEPARTMENT = Object.fromEntries(
+    sortedDepartments.map(([department, meta]) => {
+      const types = meta.types
+        .sort((a, b) => {
+          if (a.order !== b.order) return a.order - b.order;
+          return a.label.localeCompare(b.label, 'pt-BR');
+        })
+        .map((item) => item.label);
+      return [department, types];
+    })
+  );
+  omegaStructureReady = true;
+  reconcileTicketsWithCatalog();
+}
+
+function ensureOmegaStructure(){
+  if (omegaStructureReady) return Promise.resolve(OMEGA_TICKET_TYPES_BY_DEPARTMENT);
+  if (omegaStructurePromise) return omegaStructurePromise;
+
+  const loader = (typeof loadCSVAuto === 'function')
+    ? loadCSVAuto(OMEGA_STRUCTURE_SOURCE).catch((err) => {
+        console.warn('Falha ao carregar estrutura Omega via loader principal:', err);
+        return fallbackLoadCsv(OMEGA_STRUCTURE_SOURCE);
+      })
+    : fallbackLoadCsv(OMEGA_STRUCTURE_SOURCE);
+
+  omegaStructurePromise = loader
+    .then((rows) => {
+      if (!Array.isArray(rows) || !rows.length) throw new Error('Base de estrutura vazia');
+      applyOmegaStructureCatalog(rows);
+      return OMEGA_TICKET_TYPES_BY_DEPARTMENT;
+    })
+    .catch((err) => {
+      console.warn('Aplicando estrutura padrão da Omega:', err);
+      applyOmegaStructureCatalog(null);
+      return OMEGA_TICKET_TYPES_BY_DEPARTMENT;
+    })
+    .finally(() => {
+      omegaStructurePromise = null;
+    });
+
+  return omegaStructurePromise;
+}
+
 function normalizeOmegaUserRows(rows){
   return rows.map((row) => {
     const id = (row.id || row.ID || '').trim();
@@ -550,6 +647,30 @@ function getUserRoleLabel(user){
   return roles.map((role) => OMEGA_ROLE_LABELS[role] || role).join(' • ');
 }
 
+function resolveCatalogCategory(queue, rawCategory){
+  const label = (rawCategory || '').trim();
+  if (!label) return '';
+  const normalizedLabel = normalizeText(label);
+  if (queue && Array.isArray(OMEGA_TICKET_TYPES_BY_DEPARTMENT[queue])) {
+    const match = OMEGA_TICKET_TYPES_BY_DEPARTMENT[queue].find((item) => normalizeText(item) === normalizedLabel);
+    if (match) return match;
+  }
+  for (const list of Object.values(OMEGA_TICKET_TYPES_BY_DEPARTMENT)) {
+    if (!Array.isArray(list)) continue;
+    const match = list.find((item) => normalizeText(item) === normalizedLabel);
+    if (match) return match;
+  }
+  return label;
+}
+
+function reconcileTicketsWithCatalog(){
+  if (!Array.isArray(OMEGA_TICKETS) || !OMEGA_TICKETS.length) return;
+  OMEGA_TICKETS.forEach((ticket) => {
+    if (!ticket) return;
+    ticket.category = resolveCatalogCategory(ticket.queue, ticket.category);
+  });
+}
+
 function normalizeOmegaTicketRows(rows){
   return rows.map((row) => {
     const id = (row.id || row.ID || '').trim();
@@ -561,7 +682,8 @@ function normalizeOmegaTicketRows(rows){
     const family = (row.family || row.familia || '').trim();
     const section = (row.section || row.secao || '').trim();
     const queue = (row.queue || row.departamento || '').trim();
-    const category = (row.category || row.tipo || '').trim();
+    const rawCategory = (row.category || row.tipo || '').trim();
+    const category = resolveCatalogCategory(queue, rawCategory);
     const dueDate = (row.due_date || row.prazo || '').trim();
     const historyRaw = row.history || '';
     const history = parseOmegaHistory(historyRaw);
@@ -648,11 +770,24 @@ function ensureOmegaTemplate(){
 }
 
 function openOmega(detail = null){
-  Promise.all([ensureOmegaTemplate(), ensureOmegaData(), ensureOmegaUsers(), ensureOmegaStatuses()])
+  Promise.all([
+    ensureOmegaTemplate(),
+    ensureOmegaStructure(),
+    ensureOmegaData(),
+    ensureOmegaUsers(),
+    ensureOmegaStatuses(),
+  ])
     .then(([root]) => {
       if (!root) return;
       setupOmegaModule(root);
       populateUserSelect(root);
+      applySidebarState(root);
+      const shouldOpenDrawer = detail?.openDrawer || detail?.intent === 'new-ticket';
+      const preferredQueue = detail?.preferredQueue || detail?.queue || '';
+      omegaState.pendingNewTicket = shouldOpenDrawer
+        ? { queue: preferredQueue || 'POBJ' }
+        : null;
+      omegaState.prefillDepartment = '';
       omegaState.contextDetail = detail || null;
       omegaState.search = "";
       omegaState.selectedTicketId = null;
@@ -663,11 +798,15 @@ function openOmega(detail = null){
       root.hidden = false;
       document.body.classList.add("has-omega-open");
       renderOmega();
-      const searchInput = root.querySelector("#omega-search");
-      if (searchInput) {
-        requestAnimationFrame(() => {
-          try { searchInput.focus(); } catch (err) { /* ignore focus errors */ }
-        });
+      const hadPendingNewTicket = !!omegaState.pendingNewTicket;
+      applyPendingIntents(root);
+      if (!hadPendingNewTicket) {
+        const searchInput = root.querySelector("#omega-search");
+        if (searchInput) {
+          requestAnimationFrame(() => {
+            try { searchInput.focus(); } catch (err) { /* ignore focus errors */ }
+          });
+        }
       }
     })
     .catch(() => {
@@ -681,6 +820,8 @@ function closeOmega(){
   setDrawerOpen(false);
   setTicketModalOpen(false);
   setFilterPanelOpen(false);
+  omegaState.pendingNewTicket = null;
+  omegaState.prefillDepartment = '';
   root.hidden = true;
   document.body.classList.remove("has-omega-open");
 }
@@ -702,6 +843,12 @@ function setupOmegaModule(root){
 
   root.querySelectorAll('[data-omega-drawer-close]').forEach((btn) => {
     btn.addEventListener('click', () => setDrawerOpen(false));
+  });
+
+  const sidebarToggle = root.querySelector('#omega-sidebar-toggle');
+  sidebarToggle?.addEventListener('click', () => {
+    setSidebarCollapsed(!omegaState.sidebarCollapsed);
+    renderOmega();
   });
 
   const clearFiltersTop = root.querySelector('#omega-clear-filters-top');
@@ -1012,6 +1159,7 @@ function handleOmegaDocumentClick(ev){
 function renderOmega(){
   const root = document.getElementById('omega-modal');
   if (!root || root.hidden) return;
+  applySidebarState(root);
   const user = getCurrentUser();
   const navStructure = ensureValidViewForUser(user);
   reconcileFiltersForUser(user);
@@ -1120,6 +1268,8 @@ function ensureValidViewForUser(user){
 function renderNav(root, user, structure){
   const nav = root.querySelector('#omega-nav');
   if (!nav) return;
+  const collapsed = !!omegaState.sidebarCollapsed;
+  nav.dataset.collapsed = collapsed ? 'true' : 'false';
   const available = Array.isArray(structure) ? structure : ensureValidViewForUser(user);
   const markup = available.map((item) => {
     const children = Array.isArray(item.children) ? item.children : [];
@@ -1128,14 +1278,30 @@ function renderNav(root, user, structure){
           const icon = child.icon || item.icon;
           const childActive = child.id === omegaState.view;
           const childClass = `omega-nav__item omega-nav__item--sub${childActive ? ' is-active' : ''}`;
-          return `<button type="button" class="${childClass}" data-view="${child.id}"><i class="${icon}"></i><span>${escapeHTML(child.label)}</span></button>`;
+          const childLabel = escapeHTML(child.label);
+          const childAttrs = [
+            'type="button"',
+            `class="${childClass}"`,
+            `data-view="${child.id}"`,
+            `aria-label="${childLabel}"`,
+          ];
+          if (collapsed) childAttrs.push(`title="${childLabel}"`);
+          return `<button ${childAttrs.join(' ')}><i class="${icon}"></i><span>${childLabel}</span></button>`;
         }).join('')}</div>`
       : '';
     const hasChildren = children.length > 0;
     const parentActive = item.id === omegaState.view || children.some((child) => child.id === omegaState.view);
     const parentClasses = `omega-nav__item${hasChildren ? ' omega-nav__item--parent' : ''}${parentActive ? ' is-active' : ''}`;
-    const expandedAttr = hasChildren ? ` aria-expanded="${parentActive ? 'true' : 'false'}"` : '';
-    const parentButton = `<button type="button" class="${parentClasses}" data-view="${item.id}"${expandedAttr}><i class="${item.icon}"></i><span>${escapeHTML(item.label)}</span></button>`;
+    const parentLabel = escapeHTML(item.label);
+    const parentAttrs = [
+      'type="button"',
+      `class="${parentClasses}"`,
+      `data-view="${item.id}"`,
+      `aria-label="${parentLabel}"`,
+    ];
+    if (hasChildren) parentAttrs.push(`aria-expanded="${parentActive ? 'true' : 'false'}"`);
+    if (collapsed) parentAttrs.push(`title="${parentLabel}"`);
+    const parentButton = `<button ${parentAttrs.join(' ')}><i class="${item.icon}"></i><span>${parentLabel}</span></button>`;
     return `<div class="omega-nav__block">${parentButton}${childMarkup}</div>`;
   }).join('');
   nav.innerHTML = markup;
@@ -2255,6 +2421,31 @@ function formatDateInput(value){
   return `${year}-${month}-${day}`;
 }
 
+function applyPendingIntents(root){
+  if (!root) return;
+  const intent = omegaState.pendingNewTicket;
+  if (!intent) return;
+  const queue = intent.queue || '';
+  if (queue) omegaState.prefillDepartment = queue;
+  setDrawerOpen(true);
+  const form = root.querySelector('#omega-form');
+  if (form && queue) {
+    const departmentSelect = form.querySelector('#omega-form-department');
+    const options = Array.from(departmentSelect?.options || []).map((option) => option.value);
+    if (departmentSelect && options.includes(queue) && departmentSelect.value !== queue) {
+      departmentSelect.value = queue;
+      syncTicketTypeOptions(form, queue);
+    }
+  }
+  const requesterInput = root.querySelector('#omega-form-user');
+  if (requesterInput) {
+    requestAnimationFrame(() => {
+      try { requesterInput.focus(); } catch (err) { /* noop */ }
+    });
+  }
+  omegaState.pendingNewTicket = null;
+}
+
 function setDrawerOpen(open){
   const root = document.getElementById('omega-modal');
   const drawer = root?.querySelector('#omega-drawer');
@@ -2269,6 +2460,34 @@ function setDrawerOpen(open){
     if (form) form.reset();
     resetFormAttachments(root);
     clearFormFeedback(root);
+    omegaState.prefillDepartment = '';
+  }
+}
+
+function setSidebarCollapsed(collapsed){
+  omegaState.sidebarCollapsed = !!collapsed;
+  applySidebarState();
+}
+
+function applySidebarState(root = document.getElementById('omega-modal')){
+  if (!root) return;
+  const collapsed = !!omegaState.sidebarCollapsed;
+  const body = root.querySelector('.omega-body');
+  const sidebar = root.querySelector('#omega-sidebar');
+  const toggle = root.querySelector('#omega-sidebar-toggle');
+  if (body) body.dataset.sidebarCollapsed = collapsed ? 'true' : 'false';
+  if (sidebar) sidebar.dataset.collapsed = collapsed ? 'true' : 'false';
+  if (toggle) {
+    toggle.dataset.collapsed = collapsed ? 'true' : 'false';
+    toggle.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+    toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    const label = collapsed ? 'Expandir menu' : 'Recolher menu';
+    toggle.setAttribute('aria-label', label);
+    toggle.setAttribute('title', label);
+    const icon = toggle.querySelector('i');
+    if (icon) {
+      icon.className = collapsed ? 'ti ti-layout-sidebar-right-expand' : 'ti ti-layout-sidebar-left-collapse';
+    }
   }
 }
 
@@ -2394,6 +2613,9 @@ function prefillTicketForm(root){
   const user = getCurrentUser();
   const availableDepartments = getAvailableDepartmentsForUser(user);
   const fallbackDepartment = availableDepartments[0] || '';
+  const requestedDepartment = omegaState.prefillDepartment && availableDepartments.includes(omegaState.prefillDepartment)
+    ? omegaState.prefillDepartment
+    : '';
   let productMeta = null;
   if (detail?.levelKey === 'prodsub') {
     productMeta = OMEGA_PRODUCT_CATALOG.find((item) => normalizeText(item.label) === normalizeText(detail.label)) || null;
@@ -2415,12 +2637,15 @@ function prefillTicketForm(root){
     const preferred = user?.defaultQueue && availableDepartments.includes(user.defaultQueue)
       ? user.defaultQueue
       : fallbackDepartment;
-    if (!availableDepartments.includes(departmentSelect.value)) {
+    if (requestedDepartment) {
+      departmentSelect.value = requestedDepartment;
+    } else if (!availableDepartments.includes(departmentSelect.value)) {
       departmentSelect.value = preferred;
     }
-    syncTicketTypeOptions(form, departmentSelect.value || preferred);
+    const effective = departmentSelect.value || requestedDepartment || preferred;
+    syncTicketTypeOptions(form, effective);
   } else {
-    syncTicketTypeOptions(form, fallbackDepartment);
+    syncTicketTypeOptions(form, requestedDepartment || fallbackDepartment);
   }
   if (requesterInput) {
     requesterInput.value = detail?.label && (detail.levelKey === 'contrato' || detail.levelKey === 'cliente')
@@ -2432,6 +2657,7 @@ function prefillTicketForm(root){
     observationInput.value = '';
   }
   clearFormFeedback(root);
+  omegaState.prefillDepartment = '';
 }
 
 function handleNewTicketSubmit(form){
