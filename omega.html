@@ -106,9 +106,9 @@
                           </select>
                         </label>
                         <fieldset class="omega-field omega-filter-form__status" aria-describedby="omega-filter-status-hint">
-                          <span class="omega-field__label">Situação do chamado</span>
+                          <span class="omega-field__label">Status do chamado</span>
                           <div id="omega-filter-status" class="omega-filter-status"></div>
-                          <small id="omega-filter-status-hint" class="omega-hint">Selecione uma ou mais situações</small>
+                          <small id="omega-filter-status-hint" class="omega-hint">Selecione um ou mais status</small>
                         </fieldset>
                         <div class="omega-filter-form__dates">
                           <label class="omega-field" for="omega-filter-from">
@@ -134,7 +134,7 @@
               </div>
               <button id="omega-bulk-status" class="omega-btn omega-btn--ghost" type="button" hidden>
                 <i class="ti ti-arrows-exchange"></i>
-                <span>Alterar situação</span>
+                <span>Alterar status</span>
               </button>
               <button id="omega-new-ticket" class="omega-btn omega-btn--primary" type="button">
                 <i class="ti ti-plus"></i>
@@ -146,14 +146,14 @@
           <div id="omega-bulk-panel" class="omega-bulk-panel" role="dialog" aria-modal="false" hidden>
             <form id="omega-bulk-form" class="omega-bulk-form">
               <header class="omega-bulk-form__header">
-                <strong>Alterar situação</strong>
+                <strong>Alterar status</strong>
                 <button type="button" class="omega-icon-btn" id="omega-bulk-close" aria-label="Fechar">
                   <i class="ti ti-x"></i>
                 </button>
               </header>
-              <p id="omega-bulk-hint">Selecione os chamados desejados para aplicar a nova situação.</p>
+              <p id="omega-bulk-hint">Selecione os chamados desejados para aplicar o novo status.</p>
               <label class="omega-field" for="omega-bulk-status-select">
-                <span class="omega-field__label">Nova situação</span>
+                <span class="omega-field__label">Novo status</span>
                 <select id="omega-bulk-status-select" class="omega-select" required></select>
               </label>
               <footer class="omega-bulk-form__actions">
@@ -186,7 +186,7 @@
                     <th scope="col">Fila</th>
                     <th scope="col">Abertura</th>
                     <th scope="col">Atualização</th>
-                    <th scope="col" class="col-status">Situação</th>
+                    <th scope="col" class="col-status">Status</th>
                   </tr>
                 </thead>
                 <tbody id="omega-ticket-rows"></tbody>
@@ -229,7 +229,7 @@
 
             <label class="omega-field" for="omega-form-observation">
               <span class="omega-field__label">Observação</span>
-              <textarea id="omega-form-observation" class="omega-textarea" rows="6" placeholder="Descreva a situação" required></textarea>
+              <textarea id="omega-form-observation" class="omega-textarea" rows="6" placeholder="Descreva a demanda" required></textarea>
             </label>
 
             <div class="omega-field omega-field--attachments">
@@ -300,7 +300,7 @@
                   <small id="omega-ticket-opened-time">—</small>
                 </article>
                 <article class="omega-ticket-card">
-                  <span class="omega-ticket-card__label">Situação</span>
+                  <span class="omega-ticket-card__label">Status</span>
                   <strong id="omega-ticket-status">—</strong>
                   <small id="omega-ticket-updated">—</small>
                 </article>
@@ -327,7 +327,7 @@
               <form id="omega-ticket-update-form" class="omega-ticket-actions__form">
                 <div id="omega-ticket-actions-advanced" class="omega-ticket-actions__advanced" hidden>
                   <label class="omega-field" for="omega-ticket-update-status">
-                    <span class="omega-field__label">Situação</span>
+                    <span class="omega-field__label">Status</span>
                     <select id="omega-ticket-update-status" class="omega-select"></select>
                   </label>
                   <label class="omega-field" for="omega-ticket-update-priority">
@@ -337,6 +337,10 @@
                   <label class="omega-field" for="omega-ticket-update-queue">
                     <span class="omega-field__label">Fila</span>
                     <select id="omega-ticket-update-queue" class="omega-select"></select>
+                  </label>
+                  <label class="omega-field" for="omega-ticket-update-owner">
+                    <span class="omega-field__label">Analista responsável</span>
+                    <select id="omega-ticket-update-owner" class="omega-select"></select>
                   </label>
                   <label class="omega-field" for="omega-ticket-update-category">
                     <span class="omega-field__label">Tipo de chamado</span>
@@ -422,10 +426,10 @@
         <section class="omega-manage-modal__panel" role="dialog" aria-modal="true" aria-labelledby="omega-manage-status-title">
           <header class="omega-manage-modal__header">
             <div>
-              <h3 id="omega-manage-status-title">Editar situações</h3>
-              <p>Personalize as situações disponíveis para as filas selecionadas.</p>
+              <h3 id="omega-manage-status-title">Editar status</h3>
+              <p>Personalize os status disponíveis para as filas selecionadas.</p>
             </div>
-            <button type="button" class="omega-icon-btn" data-omega-manage-status-close aria-label="Fechar edição de situações">
+            <button type="button" class="omega-icon-btn" data-omega-manage-status-close aria-label="Fechar edição de status">
               <i class="ti ti-x"></i>
             </button>
           </header>
@@ -435,12 +439,12 @@
               <select id="omega-manage-status-department" class="omega-select"></select>
             </label>
             <label class="omega-field" for="omega-manage-status-select">
-              <span class="omega-field__label">Situação</span>
+              <span class="omega-field__label">Status</span>
               <select id="omega-manage-status-select" class="omega-select"></select>
             </label>
             <label class="omega-field" for="omega-manage-status-label">
               <span class="omega-field__label">Título</span>
-              <input id="omega-manage-status-label" class="omega-input" type="text" placeholder="Nome da situação"/>
+              <input id="omega-manage-status-label" class="omega-input" type="text" placeholder="Nome do status"/>
             </label>
             <label class="omega-field" for="omega-manage-status-tone">
               <span class="omega-field__label">Tom</span>
@@ -448,7 +452,7 @@
             </label>
             <label class="omega-field" for="omega-manage-status-description">
               <span class="omega-field__label">Descrição</span>
-              <textarea id="omega-manage-status-description" class="omega-textarea" rows="3" placeholder="Quando essa situação deve ser utilizada?"></textarea>
+              <textarea id="omega-manage-status-description" class="omega-textarea" rows="3" placeholder="Quando esse status deve ser utilizado?"></textarea>
             </label>
             <footer class="omega-manage-modal__actions">
               <button type="button" class="omega-btn" data-omega-manage-status-close>Cancelar</button>

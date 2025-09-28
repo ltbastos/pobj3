@@ -41,7 +41,7 @@ OMEGA_NAV_ITEMS.forEach((item) => {
 
 let OMEGA_STATUS_ORDER = ["todos"];
 let OMEGA_STATUS_META = {};
-const OMEGA_STATUS_SOURCE = "Bases/dSituacao.csv";
+const OMEGA_STATUS_SOURCE = "Bases/dStatus.csv";
 let OMEGA_STATUS_CATALOG = [];
 let omegaStatusPromise = null;
 
@@ -243,6 +243,7 @@ const omegaState = {
     status: "",
     priority: "",
     queue: "",
+    owner: "",
     category: "",
     due: "",
     attachments: [],
@@ -374,7 +375,7 @@ function ensureOmegaStatuses(){
 
   const loader = (typeof loadCSVAuto === 'function')
     ? loadCSVAuto(OMEGA_STATUS_SOURCE).catch((err) => {
-        console.warn('Falha ao carregar situações via loader principal:', err);
+        console.warn('Falha ao carregar status via loader principal:', err);
         return fallbackLoadCsv(OMEGA_STATUS_SOURCE);
       })
     : fallbackLoadCsv(OMEGA_STATUS_SOURCE);
@@ -382,12 +383,12 @@ function ensureOmegaStatuses(){
   omegaStatusPromise = loader
     .then((rows) => {
       const normalized = normalizeOmegaStatusRows(Array.isArray(rows) ? rows : []);
-      if (!normalized.length) throw new Error('Nenhuma situação cadastrada');
+      if (!normalized.length) throw new Error('Nenhum status cadastrado');
       applyStatusCatalog(normalized);
       return OMEGA_STATUS_CATALOG;
     })
     .catch((err) => {
-      console.warn('Aplicando situações padrão da Omega:', err);
+      console.warn('Aplicando status padrão da Omega:', err);
       applyStatusCatalog(OMEGA_DEFAULT_STATUSES);
       return OMEGA_STATUS_CATALOG;
     });
@@ -1289,7 +1290,14 @@ function setupOmegaModule(root){
   ticketQueueSelect?.addEventListener('change', (ev) => {
     if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
     omegaState.ticketUpdate.queue = ev.target.value || '';
+    refreshTicketUpdateOwners(root);
     refreshTicketUpdateCategories(root);
+  });
+
+  const ticketOwnerSelect = root.querySelector('#omega-ticket-update-owner');
+  ticketOwnerSelect?.addEventListener('change', (ev) => {
+    if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
+    omegaState.ticketUpdate.owner = ev.target.value || '';
   });
 
   const ticketCategorySelect = root.querySelector('#omega-ticket-update-category');
@@ -2023,6 +2031,7 @@ function configureTicketActions(modal, ticket, user){
   if (!draft.status) draft.status = ticket.status || (getOrderedStatuses()[0] || 'aberto');
   if (!draft.priority) draft.priority = ticket.priority || 'media';
   if (draft.queue == null) draft.queue = ticket.queue || '';
+  if (draft.owner == null) draft.owner = ticket.ownerId || '';
   if (draft.category == null) draft.category = ticket.category || '';
   if (!draft.due) draft.due = formatDateInput(ticket.dueDate);
   if (!Array.isArray(draft.attachments)) draft.attachments = [];
@@ -2065,6 +2074,7 @@ function configureTicketActions(modal, ticket, user){
     queueSelect.disabled = !canEdit;
   }
 
+  refreshTicketUpdateOwners(modal);
   refreshTicketUpdateCategories(modal);
 
   const dueInput = section.querySelector('#omega-ticket-update-due');
@@ -2078,6 +2088,45 @@ function configureTicketActions(modal, ticket, user){
   }
 
   renderTicketUpdateAttachments(section);
+}
+
+function refreshTicketUpdateOwners(root){
+  if (!root) return;
+  const section = root.querySelector('#omega-ticket-actions');
+  if (!section) return;
+  const ownerSelect = section.querySelector('#omega-ticket-update-owner');
+  const queueSelect = section.querySelector('#omega-ticket-update-queue');
+  if (!ownerSelect || !queueSelect) return;
+  if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
+  const draft = omegaState.ticketUpdate;
+  const queue = queueSelect.value || '';
+  const ticketId = omegaState.ticketUpdateTicketId;
+  const ticket = ticketId ? OMEGA_TICKETS.find((item) => item.id === ticketId) : null;
+  const user = getCurrentUser();
+  const canEdit = ['analista', 'supervisor', 'admin'].includes(user?.role);
+  const baseList = canEdit ? getAssignableAnalystsForQueue(queue, user) : [];
+  const combined = [...baseList];
+  const extras = new Set([ticket?.ownerId, draft.owner].filter(Boolean));
+  extras.forEach((id) => {
+    if (!combined.some((person) => person.id === id)) {
+      const person = OMEGA_USERS.find((entry) => entry.id === id);
+      if (person) combined.push(person);
+    }
+  });
+  combined.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  const options = [
+    { value: '', label: 'Sem responsável' },
+    ...combined.map((person) => ({ value: person.id, label: person.name })),
+  ];
+  ownerSelect.innerHTML = options
+    .map((option) => `<option value="${escapeHTML(option.value)}">${escapeHTML(option.label)}</option>`)
+    .join('');
+  const availableValues = options.map((option) => option.value);
+  if (!availableValues.includes(draft.owner || '')) {
+    draft.owner = ticket?.ownerId || '';
+  }
+  ownerSelect.value = draft.owner || '';
+  ownerSelect.disabled = !canEdit || !options.length;
 }
 
 function refreshTicketUpdateCategories(root){
@@ -2136,23 +2185,33 @@ function handleTicketUpdateSubmit(form){
   const newQueue = draft.queue || ticket.queue;
   const newCategory = draft.category || ticket.category;
   const newDue = draft.due ? `${draft.due}T00:00:00` : null;
+  const newOwner = draft.owner ? draft.owner : '';
   const attachments = Array.isArray(draft.attachments) ? draft.attachments : [];
   const now = new Date().toISOString();
 
   const previousStatus = ticket.status;
+  const previousOwner = ticket.ownerId || '';
   if (canEdit) {
     ticket.status = newStatus;
     ticket.priority = newPriority;
     ticket.queue = newQueue;
     ticket.category = newCategory;
     ticket.dueDate = newDue;
+    ticket.ownerId = newOwner || null;
   }
   ticket.updated = now;
   if (!Array.isArray(ticket.history)) ticket.history = [];
   const statusMeta = OMEGA_STATUS_META[ticket.status] || { label: ticket.status };
-  const actionLabel = canEdit && draft.status && draft.status !== previousStatus
-    ? `Situação atualizada para ${statusMeta.label}`
-    : 'Atualização registrada';
+  const statusChanged = canEdit && draft.status && draft.status !== previousStatus;
+  const ownerChanged = canEdit && newOwner !== previousOwner;
+  let actionLabel = 'Atualização registrada';
+  if (statusChanged) {
+    actionLabel = `Status atualizado para ${statusMeta.label}`;
+  } else if (ownerChanged) {
+    const ownerName = resolveUserName(newOwner);
+    const ownerLabel = newOwner && ownerName && ownerName !== '—' ? ownerName : 'Sem responsável';
+    actionLabel = newOwner ? `Responsável atualizado para ${ownerLabel}` : 'Responsável removido';
+  }
   ticket.history.push({
     date: now,
     actorId: user?.id || '',
@@ -2214,7 +2273,7 @@ function handleBulkStatusSubmit(status){
     ticket.history.push({
       date: now,
       actorId: user?.id || '',
-      action: `Situação atualizada em lote para ${statusMeta.label}`,
+      action: `Status atualizado em lote para ${statusMeta.label}`,
       comment: '',
       status,
       attachments: [],
@@ -2222,7 +2281,7 @@ function handleBulkStatusSubmit(status){
   });
   omegaState.bulkPanelOpen = false;
   renderOmega();
-  showOmegaToast(`Situação atualizada para ${statusMeta.label}.`, 'success');
+  showOmegaToast(`Status atualizado para ${statusMeta.label}.`, 'success');
 }
 
 function buildTicketMeta(ticket){
@@ -2378,6 +2437,24 @@ function getUsersByQueues(queues, predicate){
     if (typeof predicate === 'function' && !predicate(person)) return false;
     return true;
   }).map((person) => person.id);
+}
+
+function getAssignableAnalystsForQueue(queue, user){
+  if (!queue) return [];
+  const canEdit = ['analista', 'supervisor', 'admin'].includes(user?.role);
+  if (!canEdit) return [];
+  const candidateIds = getUsersByQueues([queue], (person) => {
+    if (!person) return false;
+    return !!(person.roles?.analista || person.roles?.supervisor || person.roles?.admin);
+  });
+  if (user && getUserQueues(user).includes(queue) && !candidateIds.includes(user.id)) {
+    candidateIds.push(user.id);
+  }
+  const uniqueIds = Array.from(new Set(candidateIds));
+  return uniqueIds
+    .map((id) => OMEGA_USERS.find((person) => person.id === id))
+    .filter(Boolean)
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 }
 
 function filterTicketsByContext(){
@@ -2742,6 +2819,7 @@ function resetTicketUpdateState(){
     status: '',
     priority: '',
     queue: '',
+    owner: '',
     category: '',
     due: '',
     attachments: [],
@@ -2761,6 +2839,7 @@ function initializeTicketUpdateDraft(ticket){
     status: ticket.status && statuses.includes(ticket.status) ? ticket.status : (statuses[0] || 'aberto'),
     priority: ticket.priority || 'media',
     queue: ticket.queue || '',
+    owner: ticket.ownerId || '',
     category: ticket.category || '',
     due: formatDateInput(ticket.dueDate),
     attachments: [],
@@ -3142,7 +3221,7 @@ function handleManageStatusSubmit(form){
     return;
   }
   if (!statusId) {
-    showOmegaToast('Selecione uma situação para atualizar.', 'warning');
+    showOmegaToast('Selecione um status para atualizar.', 'warning');
     return;
   }
   const tone = OMEGA_STATUS_TONE_OPTIONS.includes(toneRaw) ? toneRaw : 'neutral';
@@ -3156,7 +3235,7 @@ function handleManageStatusSubmit(form){
     index = OMEGA_STATUS_CATALOG.findIndex((entry) => entry?.id === statusId);
   }
   if (index === -1) {
-    showOmegaToast('Situação não encontrada.', 'danger');
+    showOmegaToast('Status não encontrado.', 'danger');
     return;
   }
   const updated = { ...OMEGA_STATUS_CATALOG[index] };
@@ -3175,7 +3254,7 @@ function handleManageStatusSubmit(form){
   renderOmega();
   const root = document.getElementById('omega-modal');
   if (root) populateManageStatusModal(root, getCurrentUser());
-  showOmegaToast('Situação atualizada.', 'success');
+  showOmegaToast('Status atualizado.', 'success');
 }
 
 function setTicketModalOpen(open){
