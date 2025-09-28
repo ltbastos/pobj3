@@ -85,11 +85,42 @@ const OMEGA_TICKET_TYPES_BY_DEPARTMENT = {
     "Redistribuição de verba",
   ],
   POBJ: [
-    "Adicionais",
-    "Financeiro",
-    "Melhoria de Processos",
-    "Negócios",
-    "Relacionamento",
+    "Recuperação de Vencidos até 59 dias",
+    "Recuperação de Vencidos acima 59 dias",
+    "Recuperação de Crédito",
+    "Captação Bruta (CDB, Isentos, Fundos, Corretora e Previdência)",
+    "Captação Líquida (Todos os Produtos)",
+    "Isentos",
+    "Fundos",
+    "Previdência Privada",
+    "Portabilidade de Previdência Privada",
+    "Corretora",
+    "COE",
+    "Depósito a Prazo",
+    "InvestFácil",
+    "Poupança",
+    "Depósito à Vista",
+    "Centralização de Caixa (Cash)",
+    "Contas a Receber (vol)",
+    "Contas a Pagar (vol)",
+    "Centralização de Caixa PF (Qtd)",
+    "Produção de Crédito PJ",
+    "Produção de Crédito - Spread PF",
+    "Produção de Crédito Total",
+    "Limite Rotativo PF + PJ (Volume)",
+    "Cheque Especial PF - volume",
+    "Cheque Empresarial - volume",
+    "Limite Rotativo PF + PJ (Qtd)",
+    "Cheque Empresarial - qtd",
+    "Cartões",
+    "Consórcios",
+    "Seguros",
+    "Sucesso de Equipe Crédito",
+    "Conquista Qualificada Gerenciado PF",
+    "Conquista Qualificada Gerenciado PJ",
+    "Conquista de Clientes Folha de Pagamento",
+    "Abertura de Contas PF - Folha de Pagamento Privada",
+    "Bradesco Expresso",
   ],
   Matriz: [
     "Relatório/Dashboard",
@@ -1329,16 +1360,13 @@ function updateFilterButtonState(root){
 function renderSummary(root, contextTickets, viewTickets, user){
   const host = root.querySelector('#omega-summary');
   if (!host) return;
-  const total = viewTickets.length;
-  const inProgress = viewTickets.filter((t) => t.status === 'em_atendimento').length;
-  const awaiting = viewTickets.filter((t) => t.status === 'aguardando').length;
-  const critical = viewTickets.filter((t) => t.priority === 'critica' && t.status !== 'resolvido').length;
-  const parts = [
-    `<div class="omega-summary__item"><strong>${total}</strong><span>Chamados na visão</span></div>`,
-    `<div class="omega-summary__item"><strong>${inProgress}</strong><span>Em atendimento</span></div>`,
-    `<div class="omega-summary__item"><strong>${awaiting}</strong><span>Aguardando resposta</span></div>`,
-    `<div class="omega-summary__item"><strong>${critical}</strong><span>Críticos</span></div>`,
-  ];
+  const summaryStatuses = ['aberto', 'aguardando', 'em_atendimento', 'resolvido', 'cancelado'];
+  const fallbackStatusMeta = Object.fromEntries(OMEGA_DEFAULT_STATUSES.map((item) => [item.id, item]));
+  const parts = summaryStatuses.map((status) => {
+    const meta = OMEGA_STATUS_META[status] || fallbackStatusMeta[status] || { label: status };
+    const count = viewTickets.filter((ticket) => ticket.status === status).length;
+    return `<div class="omega-summary__item"><strong>${count}</strong><span>${escapeHTML(meta.label)}</span></div>`;
+  });
   host.innerHTML = parts.join('');
 }
 
@@ -1813,15 +1841,9 @@ function openTicketDetail(ticketId){
 
 function updateEmptyState(root, tickets){
   const wrapper = root.querySelector('#omega-table-wrapper');
-  const empty = root.querySelector('#omega-empty');
-  if (!wrapper || !empty) return;
-  if (!tickets.length) {
-    wrapper.hidden = true;
-    empty.hidden = false;
-  } else {
-    wrapper.hidden = false;
-    empty.hidden = true;
-  }
+  if (!wrapper) return;
+  wrapper.hidden = false;
+  wrapper.dataset.empty = tickets.length ? 'false' : 'true';
 }
 
 function filterTicketsByContext(){

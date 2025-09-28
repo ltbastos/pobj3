@@ -98,7 +98,15 @@ body.has-omega-open{ overflow:hidden; }
 .omega-header__titles p{ margin:0; color:var(--muted); font-size:14px; }
 
 .omega-header__actions{ display:flex; align-items:center; gap:12px; }
-.omega-logo{ width:48px; height:48px; border-radius:16px; box-shadow:0 12px 28px rgba(37,99,235,.18); background:linear-gradient(145deg,rgba(15,23,42,.92),rgba(37,99,235,.72)); padding:10px; object-fit:contain; }
+.omega-logo{
+  width:64px;
+  height:64px;
+  border-radius:20px;
+  box-shadow:0 16px 32px rgba(37,99,235,.18);
+  background:linear-gradient(145deg,rgba(15,23,42,.92),rgba(37,99,235,.72));
+  padding:12px;
+  object-fit:contain;
+}
 .omega-user-switch{ display:flex; align-items:center; gap:8px; padding:0; }
 .omega-user-switch select{ min-width:180px; max-width:220px; font-weight:600; font-size:13px; border-radius:12px; }
 
