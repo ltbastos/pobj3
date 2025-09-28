@@ -176,7 +176,6 @@ const OMEGA_USER_METADATA = {
   "usr-10": { avatar: "https://i.pravatar.cc/160?img=52", teamId: "pobj" },
   "usr-11": { avatar: "https://i.pravatar.cc/160?img=64", teamId: "orcamento" },
   "usr-12": { avatar: "https://i.pravatar.cc/160?img=57", teamId: "matriz" },
-  "usr-13": { avatar: "https://i.pravatar.cc/160?img=14", teamId: "pobj" },
 };
 
 let OMEGA_USERS = [];
@@ -626,6 +625,9 @@ function normalizeOmegaUserRows(rows){
     const id = (row.id || row.ID || '').trim();
     const name = (row.nome || row.name || '').trim();
     if (!id || !name) return null;
+    const functionalRaw = (row.funcional || row.matricula || row.juncao || row.juncao_id || '').toString().trim();
+    const functionalDigits = functionalRaw.replace(/[^0-9]/g, '');
+    const functional = functionalDigits ? functionalDigits.padStart(7, '0').slice(-7) : '';
     const roles = {
       usuario: parseOmegaBoolean(row.usuario),
       analista: parseOmegaBoolean(row.analista),
@@ -640,7 +642,7 @@ function normalizeOmegaUserRows(rows){
     }, []);
     const matrixAccess = queues.includes('Matriz') || parseOmegaBoolean(row.matriz);
     const positionRaw = (row.cargo || row.funcao || row.cargo_principal || '').trim();
-    const junction = (row.juncao || row.juncao_id || row.matricula || '').trim();
+    const junction = functional || (row.juncao || row.juncao_id || row.matricula || '').toString().trim();
     const position = positionRaw || (OMEGA_ROLE_LABELS[primaryRole] || 'Usuário');
     return {
       id,
@@ -651,6 +653,7 @@ function normalizeOmegaUserRows(rows){
       avatar: meta.avatar || `https://i.pravatar.cc/160?u=${encodeURIComponent(id)}`,
       position,
       junction,
+      functional,
       queues,
       defaultQueue: queues[0] || null,
       teamId: meta.teamId ?? null,
@@ -2706,7 +2709,8 @@ function populateUserSelect(root){
     const roleLabel = getUserRoleLabel(user);
     const meta = [];
     if (user.position) meta.push(user.position);
-    if (user.junction) meta.push(user.junction);
+    if (user.functional) meta.push(user.functional);
+    else if (user.junction) meta.push(user.junction);
     const descriptor = meta.length ? meta.join(' • ') : roleLabel;
     return `<option value="${user.id}">${escapeHTML(user.name)} — ${escapeHTML(descriptor)}</option>`;
   }).join('');
@@ -2715,6 +2719,8 @@ function populateUserSelect(root){
   omegaState.currentUserId = defaultId || null;
   select.disabled = false;
   select.removeAttribute('aria-disabled');
+  const currentUser = options.find((user) => user.id === defaultId) || options[0] || null;
+  renderProfile(root, currentUser);
 }
 
 function populateFormOptions(root){

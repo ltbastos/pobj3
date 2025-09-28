@@ -1,14 +1,13 @@
-id,nome,cargo,juncao,usuario,analista,supervisor,admin,encarteiramento,meta,orcamento,pobj,matriz,outros
-usr-01,Juliane Negretti,Supervisora POBJ,1042,TRUE,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,TRUE
-usr-02,Marcos Pena,Supervisor POBJ e Orçamento,2085,TRUE,TRUE,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,FALSE,TRUE
-usr-03,Cassio Perussi,Supervisor Matriz,3127,TRUE,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE,TRUE
-usr-04,Bruno Quesada,Supervisor Matriz,4218,TRUE,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE,TRUE
-usr-05,Fellipe Yamassaki,Supervisor Metas e Encarteiramento,5379,TRUE,TRUE,TRUE,FALSE,TRUE,TRUE,FALSE,FALSE,FALSE,TRUE
-usr-06,Yuri Viglio,Supervisor Metas e Encarteiramento,6483,TRUE,TRUE,TRUE,FALSE,TRUE,TRUE,FALSE,FALSE,FALSE,TRUE
-usr-07,Thalita Gregório,Supervisora Orçamento,7591,TRUE,TRUE,TRUE,FALSE,FALSE,FALSE,TRUE,FALSE,FALSE,TRUE
-usr-08,Luã Bastos,Administrador Geral,8640,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
-usr-09,Henrique Bardella,Administrador Geral,9755,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
-usr-10,Gabriel Figueiredo,Analista POBJ,6234,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,FALSE
-usr-11,Thais Almeida,Analista Orçamento,8891,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,FALSE,FALSE
-usr-12,Maria Jose,Especialista Matriz,9988,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
-usr-13,Antonio Silva,Consultor POBJ,7766,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE,TRUE
+id,nome,cargo,funcional,usuario,analista,supervisor,admin,encarteiramento,meta,orcamento,pobj,matriz,outros
+usr-01,Juliane Negretti,Supervisora POBJ,1042001,TRUE,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,TRUE
+usr-02,Marcos Pena,Supervisor POBJ e Orçamento,2085002,TRUE,TRUE,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,FALSE,TRUE
+usr-03,Cassio Perussi,Supervisor Matriz,3127003,TRUE,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE,TRUE
+usr-04,Bruno Quesada,Supervisor Matriz,4218004,TRUE,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE,TRUE
+usr-05,Fellipe Yamassaki,Supervisor Metas e Encarteiramento,5379005,TRUE,TRUE,TRUE,FALSE,TRUE,TRUE,FALSE,FALSE,FALSE,TRUE
+usr-06,Yuri Viglio,Supervisor Metas e Encarteiramento,6483006,TRUE,TRUE,TRUE,FALSE,TRUE,TRUE,FALSE,FALSE,FALSE,TRUE
+usr-07,Thalita Gregório,Supervisora Orçamento,7591007,TRUE,TRUE,TRUE,FALSE,FALSE,FALSE,TRUE,FALSE,FALSE,TRUE
+usr-08,Luã Bastos,Administrador Geral,8640008,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+usr-09,Henrique Bardella,Administrador Geral,9755009,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+usr-10,Gabriel Figueiredo,Analista POBJ,6234010,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,FALSE
+usr-11,Thais Almeida,Analista Orçamento,8891011,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,FALSE,FALSE
+usr-12,Maria Jose,Especialista Matriz,9988012,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
