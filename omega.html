@@ -20,9 +20,6 @@
     <section class="omega-modal__panel" role="dialog" aria-modal="true" aria-labelledby="omega-title">
       <header class="omega-header">
         <div class="omega-header__left">
-          <button id="omega-sidebar-toggle" class="omega-icon-btn" type="button" aria-label="Recolher menu" aria-pressed="false" aria-expanded="true" title="Recolher menu">
-            <i class="ti ti-layout-sidebar-left-collapse" aria-hidden="true"></i>
-          </button>
           <img class="omega-logo" src="img/logo-omega.png" alt="Logotipo da Omega" width="80" height="80"/>
           <div class="omega-header__titles">
             <h2 id="omega-title">Central de chamados Omega</h2>
@@ -42,6 +39,10 @@
 
       <div class="omega-body">
         <aside class="omega-sidebar" id="omega-sidebar">
+          <button id="omega-sidebar-toggle" class="omega-sidebar__toggle" type="button" aria-label="Recolher menu" aria-pressed="false" aria-expanded="true" title="Recolher menu">
+            <span class="sr-only">Alternar menu</span>
+            <i class="ti ti-chevron-left" aria-hidden="true"></i>
+          </button>
           <section class="omega-profile" aria-label="Perfil selecionado">
             <figure class="omega-avatar" aria-hidden="true">
               <img id="omega-avatar" src="https://i.pravatar.cc/160?img=52" alt="" loading="lazy"/>
@@ -90,8 +91,8 @@
                         </label>
                         <label class="omega-field" for="omega-filter-department">
                           <span class="omega-field__label">Departamento</span>
-                          <select id="omega-filter-department" class="omega-select" multiple size="6" aria-describedby="omega-filter-department-hint"></select>
-                          <small id="omega-filter-department-hint" class="omega-hint">Selecione uma ou mais filas</small>
+                          <select id="omega-filter-department" class="omega-select" aria-describedby="omega-filter-department-hint"></select>
+                          <small id="omega-filter-department-hint" class="omega-hint">Escolha a fila desejada</small>
                         </label>
                         <label class="omega-field" for="omega-filter-type">
                           <span class="omega-field__label">Tipo de chamado</span>
