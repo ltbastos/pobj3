@@ -1,0 +1,86 @@
+nivel,ano,database,segmento,segmentoId,diretoria,diretoriaNome,gerenciaRegional,gerenciaNome,agencia,agenciaNome,agenciaCodigo,gerenteGestao,gerenteGestaoNome,gerente,gerenteNome,participantes,rank,pontos,realizado,meta
+Diretoria,2025,2025-12-31,Negócios,8609,1,Norte & Nordeste,,,,,,,,,12,1,118.4,118.4,100
+Diretoria,2024,2024-12-31,Negócios,8609,1,Norte & Nordeste,,,,,,,,,12,2,112.7,112.7,100
+Diretoria,2023,2023-12-31,Negócios,8609,1,Norte & Nordeste,,,,,,,,,12,3,106.9,106.9,100
+Diretoria,2022,2022-12-31,Negócios,8609,1,Norte & Nordeste,,,,,,,,,12,2,109.6,109.6,100
+Diretoria,2021,2021-12-31,Negócios,8609,1,Norte & Nordeste,,,,,,,,,12,4,101.8,101.8,100
+Diretoria,2025,2025-12-31,Empresas,8608,2,Sudeste,,,,,,,,,12,2,112.1,112.1,100
+Diretoria,2024,2024-12-31,Empresas,8608,2,Sudeste,,,,,,,,,12,1,117.5,117.5,100
+Diretoria,2023,2023-12-31,Empresas,8608,2,Sudeste,,,,,,,,,12,2,111.3,111.3,100
+Diretoria,2022,2022-12-31,Empresas,8608,2,Sudeste,,,,,,,,,12,3,106.4,106.4,100
+Diretoria,2021,2021-12-31,Empresas,8608,2,Sudeste,,,,,,,,,12,3,104.2,104.2,100
+Diretoria,2025,2025-12-31,MEI,8888,5,Sul & Centro-Oeste,,,,,,,,,12,3,109.6,109.6,100
+Diretoria,2024,2024-12-31,MEI,8888,5,Sul & Centro-Oeste,,,,,,,,,12,4,105.2,105.2,100
+Diretoria,2023,2023-12-31,MEI,8888,5,Sul & Centro-Oeste,,,,,,,,,12,5,101.4,101.4,100
+Diretoria,2022,2022-12-31,MEI,8888,5,Sul & Centro-Oeste,,,,,,,,,12,4,103.9,103.9,100
+Diretoria,2021,2021-12-31,MEI,8888,5,Sul & Centro-Oeste,,,,,,,,,12,2,108.6,108.6,100
+Gerencia,2025,2025-12-31,Negócios,8609,1,Norte & Nordeste,1234,Regional Fortaleza,,,,,,,,14,1,119.2,119.2,100
+Gerencia,2024,2024-12-31,Negócios,8609,1,Norte & Nordeste,1234,Regional Fortaleza,,,,,,,,14,1,116.3,116.3,100
+Gerencia,2023,2023-12-31,Negócios,8609,1,Norte & Nordeste,1234,Regional Fortaleza,,,,,,,,14,2,110.8,110.8,100
+Gerencia,2022,2022-12-31,Negócios,8609,1,Norte & Nordeste,1234,Regional Fortaleza,,,,,,,,14,3,105.7,105.7,100
+Gerencia,2021,2021-12-31,Negócios,8609,1,Norte & Nordeste,1234,Regional Fortaleza,,,,,,,,14,3,103.6,103.6,100
+Gerencia,2025,2025-12-31,Empresas,8608,2,Sudeste,5675,Regional São Paulo,,,,,,,,14,2,113.7,113.7,100
+Gerencia,2024,2024-12-31,Empresas,8608,2,Sudeste,5675,Regional São Paulo,,,,,,,,14,2,111.4,111.4,100
+Gerencia,2023,2023-12-31,Empresas,8608,2,Sudeste,5675,Regional São Paulo,,,,,,,,14,1,118.9,118.9,100
+Gerencia,2022,2022-12-31,Empresas,8608,2,Sudeste,5675,Regional São Paulo,,,,,,,,14,2,112.6,112.6,100
+Gerencia,2021,2021-12-31,Empresas,8608,2,Sudeste,5675,Regional São Paulo,,,,,,,,14,1,115.1,115.1,100
+Gerencia,2025,2025-12-31,MEI,8888,5,Sul & Centro-Oeste,5577,Regional Curitiba,,,,,,,,14,3,108.4,108.4,100
+Gerencia,2024,2024-12-31,MEI,8888,5,Sul & Centro-Oeste,5577,Regional Curitiba,,,,,,,,14,3,107.2,107.2,100
+Gerencia,2023,2023-12-31,MEI,8888,5,Sul & Centro-Oeste,5577,Regional Curitiba,,,,,,,,14,4,103.9,103.9,100
+Gerencia,2022,2022-12-31,MEI,8888,5,Sul & Centro-Oeste,5577,Regional Curitiba,,,,,,,,14,4,101.5,101.5,100
+Gerencia,2021,2021-12-31,MEI,8888,5,Sul & Centro-Oeste,5577,Regional Curitiba,,,,,,,,14,2,109.8,109.8,100
+Gerencia,2025,2025-12-31,MEI,8888,5,Sul & Centro-Oeste,7790,Regional Florianópolis,,,,,,,,14,2,112.6,112.6,100
+Gerencia,2024,2024-12-31,MEI,8888,5,Sul & Centro-Oeste,7790,Regional Florianópolis,,,,,,,,14,4,106.3,106.3,100
+Gerencia,2023,2023-12-31,MEI,8888,5,Sul & Centro-Oeste,7790,Regional Florianópolis,,,,,,,,14,5,101.9,101.9,100
+Gerencia,2022,2022-12-31,MEI,8888,5,Sul & Centro-Oeste,7790,Regional Florianópolis,,,,,,,,14,3,108.8,108.8,100
+Gerencia,2021,2021-12-31,MEI,8888,5,Sul & Centro-Oeste,7790,Regional Florianópolis,,,,,,,,14,4,104.5,104.5,100
+Agencia,2025,2025-12-31,Negócios,8609,1,Norte & Nordeste,1234,Regional Fortaleza,1001,Fortaleza Centro,1001,1026752,Danilo Dourado,,,18,1,121.4,121.4,100
+Agencia,2024,2024-12-31,Negócios,8609,1,Norte & Nordeste,1234,Regional Fortaleza,1001,Fortaleza Centro,1001,1026752,Danilo Dourado,,,18,2,116.8,116.8,100
+Agencia,2023,2023-12-31,Negócios,8609,1,Norte & Nordeste,1234,Regional Fortaleza,1001,Fortaleza Centro,1001,1026752,Danilo Dourado,,,18,3,111.5,111.5,100
+Agencia,2022,2022-12-31,Negócios,8609,1,Norte & Nordeste,1234,Regional Fortaleza,1001,Fortaleza Centro,1001,1026752,Danilo Dourado,,,18,2,115.3,115.3,100
+Agencia,2021,2021-12-31,Negócios,8609,1,Norte & Nordeste,1234,Regional Fortaleza,1001,Fortaleza Centro,1001,1026752,Danilo Dourado,,,18,4,104.7,104.7,100
+Agencia,2025,2025-12-31,Empresas,8608,2,Sudeste,5675,Regional São Paulo,1004,Avenida Paulista,1004,3166765,Juliane Negretti,,,18,2,114.9,114.9,100
+Agencia,2024,2024-12-31,Empresas,8608,2,Sudeste,5675,Regional São Paulo,1004,Avenida Paulista,1004,3166765,Juliane Negretti,,,18,1,118.7,118.7,100
+Agencia,2023,2023-12-31,Empresas,8608,2,Sudeste,5675,Regional São Paulo,1004,Avenida Paulista,1004,3166765,Juliane Negretti,,,18,1,119.6,119.6,100
+Agencia,2022,2022-12-31,Empresas,8608,2,Sudeste,5675,Regional São Paulo,1004,Avenida Paulista,1004,3166765,Juliane Negretti,,,18,3,109.4,109.4,100
+Agencia,2021,2021-12-31,Empresas,8608,2,Sudeste,5675,Regional São Paulo,1004,Avenida Paulista,1004,3166765,Juliane Negretti,,,18,3,107.2,107.2,100
+Agencia,2025,2025-12-31,MEI,8888,5,Sul & Centro-Oeste,5577,Regional Curitiba,1003,Curitiba Batel,1003,1098367,Paula Cristina,,,18,3,109.1,109.1,100
+Agencia,2024,2024-12-31,MEI,8888,5,Sul & Centro-Oeste,5577,Regional Curitiba,1003,Curitiba Batel,1003,1098367,Paula Cristina,,,18,4,104.6,104.6,100
+Agencia,2023,2023-12-31,MEI,8888,5,Sul & Centro-Oeste,5577,Regional Curitiba,1003,Curitiba Batel,1003,1098367,Paula Cristina,,,18,4,103.3,103.3,100
+Agencia,2022,2022-12-31,MEI,8888,5,Sul & Centro-Oeste,5577,Regional Curitiba,1003,Curitiba Batel,1003,1098367,Paula Cristina,,,18,3,108.7,108.7,100
+Agencia,2021,2021-12-31,MEI,8888,5,Sul & Centro-Oeste,5577,Regional Curitiba,1003,Curitiba Batel,1003,1098367,Paula Cristina,,,18,2,111.8,111.8,100
+Agencia,2025,2025-12-31,MEI,8888,5,Sul & Centro-Oeste,7790,Regional Florianópolis,2002,Florianópolis Beira-Mar,2002,7999123,Rodrigo Azevedo,,,18,2,115.2,115.2,100
+Agencia,2024,2024-12-31,MEI,8888,5,Sul & Centro-Oeste,7790,Regional Florianópolis,2002,Florianópolis Beira-Mar,2002,7999123,Rodrigo Azevedo,,,18,5,102.7,102.7,100
+Agencia,2023,2023-12-31,MEI,8888,5,Sul & Centro-Oeste,7790,Regional Florianópolis,2002,Florianópolis Beira-Mar,2002,7999123,Rodrigo Azevedo,,,18,5,101.6,101.6,100
+Agencia,2022,2022-12-31,MEI,8888,5,Sul & Centro-Oeste,7790,Regional Florianópolis,2002,Florianópolis Beira-Mar,2002,7999123,Rodrigo Azevedo,,,18,4,107.9,107.9,100
+Agencia,2021,2021-12-31,MEI,8888,5,Sul & Centro-Oeste,7790,Regional Florianópolis,2002,Florianópolis Beira-Mar,2002,7999123,Rodrigo Azevedo,,,18,3,109.4,109.4,100
+Agencia,2025,2025-12-31,MEI,8888,5,Sul & Centro-Oeste,5599,Regional Goiânia,2003,Goiânia Setor Bueno,2003,7456123,Helena Duarte,,,18,4,103.2,103.2,100
+Agencia,2024,2024-12-31,MEI,8888,5,Sul & Centro-Oeste,5599,Regional Goiânia,2003,Goiânia Setor Bueno,2003,7456123,Helena Duarte,,,18,3,107.9,107.9,100
+Agencia,2023,2023-12-31,MEI,8888,5,Sul & Centro-Oeste,5599,Regional Goiânia,2003,Goiânia Setor Bueno,2003,7456123,Helena Duarte,,,18,3,106.2,106.2,100
+Agencia,2022,2022-12-31,MEI,8888,5,Sul & Centro-Oeste,5599,Regional Goiânia,2003,Goiânia Setor Bueno,2003,7456123,Helena Duarte,,,18,5,100.8,100.8,100
+Agencia,2021,2021-12-31,MEI,8888,5,Sul & Centro-Oeste,5599,Regional Goiânia,2003,Goiânia Setor Bueno,2003,7456123,Helena Duarte,,,18,4,102.5,102.5,100
+Gerente,2025,2025-12-31,Negócios,8609,1,Norte & Nordeste,1234,Regional Fortaleza,1001,Fortaleza Centro,1001,1026752,Danilo Dourado,9937874,Ana Lima,32,1,123.5,123.5,100
+Gerente,2024,2024-12-31,Negócios,8609,1,Norte & Nordeste,1234,Regional Fortaleza,1001,Fortaleza Centro,1001,1026752,Danilo Dourado,9937874,Ana Lima,32,2,118.9,118.9,100
+Gerente,2023,2023-12-31,Negócios,8609,1,Norte & Nordeste,1234,Regional Fortaleza,1001,Fortaleza Centro,1001,1026752,Danilo Dourado,9937874,Ana Lima,32,2,116.2,116.2,100
+Gerente,2022,2022-12-31,Negócios,8609,1,Norte & Nordeste,1234,Regional Fortaleza,1001,Fortaleza Centro,1001,1026752,Danilo Dourado,9937874,Ana Lima,32,1,122.4,122.4,100
+Gerente,2021,2021-12-31,Negócios,8609,1,Norte & Nordeste,1234,Regional Fortaleza,1001,Fortaleza Centro,1001,1026752,Danilo Dourado,9937874,Ana Lima,32,3,109.8,109.8,100
+Gerente,2025,2025-12-31,Empresas,8608,2,Sudeste,5675,Regional São Paulo,1004,Avenida Paulista,1004,3166765,Juliane Negretti,3425342,Juliana Prado,32,2,117.6,117.6,100
+Gerente,2024,2024-12-31,Empresas,8608,2,Sudeste,5675,Regional São Paulo,1004,Avenida Paulista,1004,3166765,Juliane Negretti,3425342,Juliana Prado,32,1,124.3,124.3,100
+Gerente,2023,2023-12-31,Empresas,8608,2,Sudeste,5675,Regional São Paulo,1004,Avenida Paulista,1004,3166765,Juliane Negretti,3425342,Juliana Prado,32,1,123.1,123.1,100
+Gerente,2022,2022-12-31,Empresas,8608,2,Sudeste,5675,Regional São Paulo,1004,Avenida Paulista,1004,3166765,Juliane Negretti,3425342,Juliana Prado,32,3,111.7,111.7,100
+Gerente,2021,2021-12-31,Empresas,8608,2,Sudeste,5675,Regional São Paulo,1004,Avenida Paulista,1004,3166765,Juliane Negretti,3425342,Juliana Prado,32,2,114.9,114.9,100
+Gerente,2025,2025-12-31,MEI,8888,5,Sul & Centro-Oeste,5577,Regional Curitiba,1003,Curitiba Batel,1003,1098367,Paula Cristina,6766543,Carla Menezes,32,3,112.8,112.8,100
+Gerente,2024,2024-12-31,MEI,8888,5,Sul & Centro-Oeste,5577,Regional Curitiba,1003,Curitiba Batel,1003,1098367,Paula Cristina,6766543,Carla Menezes,32,4,108.1,108.1,100
+Gerente,2023,2023-12-31,MEI,8888,5,Sul & Centro-Oeste,5577,Regional Curitiba,1003,Curitiba Batel,1003,1098367,Paula Cristina,6766543,Carla Menezes,32,4,107.4,107.4,100
+Gerente,2022,2022-12-31,MEI,8888,5,Sul & Centro-Oeste,5577,Regional Curitiba,1003,Curitiba Batel,1003,1098367,Paula Cristina,6766543,Carla Menezes,32,3,111.2,111.2,100
+Gerente,2021,2021-12-31,MEI,8888,5,Sul & Centro-Oeste,5577,Regional Curitiba,1003,Curitiba Batel,1003,1098367,Paula Cristina,6766543,Carla Menezes,32,2,113.6,113.6,100
+Gerente,2025,2025-12-31,MEI,8888,5,Sul & Centro-Oeste,7790,Regional Florianópolis,2002,Florianópolis Beira-Mar,2002,7999123,Rodrigo Azevedo,6888455,Sofia Martins,32,2,118.5,118.5,100
+Gerente,2024,2024-12-31,MEI,8888,5,Sul & Centro-Oeste,7790,Regional Florianópolis,2002,Florianópolis Beira-Mar,2002,7999123,Rodrigo Azevedo,6888455,Sofia Martins,32,5,102.1,102.1,100
+Gerente,2023,2023-12-31,MEI,8888,5,Sul & Centro-Oeste,7790,Regional Florianópolis,2002,Florianópolis Beira-Mar,2002,7999123,Rodrigo Azevedo,6888455,Sofia Martins,32,5,101.3,101.3,100
+Gerente,2022,2022-12-31,MEI,8888,5,Sul & Centro-Oeste,7790,Regional Florianópolis,2002,Florianópolis Beira-Mar,2002,7999123,Rodrigo Azevedo,6888455,Sofia Martins,32,4,108.6,108.6,100
+Gerente,2021,2021-12-31,MEI,8888,5,Sul & Centro-Oeste,7790,Regional Florianópolis,2002,Florianópolis Beira-Mar,2002,7999123,Rodrigo Azevedo,6888455,Sofia Martins,32,3,109.2,109.2,100
+Gerente,2025,2025-12-31,MEI,8888,5,Sul & Centro-Oeste,5599,Regional Goiânia,2003,Goiânia Setor Bueno,2003,7456123,Helena Duarte,6554433,Tiago Andrade,32,4,106.4,106.4,100
+Gerente,2024,2024-12-31,MEI,8888,5,Sul & Centro-Oeste,5599,Regional Goiânia,2003,Goiânia Setor Bueno,2003,7456123,Helena Duarte,6554433,Tiago Andrade,32,3,110.7,110.7,100
+Gerente,2023,2023-12-31,MEI,8888,5,Sul & Centro-Oeste,5599,Regional Goiânia,2003,Goiânia Setor Bueno,2003,7456123,Helena Duarte,6554433,Tiago Andrade,32,3,109.6,109.6,100
+Gerente,2022,2022-12-31,MEI,8888,5,Sul & Centro-Oeste,5599,Regional Goiânia,2003,Goiânia Setor Bueno,2003,7456123,Helena Duarte,6554433,Tiago Andrade,32,5,101.5,101.5,100
+Gerente,2021,2021-12-31,MEI,8888,5,Sul & Centro-Oeste,5599,Regional Goiânia,2003,Goiânia Setor Bueno,2003,7456123,Helena Duarte,6554433,Tiago Andrade,32,4,103.8,103.8,100

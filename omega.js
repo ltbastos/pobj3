@@ -1,0 +1,2421 @@
+/* =========================================================
+   Omega • Central de chamados para o POBJ
+   ========================================================= */
+let omegaTemplatePromise = null;
+let omegaInitialized = false;
+
+const OMEGA_ROLE_LABELS = {
+  usuario: "Usuário",
+  analista: "Analista",
+  supervisor: "Supervisor",
+  admin: "Administrador",
+};
+
+const OMEGA_NAV_ITEMS = [
+  { id: "my", label: "Meus chamados", icon: "ti ti-user", roles: ["usuario", "analista", "supervisor", "admin"] },
+  { id: "assigned", label: "Meus atendimentos", icon: "ti ti-clipboard-check", roles: ["analista", "supervisor", "admin"] },
+  { id: "queue", label: "Fila da equipe", icon: "ti ti-inbox", roles: ["supervisor", "admin"] },
+  { id: "team", label: "Visão da supervisão", icon: "ti ti-users", roles: ["supervisor", "admin"] },
+  { id: "admin", label: "Administração", icon: "ti ti-shield-lock", roles: ["admin"] },
+];
+
+let OMEGA_STATUS_ORDER = ["todos"];
+let OMEGA_STATUS_META = {};
+const OMEGA_STATUS_SOURCE = "Bases/dSituacao.csv";
+let OMEGA_STATUS_CATALOG = [];
+let omegaStatusPromise = null;
+
+const OMEGA_PRIORITY_META = {
+  baixa: { label: "Baixa", tone: "neutral", icon: "ti ti-arrow-down" },
+  media: { label: "Média", tone: "progress", icon: "ti ti-arrows-up-down" },
+  alta: { label: "Alta", tone: "warning", icon: "ti ti-arrow-up" },
+  critica: { label: "Crítica", tone: "danger", icon: "ti ti-alert-octagon" },
+};
+
+const OMEGA_DEFAULT_STATUSES = [
+  { id: "aberto", label: "Aberto", tone: "neutral" },
+  { id: "aguardando", label: "Aguardando", tone: "warning" },
+  { id: "em_atendimento", label: "Em atendimento", tone: "progress" },
+  { id: "resolvido", label: "Resolvido", tone: "success" },
+  { id: "cancelado", label: "Cancelado", tone: "danger" },
+];
+
+const OMEGA_QUEUE_OPTIONS = [
+  "Encarteiramento",
+  "Meta",
+  "Orçamento",
+  "POBJ",
+  "Matriz",
+  "Outros",
+];
+
+const OMEGA_QUEUE_FIELD_MAP = {
+  Encarteiramento: "encarteiramento",
+  Meta: "meta",
+  "Orçamento": "orcamento",
+  POBJ: "pobj",
+  Matriz: "matriz",
+  Outros: "outros",
+};
+
+const OMEGA_TICKET_TYPES_BY_DEPARTMENT = {
+  Encarteiramento: [
+    "Inclusão - Conta Empresas",
+    "Inclusão - Conta Varejo",
+    "Transferência - Empresas para Empresas",
+    "Transferência - Empresas para Varejo",
+    "Transferência - Mesma Agência",
+    "Transferência - Varejo para Empresas",
+  ],
+  Meta: ["Contestar Meta"],
+  Metas: ["Contestar Meta"],
+  "Orçamento": ["A construir"],
+  POBJ: [
+    "Adicionais",
+    "Financeiro",
+    "Melhoria de Processos",
+    "Negócios",
+    "Relacionamento",
+  ],
+  Matriz: [
+    "Relatório/Dashboard",
+    "Bases",
+    "Estudos",
+    "Portal PJ",
+  ],
+  Outros: ["A construir"],
+};
+
+const OMEGA_LEVEL_LABELS = {
+  diretoria: "Diretoria",
+  gerencia: "Regional",
+  agencia: "Agência",
+  ggestao: "Gerente de gestão",
+  gerente: "Gerente",
+  secao: "Seção",
+  familia: "Família",
+  prodsub: "Indicador",
+  contrato: "Contrato",
+};
+
+const OMEGA_USERS_SOURCE = "Bases/omega_usuarios.csv";
+
+const OMEGA_USER_METADATA = {
+  "usr-01": { avatar: "https://i.pravatar.cc/160?img=47", teamId: "sudeste" },
+  "usr-02": { avatar: "https://i.pravatar.cc/160?img=12", teamId: "sudeste" },
+  "usr-03": { avatar: "https://i.pravatar.cc/160?img=32", teamId: "sudeste" },
+  "usr-04": { avatar: "https://i.pravatar.cc/160?img=8", teamId: null },
+  "usr-05": { avatar: "https://i.pravatar.cc/160?img=21", teamId: "norte" },
+  "usr-06": { avatar: "https://i.pravatar.cc/160?img=36", teamId: "norte" },
+  "usr-07": { avatar: "https://i.pravatar.cc/160?img=55", teamId: "sudeste" },
+  "usr-08": { avatar: "https://i.pravatar.cc/160?img=41", teamId: "corporate" },
+};
+
+let OMEGA_USERS = [];
+
+const OMEGA_PRODUCT_CATALOG = [
+  { id: "capital_giro_flex", label: "Capital de Giro Flex", family: "Crédito PJ", section: "Crédito" },
+  { id: "maquininha_plus", label: "Maquininha Plus", family: "Meios de pagamento", section: "Recebíveis" },
+  { id: "plataforma_pix", label: "Plataforma PIX Empresas", family: "Pagamentos digitais", section: "Recebíveis" },
+  { id: "cobranca_digital", label: "Cobrança Digital PJ", family: "Recebíveis", section: "Recebíveis" },
+  { id: "seguros_empresariais", label: "Seguros Empresariais", family: "Seguros e proteção", section: "Seguros" },
+  { id: "consorcio_imobiliario", label: "Consórcio Imobiliário PJ", family: "Investimentos", section: "Patrimônio" },
+  { id: "gestao_folha", label: "Gestão de Folha PJ", family: "Serviços financeiros", section: "Serviços" },
+  { id: "credito_agro", label: "Crédito Agro Clima", family: "Crédito PJ", section: "Crédito" },
+  { id: "antecipacao_recebiveis", label: "Antecipação de Recebíveis PJ", family: "Recebíveis", section: "Recebíveis" },
+];
+
+const omegaState = {
+  currentUserId: null,
+  view: "my",
+  search: "",
+  contextDetail: null,
+  selectedTicketId: null,
+  selectedTicketIds: new Set(),
+  drawerOpen: false,
+  ticketModalOpen: false,
+  formAttachments: [],
+  ticketUpdate: {
+    comment: "",
+    status: "",
+    priority: "",
+    queue: "",
+    category: "",
+    due: "",
+    attachments: [],
+  },
+  ticketUpdateTicketId: null,
+  filters: {
+    id: "",
+    departments: [],
+    type: "",
+    requester: "",
+    statuses: [],
+    openedFrom: "",
+    openedTo: "",
+    priority: "",
+  },
+  filterPanelOpen: false,
+  bulkPanelOpen: false,
+  bulkStatus: "",
+};
+
+let OMEGA_TICKETS = [];
+let omegaTicketCounter = 0;
+let omegaDataPromise = null;
+let omegaUsersPromise = null;
+const OMEGA_TICKETS_SOURCE = "Bases/omega_chamados.csv";
+
+function ensureOmegaData(){
+  if (OMEGA_TICKETS.length) return Promise.resolve(OMEGA_TICKETS);
+  if (omegaDataPromise) return omegaDataPromise;
+
+  const loader = (typeof loadCSVAuto === 'function')
+    ? loadCSVAuto(OMEGA_TICKETS_SOURCE).catch((err) => {
+        console.warn('Falha ao carregar CSV da Omega via loader principal:', err);
+        return fallbackLoadCsv(OMEGA_TICKETS_SOURCE);
+      })
+    : fallbackLoadCsv(OMEGA_TICKETS_SOURCE);
+
+  omegaDataPromise = loader
+    .then((rows) => {
+      OMEGA_TICKETS = normalizeOmegaTicketRows(Array.isArray(rows) ? rows : []);
+      omegaTicketCounter = OMEGA_TICKETS.reduce((max, ticket) => {
+        const seq = parseInt(ticket.id, 10);
+        return Number.isFinite(seq) ? Math.max(max, seq) : max;
+      }, 0);
+      return OMEGA_TICKETS;
+    })
+    .catch((err) => {
+      console.error('Não foi possível carregar os chamados Omega:', err);
+      omegaDataPromise = null;
+      OMEGA_TICKETS = [];
+      return [];
+    });
+
+  return omegaDataPromise;
+}
+
+function ensureOmegaUsers(){
+  if (OMEGA_USERS.length) return Promise.resolve(OMEGA_USERS);
+  if (omegaUsersPromise) return omegaUsersPromise;
+
+  const loader = (typeof loadCSVAuto === 'function')
+    ? loadCSVAuto(OMEGA_USERS_SOURCE).catch((err) => {
+        console.warn('Falha ao carregar usuários Omega via loader principal:', err);
+        return fallbackLoadCsv(OMEGA_USERS_SOURCE);
+      })
+    : fallbackLoadCsv(OMEGA_USERS_SOURCE);
+
+  omegaUsersPromise = loader
+    .then((rows) => {
+      OMEGA_USERS = normalizeOmegaUserRows(Array.isArray(rows) ? rows : []);
+      if (!OMEGA_USERS.length) throw new Error('Nenhum usuário disponível para o Omega');
+      if (!OMEGA_USERS.some((user) => user.id === omegaState.currentUserId)) {
+        omegaState.currentUserId = OMEGA_USERS[0]?.id || null;
+      }
+      return OMEGA_USERS;
+    })
+    .catch((err) => {
+      console.error('Não foi possível carregar os usuários Omega:', err);
+      omegaUsersPromise = null;
+      OMEGA_USERS = [];
+      omegaState.currentUserId = null;
+      return [];
+    });
+
+  return omegaUsersPromise;
+}
+
+function ensureOmegaStatuses(){
+  if (OMEGA_STATUS_CATALOG.length) return Promise.resolve(OMEGA_STATUS_CATALOG);
+  if (omegaStatusPromise) return omegaStatusPromise;
+
+  const loader = (typeof loadCSVAuto === 'function')
+    ? loadCSVAuto(OMEGA_STATUS_SOURCE).catch((err) => {
+        console.warn('Falha ao carregar situações via loader principal:', err);
+        return fallbackLoadCsv(OMEGA_STATUS_SOURCE);
+      })
+    : fallbackLoadCsv(OMEGA_STATUS_SOURCE);
+
+  omegaStatusPromise = loader
+    .then((rows) => {
+      const normalized = normalizeOmegaStatusRows(Array.isArray(rows) ? rows : []);
+      if (!normalized.length) throw new Error('Nenhuma situação cadastrada');
+      applyStatusCatalog(normalized);
+      return OMEGA_STATUS_CATALOG;
+    })
+    .catch((err) => {
+      console.warn('Aplicando situações padrão da Omega:', err);
+      applyStatusCatalog(OMEGA_DEFAULT_STATUSES);
+      return OMEGA_STATUS_CATALOG;
+    });
+
+  return omegaStatusPromise;
+}
+
+function applyStatusCatalog(entries){
+  const catalog = Array.isArray(entries) ? entries : [];
+  if (!catalog.length) {
+    OMEGA_STATUS_CATALOG = [...OMEGA_DEFAULT_STATUSES];
+  } else {
+    OMEGA_STATUS_CATALOG = catalog.map((item) => ({
+      id: item.id,
+      label: item.label,
+      tone: item.tone || 'neutral',
+      description: item.description || '',
+    }));
+  }
+  const meta = {};
+  const order = ['todos'];
+  OMEGA_STATUS_CATALOG.forEach((entry) => {
+    if (!entry?.id) return;
+    meta[entry.id] = { label: entry.label, tone: entry.tone || 'neutral', description: entry.description || '' };
+    order.push(entry.id);
+  });
+  OMEGA_STATUS_META = meta;
+  OMEGA_STATUS_ORDER = order;
+}
+
+function normalizeOmegaStatusRows(rows){
+  return rows
+    .map((row, index) => {
+      const rawId = (row.id || row.ID || row.codigo || '').trim();
+      const id = rawId ? normalizeStatusId(rawId) : '';
+      if (!id) return null;
+      const label = (row.label || row.nome || row.descricao || '').trim() || rawId || id;
+      const tone = (row.tone || row.cor || '').trim().toLowerCase() || 'neutral';
+      const ordem = parseInt(row.ordem || row.order || index + 1, 10);
+      const order = Number.isFinite(ordem) ? ordem : index + 1;
+      const description = (row.descricao || row.description || '').trim();
+      return { id, label, tone, order, description };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      const diff = (a.order ?? 0) - (b.order ?? 0);
+      if (diff !== 0) return diff;
+      return a.label.localeCompare(b.label, 'pt-BR');
+    });
+}
+
+function normalizeStatusId(value){
+  return value
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    || 'aberto';
+}
+
+function getOrderedStatuses(){
+  const statuses = Array.isArray(OMEGA_STATUS_ORDER)
+    ? OMEGA_STATUS_ORDER.filter((status) => status && status !== 'todos')
+    : [];
+  return statuses.length ? statuses : OMEGA_DEFAULT_STATUSES.map((item) => item.id);
+}
+
+function getSelection(){
+  if (!(omegaState.selectedTicketIds instanceof Set)) {
+    const seed = Array.isArray(omegaState.selectedTicketIds) ? omegaState.selectedTicketIds : [];
+    omegaState.selectedTicketIds = new Set(seed);
+  }
+  return omegaState.selectedTicketIds;
+}
+
+function clearSelection(){
+  const selection = getSelection();
+  selection.clear();
+  omegaState.bulkStatus = "";
+}
+
+function updateSelection(ticketId, selected){
+  const selection = getSelection();
+  if (!ticketId) return;
+  if (selected) selection.add(ticketId);
+  else selection.delete(ticketId);
+}
+
+function shouldAllowSelection(user){
+  if (!user) return false;
+  if (omegaState.view !== 'assigned') return false;
+  return ['analista', 'supervisor', 'admin'].includes(user.role);
+}
+
+function fallbackLoadCsv(path){
+  return fetch(path)
+    .then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.text();
+    })
+    .then((text) => simpleCsvParse(text));
+}
+
+function simpleCsvParse(text){
+  if (!text) return [];
+  const lines = text.replace(/\r/g, '').split('\n').filter(Boolean);
+  if (!lines.length) return [];
+  const header = lines.shift().split(',').map((cell) => cell.trim());
+  return lines.map((line) => {
+    const cells = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i += 1) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i += 1;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        cells.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    cells.push(current);
+    const row = {};
+    header.forEach((key, idx) => {
+      row[key] = (cells[idx] ?? '').trim();
+    });
+    return row;
+  });
+}
+
+function normalizeOmegaUserRows(rows){
+  return rows.map((row) => {
+    const id = (row.id || row.ID || '').trim();
+    const name = (row.nome || row.name || '').trim();
+    if (!id || !name) return null;
+    const roles = {
+      usuario: parseOmegaBoolean(row.usuario),
+      analista: parseOmegaBoolean(row.analista),
+      supervisor: parseOmegaBoolean(row.supervisor),
+      admin: parseOmegaBoolean(row.admin),
+    };
+    const primaryRole = resolvePrimaryRole(roles);
+    const meta = OMEGA_USER_METADATA[id] || {};
+    const queues = Object.entries(OMEGA_QUEUE_FIELD_MAP).reduce((acc, [label, field]) => {
+      if (parseOmegaBoolean(row[field])) acc.push(label);
+      return acc;
+    }, []);
+    const matrixAccess = queues.includes('Matriz') || parseOmegaBoolean(row.matriz);
+    const positionRaw = (row.cargo || row.funcao || row.cargo_principal || '').trim();
+    const junction = (row.juncao || row.juncao_id || row.matricula || '').trim();
+    const position = positionRaw || (OMEGA_ROLE_LABELS[primaryRole] || 'Usuário');
+    return {
+      id,
+      name,
+      role: primaryRole,
+      roles,
+      matrixAccess,
+      avatar: meta.avatar || `https://i.pravatar.cc/160?u=${encodeURIComponent(id)}`,
+      position,
+      junction,
+      queues,
+      defaultQueue: queues[0] || null,
+      teamId: meta.teamId ?? null,
+    };
+  }).filter(Boolean).sort((a, b) => {
+    const orderMap = { usuario: 0, analista: 1, supervisor: 2, admin: 3 };
+    const diff = (orderMap[a.role] ?? 10) - (orderMap[b.role] ?? 10);
+    if (diff !== 0) return diff;
+    return a.name.localeCompare(b.name, 'pt-BR');
+  });
+}
+
+function parseOmegaBoolean(value){
+  if (value == null) return false;
+  const normalized = value.toString().trim().toLowerCase();
+  return ['1', 'true', 'sim', 'yes', 'y', 'x'].includes(normalized);
+}
+
+function resolvePrimaryRole(roles){
+  const priority = ['admin', 'supervisor', 'analista', 'usuario'];
+  const match = priority.find((role) => roles?.[role]);
+  return match || 'usuario';
+}
+
+function getUserRoles(user){
+  if (!user) return [];
+  const roles = Object.entries(user.roles || {})
+    .filter(([, value]) => !!value)
+    .map(([role]) => role);
+  if (!roles.length && user.role) roles.push(user.role);
+  if (user.role && !roles.includes(user.role)) roles.push(user.role);
+  const order = ['usuario', 'analista', 'supervisor', 'admin'];
+  return roles.sort((a, b) => (order.indexOf(a) - order.indexOf(b)));
+}
+
+function getUserRoleLabel(user){
+  if (!user) return 'Usuário';
+  const roles = getUserRoles(user);
+  if (!roles.length) return OMEGA_ROLE_LABELS[user.role] || 'Usuário';
+  if (roles.length === 1) return OMEGA_ROLE_LABELS[roles[0]] || roles[0];
+  return roles.map((role) => OMEGA_ROLE_LABELS[role] || role).join(' • ');
+}
+
+function normalizeOmegaTicketRows(rows){
+  return rows.map((row) => {
+    const id = (row.id || row.ID || '').trim();
+    if (!id) return null;
+    const opened = (row.opened || row.abertura || '').trim();
+    const updated = (row.updated || row.atualizacao || opened || '').trim();
+    const productId = (row.product_id || row.produto_id || '').trim();
+    const productLabel = (row.product_label || row.produto || '').trim();
+    const family = (row.family || row.familia || '').trim();
+    const section = (row.section || row.secao || '').trim();
+    const queue = (row.queue || row.departamento || '').trim();
+    const category = (row.category || row.tipo || '').trim();
+    const dueDate = (row.due_date || row.prazo || '').trim();
+    const historyRaw = row.history || '';
+    const history = parseOmegaHistory(historyRaw);
+    const requesterDisplay = (row.usuario || row.user || row.requester_name || row.company || row.empresa || '').trim();
+    const context = {
+      diretoria: (row.diretoria || '').trim(),
+      gerencia: (row.gerencia || '').trim(),
+      agencia: (row.agencia || '').trim(),
+      ggestao: (row.gerente_gestao || row.gestor_gestao || '').trim(),
+      gerente: (row.gerente || '').trim(),
+      familia: family,
+      secao: section,
+      prodsub: productLabel,
+    };
+    return {
+      id,
+      subject: (row.subject || row.assunto || '').trim() || `${category || 'Chamado'} — ${productLabel || productId || 'Produto'}`,
+      company: requesterDisplay,
+      requesterName: requesterDisplay,
+      productId,
+      product: productLabel,
+      family,
+      section,
+      queue,
+      status: (row.status || '').trim().toLowerCase() || 'aberto',
+      category,
+      priority: (row.priority || row.prioridade || '').trim().toLowerCase() || 'media',
+      opened,
+      updated,
+      dueDate: dueDate || null,
+      requesterId: (row.requester_id || row.solicitante || '').trim() || null,
+      ownerId: (row.owner_id || row.responsavel || '').trim() || null,
+      teamId: (row.team_id || row.time || '').trim() || null,
+      context,
+      history,
+      credit: (row.credit || row.credito || '').trim(),
+      attachments: (row.attachment || row.arquivo || '').trim() ? [ (row.attachment || row.arquivo || '').trim() ] : [],
+    };
+  }).filter(Boolean);
+}
+
+function parseOmegaHistory(raw){
+  if (!raw) return [];
+  return String(raw).split('||').map((chunk) => chunk.trim()).filter(Boolean).map((chunk) => {
+    const [date, actorId, action, comment, status] = chunk.split('::');
+    return {
+      date: (date || '').trim(),
+      actorId: (actorId || '').trim(),
+      action: (action || '').trim() || 'Atualização do chamado',
+      comment: (comment || '').trim(),
+      status: (status || '').trim().toLowerCase() || 'aberto',
+    };
+  }).filter((entry) => entry.date && entry.actorId);
+}
+
+function ensureOmegaTemplate(){
+  const existing = document.getElementById("omega-modal");
+  if (existing) return Promise.resolve(existing);
+  if (omegaTemplatePromise) return omegaTemplatePromise;
+
+  omegaTemplatePromise = fetch("omega.html")
+    .then((res) => {
+      if (!res.ok) throw new Error(`Falha ao carregar omega.html: ${res.status}`);
+      return res.text();
+    })
+    .then((html) => {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = html;
+      const templateRoot = wrapper.querySelector("#omega-modal");
+      if (!templateRoot) throw new Error("Template Omega não encontrado em omega.html");
+      const clone = templateRoot.cloneNode(true);
+      clone.removeAttribute("data-omega-standalone");
+      clone.hidden = true;
+      document.body.appendChild(clone);
+      return clone;
+    })
+    .catch((err) => {
+      console.error("Não foi possível carregar o template da Omega:", err);
+      omegaTemplatePromise = null;
+      throw err;
+    });
+
+  return omegaTemplatePromise;
+}
+
+function openOmega(detail = null){
+  Promise.all([ensureOmegaTemplate(), ensureOmegaData(), ensureOmegaUsers(), ensureOmegaStatuses()])
+    .then(([root]) => {
+      if (!root) return;
+      setupOmegaModule(root);
+      populateUserSelect(root);
+      omegaState.contextDetail = detail || null;
+      omegaState.search = "";
+      omegaState.selectedTicketId = null;
+      resetAdvancedFilters();
+      setFilterPanelOpen(false);
+      setTicketModalOpen(false);
+      enforceViewForRole();
+      root.hidden = false;
+      document.body.classList.add("has-omega-open");
+      renderOmega();
+      const searchInput = root.querySelector("#omega-search");
+      if (searchInput) {
+        requestAnimationFrame(() => {
+          try { searchInput.focus(); } catch (err) { /* ignore focus errors */ }
+        });
+      }
+    })
+    .catch(() => {
+      /* erros já registrados em ensureOmegaTemplate/ensureOmegaData */
+    });
+}
+
+function closeOmega(){
+  const root = document.getElementById("omega-modal");
+  if (!root) return;
+  setDrawerOpen(false);
+  setTicketModalOpen(false);
+  setFilterPanelOpen(false);
+  root.hidden = true;
+  document.body.classList.remove("has-omega-open");
+}
+
+function setupOmegaModule(root){
+  if (omegaInitialized) return;
+
+  root.querySelectorAll('[data-omega-close]').forEach((btn) => {
+    btn.addEventListener('click', () => closeOmega());
+  });
+  const overlay = root.querySelector('.omega-modal__overlay');
+  overlay?.addEventListener('click', () => closeOmega());
+
+  root.querySelectorAll('[data-omega-ticket-close]').forEach((btn) => {
+    btn.addEventListener('click', () => setTicketModalOpen(false));
+  });
+  const ticketOverlay = root.querySelector('.omega-ticket-modal__overlay');
+  ticketOverlay?.addEventListener('click', () => setTicketModalOpen(false));
+
+  root.querySelectorAll('[data-omega-drawer-close]').forEach((btn) => {
+    btn.addEventListener('click', () => setDrawerOpen(false));
+  });
+
+  const resetBtn = root.querySelector('#omega-reset-filters');
+  resetBtn?.addEventListener('click', () => {
+    omegaState.search = "";
+    resetAdvancedFilters();
+    setFilterPanelOpen(false);
+    syncFilterFormState(root);
+    renderOmega();
+  });
+
+  const clearFiltersTop = root.querySelector('#omega-clear-filters-top');
+  clearFiltersTop?.addEventListener('click', () => {
+    resetAdvancedFilters();
+    syncFilterFormState(root);
+    renderOmega();
+  });
+
+  const searchInput = root.querySelector('#omega-search');
+  searchInput?.addEventListener('input', (ev) => {
+    omegaState.search = ev.target.value || "";
+    renderOmega();
+  });
+
+  const statusFilterHost = root.querySelector('#omega-filter-status');
+  statusFilterHost?.addEventListener('change', (ev) => {
+    const input = ev.target;
+    if (!input || input.type !== 'checkbox') return;
+    const option = input.closest?.('.omega-filter-status__option');
+    if (!option) return;
+    option.dataset.checked = input.checked ? 'true' : 'false';
+  });
+
+  const navHost = root.querySelector('#omega-nav');
+  navHost?.addEventListener('click', (ev) => {
+    const item = ev.target.closest?.('.omega-nav__item');
+    if (!item) return;
+    const view = item.dataset.view;
+    if (!view || omegaState.view === view) return;
+    omegaState.view = view;
+    omegaState.selectedTicketId = null;
+    clearSelection();
+    omegaState.bulkPanelOpen = false;
+    renderOmega();
+  });
+
+  const tableBody = root.querySelector('#omega-ticket-rows');
+  tableBody?.addEventListener('click', (ev) => {
+    const checkbox = ev.target.closest?.('input[data-omega-select]');
+    if (checkbox) {
+      updateSelection(checkbox.value, checkbox.checked);
+      omegaState.bulkPanelOpen = omegaState.bulkPanelOpen && getSelection().size > 0;
+      ev.stopPropagation();
+      renderOmega();
+      return;
+    }
+    if (ev.target.closest?.('td.col-select')) {
+      ev.preventDefault();
+      return;
+    }
+    const row = ev.target.closest?.('tr[data-ticket-id]');
+    if (!row) return;
+    const ticketId = row.dataset.ticketId;
+    if (!ticketId) return;
+    openTicketDetail(ticketId);
+  });
+
+  const selectAll = root.querySelector('#omega-select-all');
+  selectAll?.addEventListener('change', (ev) => {
+    const checked = !!ev.target.checked;
+    const selection = getSelection();
+    if (!checked) {
+      selection.clear();
+      omegaState.bulkStatus = "";
+    } else {
+      root.querySelectorAll('#omega-ticket-rows tr[data-ticket-id]').forEach((row) => {
+        if (row?.dataset?.ticketId) selection.add(row.dataset.ticketId);
+      });
+    }
+    omegaState.bulkPanelOpen = checked ? omegaState.bulkPanelOpen : false;
+    renderOmega();
+  });
+
+  const newTicketBtn = root.querySelector('#omega-new-ticket');
+  newTicketBtn?.addEventListener('click', () => setDrawerOpen(true));
+
+  const form = root.querySelector('#omega-form');
+  form?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    handleNewTicketSubmit(form);
+  });
+
+  const departmentSelect = root.querySelector('#omega-form-department');
+  const typeSelect = root.querySelector('#omega-form-type');
+  const requesterInput = root.querySelector('#omega-form-user');
+  const fileInput = root.querySelector('#omega-form-file');
+  const addFileBtn = root.querySelector('[data-omega-add-file]');
+  const attachmentsList = root.querySelector('#omega-form-attachments');
+  departmentSelect?.addEventListener('change', (ev) => {
+    syncTicketTypeOptions(root, ev.target.value);
+    updateOmegaFormSubject(root);
+  });
+  typeSelect?.addEventListener('change', () => updateOmegaFormSubject(root));
+  requesterInput?.addEventListener('input', () => updateOmegaFormSubject(root));
+  addFileBtn?.addEventListener('click', () => {
+    if (fileInput) fileInput.click();
+  });
+  fileInput?.addEventListener('change', () => {
+    addFormAttachments(root, fileInput.files);
+    try {
+      fileInput.value = '';
+    } catch (err) {
+      /* noop */
+    }
+  });
+  attachmentsList?.addEventListener('click', (ev) => {
+    const btn = ev.target.closest?.('[data-omega-remove-attachment]');
+    if (!btn) return;
+    const id = btn.dataset.omegaRemoveAttachment;
+    if (!id) return;
+    removeFormAttachment(root, id);
+  });
+
+  const bulkBtn = root.querySelector('#omega-bulk-status');
+  bulkBtn?.addEventListener('click', () => {
+    const user = getCurrentUser();
+    if (!shouldAllowSelection(user)) return;
+    if (!getSelection().size) return;
+    omegaState.bulkPanelOpen = !omegaState.bulkPanelOpen;
+    renderOmega();
+  });
+
+  const bulkClose = root.querySelector('#omega-bulk-close');
+  bulkClose?.addEventListener('click', () => {
+    omegaState.bulkPanelOpen = false;
+    renderOmega();
+  });
+
+  const bulkCancel = root.querySelector('#omega-bulk-cancel');
+  bulkCancel?.addEventListener('click', () => {
+    omegaState.bulkPanelOpen = false;
+    renderOmega();
+  });
+
+  const bulkStatusSelect = root.querySelector('#omega-bulk-status-select');
+  bulkStatusSelect?.addEventListener('change', (ev) => {
+    omegaState.bulkStatus = ev.target.value || '';
+  });
+
+  const bulkForm = root.querySelector('#omega-bulk-form');
+  bulkForm?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const status = root.querySelector('#omega-bulk-status-select')?.value || '';
+    handleBulkStatusSubmit(status);
+  });
+
+  const ticketUpdateForm = root.querySelector('#omega-ticket-update-form');
+  ticketUpdateForm?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    handleTicketUpdateSubmit(ticketUpdateForm);
+  });
+
+  const ticketUpdateReset = root.querySelector('#omega-ticket-update-reset');
+  ticketUpdateReset?.addEventListener('click', () => {
+    const ticket = OMEGA_TICKETS.find((item) => item.id === omegaState.selectedTicketId);
+    if (!ticket) return;
+    initializeTicketUpdateDraft(ticket);
+    const modal = root.querySelector('#omega-ticket-modal');
+    configureTicketActions(modal, ticket, getCurrentUser());
+  });
+
+  const ticketComment = root.querySelector('#omega-ticket-update-comment');
+  ticketComment?.addEventListener('input', (ev) => {
+    if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
+    omegaState.ticketUpdate.comment = ev.target.value || '';
+  });
+
+  const ticketStatusSelect = root.querySelector('#omega-ticket-update-status');
+  ticketStatusSelect?.addEventListener('change', (ev) => {
+    if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
+    omegaState.ticketUpdate.status = ev.target.value || '';
+  });
+
+  const ticketPrioritySelect = root.querySelector('#omega-ticket-update-priority');
+  ticketPrioritySelect?.addEventListener('change', (ev) => {
+    if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
+    omegaState.ticketUpdate.priority = ev.target.value || '';
+  });
+
+  const ticketQueueSelect = root.querySelector('#omega-ticket-update-queue');
+  ticketQueueSelect?.addEventListener('change', (ev) => {
+    if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
+    omegaState.ticketUpdate.queue = ev.target.value || '';
+  });
+
+  const ticketCategorySelect = root.querySelector('#omega-ticket-update-category');
+  ticketCategorySelect?.addEventListener('change', (ev) => {
+    if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
+    omegaState.ticketUpdate.category = ev.target.value || '';
+  });
+
+  const ticketDueInput = root.querySelector('#omega-ticket-update-due');
+  ticketDueInput?.addEventListener('change', (ev) => {
+    if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
+    omegaState.ticketUpdate.due = ev.target.value || '';
+  });
+
+  const ticketAddFileBtn = root.querySelector('[data-omega-ticket-add-file]');
+  const ticketFileInput = root.querySelector('#omega-ticket-update-file');
+  const ticketAttachmentList = root.querySelector('#omega-ticket-update-attachments');
+  ticketAddFileBtn?.addEventListener('click', () => {
+    ticketFileInput?.click();
+  });
+  ticketFileInput?.addEventListener('change', () => {
+    const modal = root.querySelector('#omega-ticket-modal');
+    addTicketUpdateAttachments(modal, ticketFileInput.files);
+    try {
+      ticketFileInput.value = '';
+    } catch (err) {
+      /* noop */
+    }
+  });
+  ticketAttachmentList?.addEventListener('click', (ev) => {
+    const btn = ev.target.closest?.('[data-omega-remove-update-attachment]');
+    if (!btn) return;
+    const id = btn.dataset.omegaRemoveUpdateAttachment;
+    if (!id) return;
+    const modal = root.querySelector('#omega-ticket-modal');
+    removeTicketUpdateAttachment(modal, id);
+  });
+
+  const cancelTicketBtn = root.querySelector('#omega-ticket-cancel');
+  cancelTicketBtn?.addEventListener('click', () => {
+    handleTicketCancel();
+  });
+
+  const filterToggle = root.querySelector('#omega-filters-toggle');
+  const filterForm = root.querySelector('#omega-filter-form');
+  const clearFiltersBtn = root.querySelector('#omega-clear-filters');
+  filterToggle?.addEventListener('click', () => {
+    toggleFilterPanel();
+  });
+  filterForm?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    applyFiltersFromForm(root);
+  });
+  clearFiltersBtn?.addEventListener('click', () => {
+    resetAdvancedFilters();
+    syncFilterFormState(root);
+    renderOmega();
+  });
+
+  const userSelect = root.querySelector('#omega-user-select');
+  userSelect?.addEventListener('change', (ev) => {
+    const nextId = ev.target.value || null;
+    if (!nextId) return;
+    if (nextId === omegaState.currentUserId) return;
+    omegaState.currentUserId = nextId;
+    enforceViewForRole();
+    omegaState.selectedTicketId = null;
+    resetAdvancedFilters();
+    setFilterPanelOpen(false);
+    clearSelection();
+    omegaState.bulkPanelOpen = false;
+    renderOmega();
+    populateFormOptions(root);
+  });
+
+  populateUserSelect(root);
+  populateFormOptions(root);
+
+  document.addEventListener('click', handleOmegaDocumentClick, true);
+
+  document.addEventListener('keydown', handleOmegaKeydown);
+
+  omegaInitialized = true;
+}
+
+function handleOmegaKeydown(ev){
+  const root = document.getElementById('omega-modal');
+  if (!root || root.hidden) return;
+  if (ev.key === 'Escape') {
+    if (omegaState.drawerOpen) {
+      setDrawerOpen(false);
+      ev.stopPropagation();
+    } else if (omegaState.ticketModalOpen) {
+      setTicketModalOpen(false);
+      ev.stopPropagation();
+    } else if (omegaState.filterPanelOpen) {
+      toggleFilterPanel(false);
+      ev.stopPropagation();
+    } else {
+      closeOmega();
+      ev.stopPropagation();
+    }
+  }
+}
+
+function handleOmegaDocumentClick(ev){
+  if (!omegaState.filterPanelOpen) return;
+  const root = document.getElementById('omega-modal');
+  if (!root || root.hidden) return;
+  const panel = root.querySelector('#omega-filter-panel');
+  const toggle = root.querySelector('#omega-filters-toggle');
+  if (!panel || panel.hidden) return;
+  const clickedInsidePanel = typeof panel.contains === 'function' && panel.contains(ev.target);
+  const clickedToggle = toggle && typeof toggle.contains === 'function' && toggle.contains(ev.target);
+  if (clickedInsidePanel || clickedToggle) return;
+  toggleFilterPanel(false);
+}
+
+function renderOmega(){
+  const root = document.getElementById('omega-modal');
+  if (!root || root.hidden) return;
+  const user = getCurrentUser();
+  reconcileFiltersForUser(user);
+  const contextTickets = filterTicketsByContext();
+  const viewTicketsBase = filterTicketsByView(contextTickets, user);
+  const filteredTickets = applyStatusAndSearch(viewTicketsBase);
+  const selectionAllowed = shouldAllowSelection(user);
+  if (!selectionAllowed && getSelection().size) {
+    clearSelection();
+    omegaState.bulkPanelOpen = false;
+  }
+
+  renderProfile(root, user);
+  renderBreadcrumb(root, user);
+  renderNav(root, user);
+  renderContextBar(root, omegaState.contextDetail, contextTickets);
+  updateFilterButtonState(root);
+  if (omegaState.filterPanelOpen) {
+    populateFilterPanelOptions(root);
+    syncFilterFormState(root);
+  }
+  renderSummary(root, contextTickets, filteredTickets, user);
+  renderTable(root, filteredTickets, user);
+  renderTicketModal(root, filteredTickets, viewTicketsBase, user);
+  renderBulkControls(root, user, filteredTickets);
+  updateEmptyState(root, filteredTickets);
+}
+
+function renderProfile(root, user){
+  const avatar = root.querySelector('#omega-avatar');
+  const nameLabel = root.querySelector('#omega-user-name');
+  const roleLabel = root.querySelector('#omega-user-role');
+  const metaLabel = root.querySelector('#omega-user-meta');
+  if (avatar && user?.avatar) avatar.src = user.avatar;
+  if (nameLabel) nameLabel.textContent = user?.name || '—';
+  if (roleLabel) roleLabel.textContent = getUserRoleLabel(user);
+  if (metaLabel) {
+    const pieces = [];
+    if (user?.position) pieces.push(user.position);
+    if (user?.junction) pieces.push(user.junction);
+    metaLabel.textContent = pieces.length ? pieces.join(' • ') : '—';
+  }
+  const select = root.querySelector('#omega-user-select');
+  if (select && select.value !== user?.id) select.value = user?.id || '';
+}
+
+function renderBreadcrumb(root, user){
+  const host = root.querySelector('#omega-breadcrumb');
+  if (!host) return;
+  const view = OMEGA_NAV_ITEMS.find((item) => item.id === omegaState.view);
+  const viewLabel = view?.label || 'Visão atual';
+  const userLabel = user?.name || 'Usuário';
+  host.innerHTML = `
+    <span class="omega-breadcrumb__item"><i class="ti ti-user"></i>${escapeHTML(userLabel)}</span>
+    <span class="omega-breadcrumb__sep"><i class="ti ti-chevron-right"></i></span>
+    <span class="omega-breadcrumb__item">${escapeHTML(viewLabel)}</span>
+  `;
+}
+
+function renderNav(root, user){
+  const nav = root.querySelector('#omega-nav');
+  if (!nav) return;
+  const available = OMEGA_NAV_ITEMS.filter((item) => item.roles.includes(user?.role || 'usuario'));
+  if (!available.some((item) => item.id === omegaState.view)) {
+    omegaState.view = available[0]?.id || 'my';
+  }
+  nav.innerHTML = available.map((item) => {
+    const activeClass = item.id === omegaState.view ? ' is-active' : '';
+    return `<button type="button" class="omega-nav__item${activeClass}" data-view="${item.id}"><i class="${item.icon}"></i><span>${escapeHTML(item.label)}</span></button>`;
+  }).join('');
+}
+
+function renderContextBar(root, detail, tickets){
+  const host = root.querySelector('#omega-context');
+  if (!host) return;
+  if (!detail || (!detail.label && !(Array.isArray(detail.lineage) && detail.lineage.length))) {
+    host.hidden = true;
+    host.innerHTML = '';
+    return;
+  }
+  const lineage = Array.isArray(detail.lineage) ? detail.lineage : [];
+  const pieces = lineage.map((entry) => {
+    const label = entry?.label || entry?.value;
+    if (!label) return null;
+    const prefix = OMEGA_LEVEL_LABELS[entry?.levelKey] || 'Nível';
+    return `${prefix}: ${escapeHTML(label)}`;
+  }).filter(Boolean);
+  if (detail.label) {
+    const prefix = OMEGA_LEVEL_LABELS[detail.levelKey] || 'Foco';
+    const finalLabel = `${prefix}: ${escapeHTML(detail.label)}`;
+    if (!pieces.includes(finalLabel)) pieces.push(finalLabel);
+  }
+  const countText = tickets.length === 1
+    ? '1 chamado dentro do recorte'
+    : `${tickets.length} chamados dentro do recorte`;
+  host.innerHTML = `<i class="ti ti-filter"></i><div><strong>Recorte ativo</strong><p>${pieces.join(' • ')}</p><small>${escapeHTML(countText)}</small></div>`;
+  host.hidden = false;
+}
+
+function populateFilterPanelOptions(root){
+  if (!root) return;
+  const departmentSelect = root.querySelector('#omega-filter-department');
+  if (departmentSelect) {
+    const user = getCurrentUser();
+    const available = getAvailableDepartmentsForUser(user);
+    const departments = available.length ? available : [...OMEGA_QUEUE_OPTIONS];
+    departmentSelect.innerHTML = departments.map((dept) => `<option value="${escapeHTML(dept)}">${escapeHTML(dept)}</option>`).join('');
+    const selected = (omegaState.filters.departments || []).filter((dept) => departments.includes(dept));
+    Array.from(departmentSelect.options).forEach((option) => {
+      option.selected = selected.includes(option.value);
+    });
+  }
+  const typeSelect = root.querySelector('#omega-filter-type');
+  if (typeSelect) {
+    const categories = getAllTicketCategories();
+    const options = ['<option value="">Todos os tipos</option>'];
+    categories.forEach((category) => {
+      options.push(`<option value="${escapeHTML(category)}">${escapeHTML(category)}</option>`);
+    });
+    typeSelect.innerHTML = options.join('');
+    const current = omegaState.filters.type || '';
+    if (current) {
+      let match = Array.from(typeSelect.options).some((option) => option.value === current);
+      if (!match) {
+        const option = document.createElement('option');
+        option.value = current;
+        option.textContent = current;
+        typeSelect.appendChild(option);
+        match = true;
+      }
+      if (match) typeSelect.value = current;
+    } else {
+      typeSelect.value = '';
+    }
+  }
+  const prioritySelect = root.querySelector('#omega-filter-priority');
+  if (prioritySelect) {
+    const current = omegaState.filters.priority || '';
+    const options = ['<option value="">Todas</option>'];
+    Object.entries(OMEGA_PRIORITY_META).forEach(([value, meta]) => {
+      options.push(`<option value="${value}">${escapeHTML(meta.label)}</option>`);
+    });
+    prioritySelect.innerHTML = options.join('');
+    prioritySelect.value = current;
+  }
+  const statusHost = root.querySelector('#omega-filter-status');
+  if (statusHost) {
+    const selected = Array.isArray(omegaState.filters.statuses) ? omegaState.filters.statuses : [];
+    const statuses = OMEGA_STATUS_ORDER.filter((status) => status !== 'todos');
+    statusHost.innerHTML = statuses.map((status) => {
+      const meta = OMEGA_STATUS_META[status] || { label: status };
+      const checked = selected.includes(status);
+      const checkedAttr = checked ? ' data-checked="true"' : '';
+      const inputChecked = checked ? ' checked' : '';
+      return `<label class="omega-filter-status__option"${checkedAttr}><input type="checkbox" value="${status}"${inputChecked}/><span>${escapeHTML(meta.label)}</span></label>`;
+    }).join('');
+  }
+}
+
+function getAllTicketCategories(){
+  const categories = new Set();
+  Object.values(OMEGA_TICKET_TYPES_BY_DEPARTMENT || {}).forEach((list) => {
+    if (Array.isArray(list)) {
+      list.forEach((item) => { if (item) categories.add(item); });
+    }
+  });
+  OMEGA_TICKETS.forEach((ticket) => {
+    if (ticket?.category) categories.add(ticket.category);
+  });
+  return Array.from(categories);
+}
+
+function syncFilterFormState(root){
+  if (!root) return;
+  const filters = omegaState.filters || {};
+  const idInput = root.querySelector('#omega-filter-id');
+  if (idInput) idInput.value = filters.id || '';
+  const userInput = root.querySelector('#omega-filter-user');
+  if (userInput) userInput.value = filters.requester || '';
+  const fromInput = root.querySelector('#omega-filter-from');
+  if (fromInput) fromInput.value = filters.openedFrom || '';
+  const toInput = root.querySelector('#omega-filter-to');
+  if (toInput) toInput.value = filters.openedTo || '';
+  const prioritySelect = root.querySelector('#omega-filter-priority');
+  if (prioritySelect) prioritySelect.value = filters.priority || '';
+  const departmentSelect = root.querySelector('#omega-filter-department');
+  if (departmentSelect) {
+    const selected = Array.isArray(filters.departments) ? filters.departments : [];
+    Array.from(departmentSelect.options).forEach((option) => {
+      option.selected = selected.includes(option.value);
+    });
+  }
+  const typeSelect = root.querySelector('#omega-filter-type');
+  if (typeSelect) {
+    typeSelect.value = filters.type || '';
+    if (filters.type && typeSelect.value !== filters.type) {
+      const option = document.createElement('option');
+      option.value = filters.type;
+      option.textContent = filters.type;
+      typeSelect.appendChild(option);
+      typeSelect.value = filters.type;
+    }
+  }
+  const statusHost = root.querySelector('#omega-filter-status');
+  if (statusHost) {
+    const selected = Array.isArray(filters.statuses) ? filters.statuses : [];
+    statusHost.querySelectorAll('.omega-filter-status__option').forEach((option) => {
+      const input = option.querySelector('input[type="checkbox"]');
+      if (!input) return;
+      const checked = selected.includes(input.value);
+      input.checked = checked;
+      option.dataset.checked = checked ? 'true' : 'false';
+    });
+  }
+}
+
+function applyFiltersFromForm(root){
+  if (!root) return;
+  const form = root.querySelector('#omega-filter-form');
+  if (!form) return;
+  const id = form.querySelector('#omega-filter-id')?.value?.trim() || '';
+  const requester = form.querySelector('#omega-filter-user')?.value?.trim() || '';
+  const type = form.querySelector('#omega-filter-type')?.value || '';
+  const priority = form.querySelector('#omega-filter-priority')?.value || '';
+  const statuses = Array.from(form.querySelectorAll('#omega-filter-status input[type="checkbox"]:checked'))
+    .map((input) => input.value)
+    .filter(Boolean);
+  const departments = Array.from(new Set(Array.from(form.querySelector('#omega-filter-department')?.selectedOptions || [])
+    .map((option) => option.value)
+    .filter(Boolean)));
+  const openedFrom = form.querySelector('#omega-filter-from')?.value || '';
+  const openedTo = form.querySelector('#omega-filter-to')?.value || '';
+  omegaState.filters = {
+    id,
+    requester,
+    type,
+    priority,
+    statuses,
+    departments,
+    openedFrom,
+    openedTo,
+  };
+  toggleFilterPanel(false);
+  renderOmega();
+}
+
+function resetAdvancedFilters(){
+  omegaState.filters = {
+    id: '',
+    requester: '',
+    type: '',
+    statuses: [],
+    departments: [],
+    openedFrom: '',
+    openedTo: '',
+    priority: '',
+  };
+}
+
+function reconcileFiltersForUser(user){
+  const available = getAvailableDepartmentsForUser(user);
+  if (!Array.isArray(available) || !omegaState.filters) return;
+  const current = Array.isArray(omegaState.filters.departments) ? omegaState.filters.departments : [];
+  const filtered = current.filter((dept) => available.includes(dept));
+  if (filtered.length !== current.length) {
+    omegaState.filters.departments = filtered;
+  }
+}
+
+function hasActiveFilters(){
+  const filters = omegaState.filters || {};
+  if (filters.id) return true;
+  if (filters.requester) return true;
+  if (filters.type) return true;
+  if (filters.priority) return true;
+  if (Array.isArray(filters.statuses) && filters.statuses.length) return true;
+  if (filters.openedFrom || filters.openedTo) return true;
+  if (Array.isArray(filters.departments) && filters.departments.length) return true;
+  return false;
+}
+
+function updateFilterButtonState(root){
+  if (!root) return;
+  const button = root.querySelector('#omega-filters-toggle');
+  if (!button) return;
+  button.dataset.active = hasActiveFilters() ? 'true' : 'false';
+}
+
+function renderSummary(root, contextTickets, viewTickets, user){
+  const host = root.querySelector('#omega-summary');
+  if (!host) return;
+  const total = viewTickets.length;
+  const inProgress = viewTickets.filter((t) => t.status === 'em_atendimento').length;
+  const awaiting = viewTickets.filter((t) => t.status === 'aguardando').length;
+  const critical = viewTickets.filter((t) => t.priority === 'critica' && t.status !== 'resolvido').length;
+  const parts = [
+    `<div class="omega-summary__item"><strong>${total}</strong><span>Chamados na visão</span></div>`,
+    `<div class="omega-summary__item"><strong>${inProgress}</strong><span>Em atendimento</span></div>`,
+    `<div class="omega-summary__item"><strong>${awaiting}</strong><span>Aguardando resposta</span></div>`,
+    `<div class="omega-summary__item"><strong>${critical}</strong><span>Críticos</span></div>`,
+  ];
+  host.innerHTML = parts.join('');
+}
+
+function renderTable(root, tickets, user){
+  const body = root.querySelector('#omega-ticket-rows');
+  if (!body) return;
+  const wrapper = root.querySelector('#omega-table-wrapper');
+  const selectionAllowed = shouldAllowSelection(user);
+  if (wrapper) wrapper.dataset.selectionEnabled = selectionAllowed ? 'true' : 'false';
+  if (!tickets.length) {
+    body.innerHTML = '';
+    return;
+  }
+  if (!tickets.some((ticket) => ticket.id === omegaState.selectedTicketId)) {
+    omegaState.selectedTicketId = null;
+    if (omegaState.ticketModalOpen) setTicketModalOpen(false);
+  }
+  const selection = getSelection();
+  const rows = tickets.map((ticket) => {
+    const meta = OMEGA_STATUS_META[ticket.status] || { label: ticket.status, tone: 'neutral' };
+    const requesterDisplay = resolveRequesterDisplay(ticket) || '—';
+    const requesterMetaValue = resolveUserMeta(ticket.requesterId);
+    const requesterMetaLabel = requesterMetaValue && requesterMetaValue !== '—' ? requesterMetaValue : requesterDisplay;
+    const ownerResolvedName = resolveUserName(ticket.ownerId);
+    const ownerName = ownerResolvedName && ownerResolvedName !== '—' ? ownerResolvedName : 'Sem responsável';
+    const ownerMetaValue = resolveUserMeta(ticket.ownerId);
+    const ownerMeta = ownerMetaValue && ownerMetaValue !== '—' ? ownerMetaValue : '';
+    const priorityMeta = OMEGA_PRIORITY_META[ticket.priority] || OMEGA_PRIORITY_META.media;
+    const activeClass = ticket.id === omegaState.selectedTicketId ? ' class="is-active"' : '';
+    const ownerLine = ownerName !== 'Sem responsável' ? `${ownerName}${ownerMeta ? ` • ${ownerMeta}` : ''}` : 'Sem responsável';
+    const categoryLabel = ticket.category || 'Tipo não informado';
+    const isSelected = selectionAllowed && selection.has(ticket.id);
+    const selectCell = `<td class="col-select">${selectionAllowed ? `<input type="checkbox" data-omega-select value="${ticket.id}"${isSelected ? ' checked' : ''}/>` : ''}</td>`;
+    const ticketMeta = `<div class="omega-ticket__meta"><span class="omega-ticket__priority"><span class="omega-priority-dot" data-priority="${ticket.priority}"></span>${escapeHTML(priorityMeta.label)}</span><span><i class="ti ti-category"></i>${escapeHTML(categoryLabel)}</span></div>`;
+    const userMetaAttr = selectionAllowed ? ' data-analyst-meta="true"' : '';
+    const requesterLine = selectionAllowed && requesterMetaValue && requesterMetaValue !== '—'
+      ? requesterMetaValue
+      : requesterMetaLabel;
+    const userMeta = selectionAllowed
+      ? `<div class="omega-ticket__meta"${userMetaAttr}><span><i class="ti ti-id-badge"></i>${escapeHTML(requesterLine)}</span><span><i class="ti ti-user-check"></i>${escapeHTML(ownerLine)}</span></div>`
+      : `<div class="omega-ticket__meta"><span><i class="ti ti-user"></i>${escapeHTML(requesterMetaLabel)}</span><span><i class="ti ti-user-check"></i>${escapeHTML(ownerLine)}</span></div>`;
+    const selectedAttr = isSelected ? ' data-selected="true"' : '';
+    return `<tr data-ticket-id="${ticket.id}"${activeClass}${selectedAttr}>
+      ${selectCell}
+      <td><span class="omega-ticket__id"><i class="ti ti-ticket"></i>${escapeHTML(ticket.id)}</span></td>
+      <td>
+        <div class="omega-ticket__title">${escapeHTML(ticket.subject)}</div>
+        ${ticketMeta}
+      </td>
+      <td>
+        <div class="omega-ticket__user">${escapeHTML(requesterDisplay)}</div>
+        ${userMeta}
+      </td>
+      <td>${escapeHTML(ticket.product)}</td>
+      <td>${escapeHTML(ticket.queue || '—')}</td>
+      <td>${formatDateTime(ticket.opened)}</td>
+      <td>${formatDateTime(ticket.updated, { withTime: false })}</td>
+      <td><span class="omega-status-badge" data-tone="${meta.tone}">${escapeHTML(meta.label)}</span></td>
+    </tr>`;
+  }).join('');
+  body.innerHTML = rows;
+}
+
+function renderTicketModal(root, tickets, baseTickets, user){
+  const modal = root.querySelector('#omega-ticket-modal');
+  if (!modal) return;
+  if (!omegaState.ticketModalOpen || !omegaState.selectedTicketId) {
+    modal.hidden = true;
+    return;
+  }
+  const pool = Array.isArray(baseTickets) && baseTickets.length ? baseTickets : tickets;
+  const lookup = Array.isArray(pool) ? pool : [];
+  const ticket = lookup.find((item) => item.id === omegaState.selectedTicketId)
+    || OMEGA_TICKETS.find((item) => item.id === omegaState.selectedTicketId);
+  if (!ticket) {
+    setTicketModalOpen(false);
+    return;
+  }
+
+  const statusMeta = OMEGA_STATUS_META[ticket.status] || { label: ticket.status, tone: 'neutral' };
+  const priorityMeta = OMEGA_PRIORITY_META[ticket.priority] || OMEGA_PRIORITY_META.media;
+  const requesterDisplay = resolveRequesterDisplay(ticket) || '—';
+  const requesterMetaValue = resolveUserMeta(ticket.requesterId);
+  const requesterMeta = requesterMetaValue && requesterMetaValue !== '—' ? requesterMetaValue : requesterDisplay;
+  const ownerResolvedName = resolveUserName(ticket.ownerId);
+  const ownerName = ownerResolvedName && ownerResolvedName !== '—' ? ownerResolvedName : 'Sem responsável';
+  const ownerMetaValue = resolveUserMeta(ticket.ownerId);
+  const ownerMeta = ownerMetaValue && ownerMetaValue !== '—' ? ownerMetaValue : '—';
+  const productLabel = ticket.product || '—';
+  const queueLabel = ticket.queue ? `Fila ${ticket.queue}` : 'Sem fila atribuída';
+  const openedDate = formatDateTime(ticket.opened);
+  const openedDateTime = formatDateTime(ticket.opened, { withTime: true });
+  const updatedDateTime = formatDateTime(ticket.updated, { withTime: true });
+  const dueDateLabel = ticket.dueDate ? formatDateTime(ticket.dueDate) : 'Sem prazo definido';
+
+  const title = modal.querySelector('#omega-ticket-modal-title');
+  if (title) title.textContent = `Detalhe do chamado ${ticket.id}`;
+  const metaLabel = modal.querySelector('#omega-ticket-modal-meta');
+  if (metaLabel) metaLabel.textContent = buildTicketMeta(ticket);
+  const idLabel = modal.querySelector('#omega-ticket-id');
+  if (idLabel) idLabel.textContent = ticket.id;
+  const requesterLabel = modal.querySelector('#omega-ticket-requester');
+  if (requesterLabel) requesterLabel.textContent = requesterDisplay;
+  const requesterMetaLabel = modal.querySelector('#omega-ticket-requester-meta');
+  if (requesterMetaLabel) requesterMetaLabel.textContent = requesterMeta;
+  const ownerLabel = modal.querySelector('#omega-ticket-owner');
+  if (ownerLabel) ownerLabel.textContent = ownerName;
+  const ownerMetaLabel = modal.querySelector('#omega-ticket-owner-meta');
+  if (ownerMetaLabel) ownerMetaLabel.textContent = ownerName === 'Sem responsável'
+    ? 'Sem responsável'
+    : ownerMeta !== '—' ? ownerMeta : 'Sem identificação';
+  const productField = modal.querySelector('#omega-ticket-product');
+  if (productField) productField.textContent = productLabel;
+  const queueField = modal.querySelector('#omega-ticket-queue');
+  if (queueField) queueField.textContent = queueLabel;
+  const openedField = modal.querySelector('#omega-ticket-opened');
+  if (openedField) openedField.textContent = openedDate;
+  const openedTimeField = modal.querySelector('#omega-ticket-opened-time');
+  if (openedTimeField) openedTimeField.textContent = openedDateTime;
+  const statusField = modal.querySelector('#omega-ticket-status');
+  if (statusField) statusField.textContent = statusMeta.label;
+  const updatedField = modal.querySelector('#omega-ticket-updated');
+  if (updatedField) updatedField.textContent = `Última atualização em ${updatedDateTime}`;
+  const priorityField = modal.querySelector('#omega-ticket-priority');
+  if (priorityField) priorityField.textContent = priorityMeta.label;
+  const dueField = modal.querySelector('#omega-ticket-due');
+  if (dueField) dueField.textContent = dueDateLabel;
+
+  const descriptionField = modal.querySelector('#omega-ticket-description');
+  if (descriptionField) {
+    const timeline = Array.isArray(ticket.history) ? [...ticket.history] : [];
+    const originEntry = timeline.length
+      ? [...timeline].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0]
+      : null;
+    const descriptionParts = [];
+    if (originEntry?.action) descriptionParts.push(originEntry.action);
+    if (originEntry?.comment && originEntry.comment !== originEntry.action) descriptionParts.push(originEntry.comment);
+    descriptionField.innerHTML = descriptionParts.length
+      ? descriptionParts.map((part) => `<p>${escapeHTML(part)}</p>`).join('')
+      : '<p>Sem observações registradas.</p>';
+  }
+
+  const progressHost = modal.querySelector('#omega-ticket-progress');
+  if (progressHost) progressHost.innerHTML = buildTicketProgress(ticket.status);
+
+  const timelineHost = modal.querySelector('#omega-ticket-timeline');
+  if (timelineHost) timelineHost.innerHTML = buildTicketTimeline(ticket);
+
+  configureTicketActions(modal, ticket, user);
+
+  modal.hidden = false;
+}
+
+function renderBulkControls(root, user, tickets){
+  const selectionAllowed = shouldAllowSelection(user);
+  const selection = getSelection();
+  if (selectionAllowed) {
+    const visible = new Set((tickets || []).map((ticket) => ticket.id));
+    Array.from(selection).forEach((id) => {
+      if (!visible.has(id)) selection.delete(id);
+    });
+  }
+  const selectedIds = Array.from(selection);
+  const hasSelection = selectionAllowed && selectedIds.length > 0;
+  const bulkBtn = root.querySelector('#omega-bulk-status');
+  if (bulkBtn) {
+    bulkBtn.hidden = !selectionAllowed;
+    bulkBtn.disabled = !hasSelection;
+  }
+  const panel = root.querySelector('#omega-bulk-panel');
+  if (!selectionAllowed) {
+    omegaState.bulkPanelOpen = false;
+    if (panel) panel.hidden = true;
+  } else {
+    if (!hasSelection) omegaState.bulkPanelOpen = false;
+    if (panel) {
+      const shouldShow = omegaState.bulkPanelOpen && hasSelection;
+      panel.hidden = !shouldShow;
+      if (shouldShow) {
+        populateBulkStatusOptions(root);
+        const hint = panel.querySelector('#omega-bulk-hint');
+        if (hint) {
+          const count = selectedIds.length;
+          hint.textContent = count === 1 ? '1 chamado selecionado' : `${count} chamados selecionados`;
+        }
+      }
+    }
+  }
+  const selectAll = root.querySelector('#omega-select-all');
+  if (selectAll) {
+    if (!selectionAllowed || !tickets.length) {
+      selectAll.checked = false;
+      selectAll.indeterminate = false;
+      selectAll.disabled = true;
+    } else {
+      const selectedCount = tickets.filter((ticket) => selection.has(ticket.id)).length;
+      selectAll.disabled = false;
+      selectAll.checked = selectedCount > 0 && selectedCount === tickets.length;
+      selectAll.indeterminate = selectedCount > 0 && selectedCount < tickets.length;
+    }
+  }
+}
+
+function populateBulkStatusOptions(root){
+  const select = root.querySelector('#omega-bulk-status-select');
+  if (!select) return;
+  const statuses = getOrderedStatuses();
+  select.innerHTML = statuses.map((status) => {
+    const meta = OMEGA_STATUS_META[status] || { label: status };
+    return `<option value="${status}">${escapeHTML(meta.label)}</option>`;
+  }).join('');
+  const current = omegaState.bulkStatus && statuses.includes(omegaState.bulkStatus)
+    ? omegaState.bulkStatus
+    : (statuses[0] || '');
+  select.value = current;
+  omegaState.bulkStatus = current;
+}
+
+function configureTicketActions(modal, ticket, user){
+  if (!modal) return;
+  const section = modal.querySelector('#omega-ticket-actions');
+  if (!section) return;
+  const canEdit = ['analista', 'supervisor', 'admin'].includes(user?.role);
+  const canCancel = user?.id && user.id === ticket.requesterId && !['cancelado', 'resolvido'].includes(ticket.status);
+  const advanced = section.querySelector('#omega-ticket-actions-advanced');
+  const cancelBtn = section.querySelector('#omega-ticket-cancel');
+  const commentInput = section.querySelector('#omega-ticket-update-comment');
+  section.hidden = false;
+  if (advanced) advanced.hidden = !canEdit;
+  if (cancelBtn) {
+    cancelBtn.hidden = !canCancel;
+    cancelBtn.disabled = !canCancel;
+  }
+  if (omegaState.ticketUpdateTicketId !== ticket.id) {
+    initializeTicketUpdateDraft(ticket);
+  }
+  if (!omegaState.ticketUpdate) resetTicketUpdateState();
+  const draft = omegaState.ticketUpdate;
+  if (!draft.status) draft.status = ticket.status || (getOrderedStatuses()[0] || 'aberto');
+  if (!draft.priority) draft.priority = ticket.priority || 'media';
+  if (draft.queue == null) draft.queue = ticket.queue || '';
+  if (draft.category == null) draft.category = ticket.category || '';
+  if (!draft.due) draft.due = formatDateInput(ticket.dueDate);
+  if (!Array.isArray(draft.attachments)) draft.attachments = [];
+
+  const statusSelect = section.querySelector('#omega-ticket-update-status');
+  if (statusSelect) {
+    const statuses = getOrderedStatuses();
+    statusSelect.innerHTML = statuses.map((status) => {
+      const meta = OMEGA_STATUS_META[status] || { label: status };
+      return `<option value="${status}">${escapeHTML(meta.label)}</option>`;
+    }).join('');
+    if (!statuses.includes(draft.status)) draft.status = statuses[0] || draft.status;
+    statusSelect.value = draft.status;
+    statusSelect.disabled = !canEdit;
+  }
+
+  const prioritySelect = section.querySelector('#omega-ticket-update-priority');
+  if (prioritySelect) {
+    prioritySelect.innerHTML = Object.entries(OMEGA_PRIORITY_META).map(([value, meta]) => {
+      return `<option value="${value}">${escapeHTML(meta.label)}</option>`;
+    }).join('');
+    if (!Object.prototype.hasOwnProperty.call(OMEGA_PRIORITY_META, draft.priority)) {
+      draft.priority = ticket.priority || 'media';
+    }
+    prioritySelect.value = draft.priority;
+    prioritySelect.disabled = !canEdit;
+  }
+
+  const queueSelect = section.querySelector('#omega-ticket-update-queue');
+  if (queueSelect) {
+    const departments = Array.from(new Set([
+      ...(getAvailableDepartmentsForUser(user) || []),
+      ticket.queue,
+    ].filter(Boolean)));
+    queueSelect.innerHTML = departments.map((dept) => `<option value="${escapeHTML(dept)}">${escapeHTML(dept)}</option>`).join('');
+    if (departments.length && !departments.includes(draft.queue)) {
+      draft.queue = ticket.queue && departments.includes(ticket.queue) ? ticket.queue : departments[0];
+    }
+    queueSelect.value = draft.queue || '';
+    queueSelect.disabled = !canEdit;
+  }
+
+  const categorySelect = section.querySelector('#omega-ticket-update-category');
+  if (categorySelect) {
+    const categories = Array.from(new Set([
+      ...(getAllTicketCategories() || []),
+      ticket.category,
+    ].filter(Boolean)));
+    categorySelect.innerHTML = categories.map((category) => `<option value="${escapeHTML(category)}">${escapeHTML(category)}</option>`).join('');
+    if (categories.length && !categories.includes(draft.category)) {
+      draft.category = ticket.category && categories.includes(ticket.category) ? ticket.category : categories[0];
+    }
+    categorySelect.value = draft.category || '';
+    categorySelect.disabled = !canEdit;
+  }
+
+  const dueInput = section.querySelector('#omega-ticket-update-due');
+  if (dueInput) {
+    dueInput.value = draft.due || '';
+    dueInput.disabled = !canEdit;
+  }
+
+  if (commentInput && commentInput.value !== draft.comment) {
+    commentInput.value = draft.comment || '';
+  }
+
+  renderTicketUpdateAttachments(section);
+}
+
+function handleTicketUpdateSubmit(form){
+  const ticketId = omegaState.selectedTicketId;
+  if (!ticketId) return;
+  const ticket = OMEGA_TICKETS.find((item) => item.id === ticketId);
+  if (!ticket) return;
+  const user = getCurrentUser();
+  const draft = omegaState.ticketUpdate || {};
+  const commentInput = form.querySelector('#omega-ticket-update-comment');
+  const comment = commentInput?.value?.trim() || '';
+  if (!comment) {
+    commentInput?.focus();
+    return;
+  }
+  const canEdit = ['analista', 'supervisor', 'admin'].includes(user?.role);
+  const statuses = getOrderedStatuses();
+  const newStatus = draft.status && statuses.includes(draft.status) ? draft.status : ticket.status;
+  const newPriority = draft.priority && OMEGA_PRIORITY_META[draft.priority] ? draft.priority : ticket.priority;
+  const newQueue = draft.queue || ticket.queue;
+  const newCategory = draft.category || ticket.category;
+  const newDue = draft.due ? `${draft.due}T00:00:00` : null;
+  const attachments = Array.isArray(draft.attachments) ? draft.attachments : [];
+  const now = new Date().toISOString();
+
+  const previousStatus = ticket.status;
+  if (canEdit) {
+    ticket.status = newStatus;
+    ticket.priority = newPriority;
+    ticket.queue = newQueue;
+    ticket.category = newCategory;
+    ticket.dueDate = newDue;
+  }
+  ticket.updated = now;
+  if (!Array.isArray(ticket.history)) ticket.history = [];
+  const statusMeta = OMEGA_STATUS_META[ticket.status] || { label: ticket.status };
+  const actionLabel = canEdit && draft.status && draft.status !== previousStatus
+    ? `Situação atualizada para ${statusMeta.label}`
+    : 'Atualização registrada';
+  ticket.history.push({
+    date: now,
+    actorId: user?.id || '',
+    action: actionLabel,
+    comment,
+    status: ticket.status,
+    attachments: attachments.map((item) => ({ id: item.id, name: item.name })),
+  });
+  if (attachments.length) {
+    const names = attachments.map((item) => item.name);
+    ticket.attachments = Array.isArray(ticket.attachments)
+      ? [...ticket.attachments, ...names]
+      : [...names];
+  }
+  initializeTicketUpdateDraft(ticket);
+  renderOmega();
+}
+
+function handleTicketCancel(){
+  const ticketId = omegaState.selectedTicketId;
+  if (!ticketId) return;
+  const ticket = OMEGA_TICKETS.find((item) => item.id === ticketId);
+  if (!ticket) return;
+  const user = getCurrentUser();
+  if (!user || user.id !== ticket.requesterId) return;
+  if (!window.confirm('Deseja realmente cancelar este chamado?')) return;
+  const now = new Date().toISOString();
+  ticket.status = 'cancelado';
+  ticket.updated = now;
+  if (!Array.isArray(ticket.history)) ticket.history = [];
+  ticket.history.push({
+    date: now,
+    actorId: user.id,
+    action: 'Chamado cancelado pelo solicitante',
+    comment: '',
+    status: 'cancelado',
+    attachments: [],
+  });
+  initializeTicketUpdateDraft(ticket);
+  renderOmega();
+}
+
+function handleBulkStatusSubmit(status){
+  const statuses = getOrderedStatuses();
+  if (!status || !statuses.includes(status)) return;
+  const selection = Array.from(getSelection());
+  if (!selection.length) return;
+  const user = getCurrentUser();
+  const now = new Date().toISOString();
+  selection.forEach((id) => {
+    const ticket = OMEGA_TICKETS.find((item) => item.id === id);
+    if (!ticket) return;
+    ticket.status = status;
+    ticket.updated = now;
+    if (!Array.isArray(ticket.history)) ticket.history = [];
+    const meta = OMEGA_STATUS_META[status] || { label: status };
+    ticket.history.push({
+      date: now,
+      actorId: user?.id || '',
+      action: `Situação atualizada em lote para ${meta.label}`,
+      comment: '',
+      status,
+      attachments: [],
+    });
+  });
+  omegaState.bulkPanelOpen = false;
+  renderOmega();
+}
+
+function buildTicketMeta(ticket){
+  const pieces = [];
+  const opened = formatDateTime(ticket.opened, { withTime: true });
+  if (opened && opened !== '—') pieces.push(`Aberto em ${opened}`);
+  if (ticket.queue) pieces.push(`Fila ${ticket.queue}`);
+  if (ticket.product) pieces.push(ticket.product);
+  return pieces.length ? pieces.join(' • ') : `Chamado ${ticket.id}`;
+}
+
+function buildTicketProgress(status){
+  const order = getOrderedStatuses();
+  const currentIndex = order.indexOf(status);
+  return order.map((step, index) => {
+    let state = 'pending';
+    if (currentIndex === -1) {
+      state = index === 0 ? 'current' : 'pending';
+    } else if (index < currentIndex) {
+      state = 'complete';
+    } else if (index === currentIndex) {
+      state = 'current';
+    }
+    const meta = OMEGA_STATUS_META[step] || { label: step };
+    return `<li class="omega-progress__step" data-state="${state}"><span class="omega-progress__marker">${index + 1}</span><span class="omega-progress__label">${escapeHTML(meta.label)}</span></li>`;
+  }).join('');
+}
+
+function buildTicketTimeline(ticket){
+  const entries = Array.isArray(ticket.history) ? [...ticket.history] : [];
+  if (!entries.length) {
+    return '<li class="omega-timeline__item" data-side="usuario"><div class="omega-timeline__content"><p>Ainda não há histórico registrado.</p></div></li>';
+  }
+  entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  return entries.map((entry) => {
+    const actorName = resolveUserName(entry.actorId);
+    const side = resolveTimelineSide(ticket, entry.actorId);
+    const statusMeta = OMEGA_STATUS_META[entry.status] || { label: entry.status, tone: 'neutral' };
+    const action = entry.action ? `<p>${escapeHTML(entry.action)}</p>` : '';
+    const comment = entry.comment ? `<p>${escapeHTML(entry.comment)}</p>` : '';
+    const attachments = Array.isArray(entry.attachments) && entry.attachments.length
+      ? `<ul class="omega-timeline__attachments">${entry.attachments.map((item) => {
+          const name = typeof item === 'string' ? item : (item?.name || 'Arquivo');
+          return `<li><i class="ti ti-paperclip"></i>${escapeHTML(name)}</li>`;
+        }).join('')}</ul>`
+      : '';
+    return `<li class="omega-timeline__item" data-side="${side}">
+      <div class="omega-timeline__content">
+        <div class="omega-timeline__heading"><strong>${escapeHTML(actorName)}</strong><span class="omega-status-badge" data-tone="${statusMeta.tone}">${escapeHTML(statusMeta.label)}</span></div>
+        <time datetime="${escapeHTML(entry.date)}">${formatDateTime(entry.date, { withTime: true })}</time>
+        ${action}${comment}${attachments}
+      </div>
+    </li>`;
+  }).join('');
+}
+
+function resolveTimelineSide(ticket, actorId){
+  if (!ticket || !actorId) return 'analista';
+  if (actorId === ticket.requesterId) return 'usuario';
+  const user = OMEGA_USERS.find((item) => item.id === actorId);
+  if (!user) return 'analista';
+  const isOnlyUser = user.roles?.usuario && !user.roles.analista && !user.roles.supervisor && !user.roles.admin;
+  return isOnlyUser ? 'usuario' : 'analista';
+}
+
+function openTicketDetail(ticketId){
+  if (!ticketId) return;
+  omegaState.selectedTicketId = ticketId;
+  setTicketModalOpen(true);
+  renderOmega();
+}
+
+function updateEmptyState(root, tickets){
+  const wrapper = root.querySelector('#omega-table-wrapper');
+  const empty = root.querySelector('#omega-empty');
+  if (!wrapper || !empty) return;
+  if (!tickets.length) {
+    wrapper.hidden = true;
+    empty.hidden = false;
+  } else {
+    wrapper.hidden = false;
+    empty.hidden = true;
+  }
+}
+
+function filterTicketsByContext(){
+  if (!omegaState.contextDetail) return [...OMEGA_TICKETS];
+  return OMEGA_TICKETS.filter((ticket) => ticketMatchesContext(ticket, omegaState.contextDetail));
+}
+
+function filterTicketsByView(tickets, user){
+  if (!user) return [...tickets];
+  const role = user.role || 'usuario';
+  if (role === 'admin') return [...tickets];
+  const queues = Array.isArray(user.queues) ? user.queues : [];
+  if (omegaState.view === 'my') {
+    return tickets.filter((ticket) => ticket.requesterId === user.id || ticket.ownerId === user.id);
+  }
+  if (omegaState.view === 'assigned') {
+    return tickets.filter((ticket) => ticket.ownerId === user.id);
+  }
+  if (omegaState.view === 'queue') {
+    if (!queues.length) {
+      return tickets.filter((ticket) => ticket.ownerId === user.id || ticket.teamId === user.teamId);
+    }
+    return tickets.filter((ticket) => queues.includes(ticket.queue) || ticket.ownerId === user.id);
+  }
+  if (omegaState.view === 'team') {
+    const base = tickets.filter((ticket) => ticket.teamId === user.teamId || ticket.ownerId === user.id);
+    if (!queues.length) return base;
+    return base.filter((ticket) => queues.includes(ticket.queue) || ticket.teamId === user.teamId || ticket.ownerId === user.id);
+  }
+  return [...tickets];
+}
+
+function applyStatusAndSearch(tickets){
+  let output = [...tickets];
+  const filters = omegaState.filters || {};
+  const statusFilters = Array.isArray(filters.statuses) ? filters.statuses.filter(Boolean) : [];
+  if (statusFilters.length) {
+    output = output.filter((ticket) => statusFilters.includes(ticket.status));
+  }
+  output = applyAdvancedFilters(output);
+  const term = normalizeText(omegaState.search);
+  if (term) {
+    output = output.filter((ticket) => matchesSearch(ticket, term));
+  }
+  output.sort((a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime());
+  return output;
+}
+
+function applyAdvancedFilters(tickets){
+  const filters = omegaState.filters || {};
+  const idTerm = normalizeText(filters.id || '');
+  const requesterTerm = normalizeText(filters.requester || '');
+  const typeTerm = normalizeText(filters.type || '');
+  const priorityTerm = (filters.priority || '').trim();
+  const departments = Array.isArray(filters.departments) ? filters.departments.filter(Boolean) : [];
+  const openedFrom = filters.openedFrom ? new Date(`${filters.openedFrom}T00:00:00`) : null;
+  const openedTo = filters.openedTo ? new Date(`${filters.openedTo}T23:59:59`) : null;
+  const fromTime = openedFrom && Number.isFinite(openedFrom.getTime()) ? openedFrom.getTime() : null;
+  const toTime = openedTo && Number.isFinite(openedTo.getTime()) ? openedTo.getTime() : null;
+
+  return tickets.filter((ticket) => {
+    if (idTerm && !normalizeText(ticket.id).includes(idTerm)) return false;
+    if (departments.length && !departments.includes(ticket.queue)) return false;
+    if (typeTerm && normalizeText(ticket.category) !== typeTerm) return false;
+    if (priorityTerm && ticket.priority !== priorityTerm) return false;
+    if (requesterTerm) {
+      const requesterTokens = [
+        normalizeText(resolveRequesterDisplay(ticket)),
+        normalizeText(resolveUserName(ticket.requesterId)),
+        normalizeText(ticket.requesterId || ''),
+      ].filter(Boolean);
+      if (!requesterTokens.some((token) => token.includes(requesterTerm))) return false;
+    }
+    if (fromTime || toTime) {
+      const openedTime = ticket.opened ? new Date(ticket.opened).getTime() : NaN;
+      if (fromTime && (!Number.isFinite(openedTime) || openedTime < fromTime)) return false;
+      if (toTime && (!Number.isFinite(openedTime) || openedTime > toTime)) return false;
+    }
+    return true;
+  });
+}
+
+function matchesSearch(ticket, term){
+  const values = [
+    ticket.id,
+    ticket.requesterName,
+    ticket.product,
+    ticket.queue,
+    ticket.subject,
+    resolveRequesterDisplay(ticket),
+    resolveUserName(ticket.requesterId),
+    ticket.requesterId,
+    resolveUserName(ticket.ownerId),
+  ];
+  return values.some((value) => normalizeText(value).includes(term));
+}
+
+function enforceViewForRole(){
+  const user = getCurrentUser();
+  const available = OMEGA_NAV_ITEMS.filter((item) => item.roles.includes(user?.role || 'usuario'));
+  if (!available.some((item) => item.id === omegaState.view)) {
+    omegaState.view = available[0]?.id || 'my';
+  }
+}
+
+function getCurrentUser(){
+  if (!OMEGA_USERS.length) return null;
+  const user = OMEGA_USERS.find((item) => item.id === omegaState.currentUserId) || OMEGA_USERS[0];
+  if (user && omegaState.currentUserId !== user.id) {
+    omegaState.currentUserId = user.id;
+  }
+  return user;
+}
+
+function resolveUserName(userId){
+  if (!userId) return '—';
+  const user = OMEGA_USERS.find((item) => item.id === userId);
+  return user?.name || '—';
+}
+
+function resolveUserMeta(userId){
+  if (!userId) return '—';
+  const user = OMEGA_USERS.find((item) => item.id === userId);
+  if (!user) return '—';
+  const parts = [];
+  if (user.position) parts.push(user.position);
+  if (user.junction) parts.push(user.junction);
+  if (!parts.length) parts.push(getUserRoleLabel(user));
+  return parts.join(' • ');
+}
+
+function resolveRequesterDisplay(ticket){
+  if (!ticket) return '';
+  if (ticket.requesterName) return ticket.requesterName;
+  const userName = resolveUserName(ticket.requesterId);
+  return userName === '—' ? '' : userName;
+}
+
+function ticketMatchesContext(ticket, detail){
+  const tokens = gatherContextTokens(detail);
+  if (!tokens.length) return true;
+  const values = gatherTicketTokens(ticket);
+  if (!values.length) return true;
+  return tokens.some((token) => values.some((value) => value.includes(token)));
+}
+
+function gatherContextTokens(detail){
+  const tokens = [];
+  if (!detail) return tokens;
+  if (detail.label) tokens.push(normalizeText(detail.label));
+  if (Array.isArray(detail.trail)) {
+    detail.trail.forEach((entry) => {
+      if (entry) tokens.push(normalizeText(entry));
+    });
+  }
+  if (Array.isArray(detail.lineage)) {
+    detail.lineage.forEach((entry) => {
+      if (entry?.label) tokens.push(normalizeText(entry.label));
+      else if (entry?.value) tokens.push(normalizeText(entry.value));
+    });
+  }
+  return tokens.filter(Boolean);
+}
+
+function gatherTicketTokens(ticket){
+  const ctx = ticket.context || {};
+  const values = [
+    ticket.requesterName,
+    ticket.product,
+    ticket.family,
+    ticket.section,
+    ticket.queue,
+    ctx.diretoria,
+    ctx.gerencia,
+    ctx.agencia,
+    ctx.ggestao,
+    ctx.gerente,
+    ctx.familia,
+    ctx.secao,
+    ctx.prodsub,
+  ];
+  return values.map((value) => normalizeText(value)).filter(Boolean);
+}
+
+function normalizeText(value){
+  return (value ?? '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function escapeHTML(value){
+  if (value == null) return '';
+  return value.toString()
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function createLocalId(prefix = 'id'){
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+}
+
+function formatFileSize(bytes){
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function getTicketTypesForDepartment(department){
+  if (!department) return OMEGA_TICKET_TYPES_BY_DEPARTMENT.Outros || ['A construir'];
+  const list = OMEGA_TICKET_TYPES_BY_DEPARTMENT[department];
+  if (Array.isArray(list) && list.length) return list;
+  return OMEGA_TICKET_TYPES_BY_DEPARTMENT.Outros || ['A construir'];
+}
+
+function getAvailableDepartmentsForUser(user){
+  const base = Array.isArray(OMEGA_QUEUE_OPTIONS) ? [...OMEGA_QUEUE_OPTIONS] : [];
+  if (!base.length) return base;
+  if (!user) return base;
+  if (user.roles?.admin) return base;
+  const queues = Array.isArray(user.queues) ? user.queues.filter((queue) => base.includes(queue)) : [];
+  if (queues.length) return queues;
+  if (user.matrixAccess) return base;
+  return base.filter((item) => item !== 'Matriz');
+}
+
+function syncTicketTypeOptions(container, department){
+  const typeSelect = container?.querySelector?.('#omega-form-type');
+  if (!typeSelect) return;
+  const options = getTicketTypesForDepartment(department);
+  typeSelect.innerHTML = options
+    .map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`)
+    .join('');
+  typeSelect.disabled = !options.length;
+  if (options.length) {
+    typeSelect.selectedIndex = 0;
+  }
+}
+
+function renderFormAttachments(root){
+  const list = root?.querySelector?.('#omega-form-attachments');
+  if (!list) return;
+  const attachments = Array.isArray(omegaState.formAttachments) ? omegaState.formAttachments : [];
+  if (!attachments.length) {
+    list.innerHTML = '<li class="omega-attachments__empty">Nenhum arquivo adicionado</li>';
+    return;
+  }
+  list.innerHTML = attachments.map((item) => {
+    const size = item.size ? `<span class="omega-attachments__size">${escapeHTML(formatFileSize(item.size))}</span>` : '';
+    return `<li class="omega-attachments__item" data-attachment-id="${escapeHTML(item.id)}">
+      <div class="omega-attachments__meta">
+        <i class="ti ti-paperclip" aria-hidden="true"></i>
+        <span class="omega-attachments__name">${escapeHTML(item.name)}</span>
+        ${size}
+      </div>
+      <button type="button" class="omega-attachments__remove" data-omega-remove-attachment="${escapeHTML(item.id)}" aria-label="Remover ${escapeHTML(item.name)}">
+        <i class="ti ti-x" aria-hidden="true"></i>
+      </button>
+    </li>`;
+  }).join('');
+}
+
+function resetFormAttachments(root){
+  omegaState.formAttachments = [];
+  const fileInput = root?.querySelector?.('#omega-form-file');
+  if (fileInput) {
+    try {
+      fileInput.value = '';
+    } catch (err) {
+      /* noop */
+    }
+  }
+  renderFormAttachments(root);
+}
+
+function addFormAttachments(root, fileList){
+  if (!fileList || !fileList.length) return;
+  if (!Array.isArray(omegaState.formAttachments)) {
+    omegaState.formAttachments = [];
+  }
+  const entries = Array.from(fileList).filter(Boolean).map((file) => ({
+    id: createLocalId('att'),
+    name: file.name || 'Arquivo sem nome',
+    size: Number.isFinite(file.size) ? file.size : null,
+    file,
+  }));
+  if (!entries.length) return;
+  omegaState.formAttachments = [...omegaState.formAttachments, ...entries];
+  renderFormAttachments(root);
+}
+
+function removeFormAttachment(root, attachmentId){
+  if (!attachmentId || !Array.isArray(omegaState.formAttachments)) return;
+  omegaState.formAttachments = omegaState.formAttachments.filter((item) => item.id !== attachmentId);
+  renderFormAttachments(root);
+}
+
+function resetTicketUpdateState(){
+  omegaState.ticketUpdate = {
+    comment: '',
+    status: '',
+    priority: '',
+    queue: '',
+    category: '',
+    due: '',
+    attachments: [],
+  };
+  omegaState.ticketUpdateTicketId = null;
+}
+
+function initializeTicketUpdateDraft(ticket){
+  if (!ticket) {
+    resetTicketUpdateState();
+    return;
+  }
+  const statuses = getOrderedStatuses();
+  omegaState.ticketUpdateTicketId = ticket.id;
+  omegaState.ticketUpdate = {
+    comment: '',
+    status: ticket.status && statuses.includes(ticket.status) ? ticket.status : (statuses[0] || 'aberto'),
+    priority: ticket.priority || 'media',
+    queue: ticket.queue || '',
+    category: ticket.category || '',
+    due: formatDateInput(ticket.dueDate),
+    attachments: [],
+  };
+}
+
+function renderTicketUpdateAttachments(container){
+  if (!container) return;
+  const list = container.querySelector('#omega-ticket-update-attachments');
+  if (!list) return;
+  const attachments = Array.isArray(omegaState.ticketUpdate?.attachments) ? omegaState.ticketUpdate.attachments : [];
+  if (!attachments.length) {
+    list.innerHTML = '<li class="omega-attachments__empty">Nenhum arquivo anexado</li>';
+    return;
+  }
+  list.innerHTML = attachments.map((item) => {
+    const size = item.size ? `<span class="omega-attachments__size">${escapeHTML(formatFileSize(item.size))}</span>` : '';
+    return `<li class="omega-attachments__item" data-attachment-id="${escapeHTML(item.id)}">
+      <div class="omega-attachments__meta">
+        <i class="ti ti-paperclip" aria-hidden="true"></i>
+        <span class="omega-attachments__name">${escapeHTML(item.name)}</span>
+        ${size}
+      </div>
+      <button type="button" class="omega-attachments__remove" data-omega-remove-update-attachment="${escapeHTML(item.id)}" aria-label="Remover ${escapeHTML(item.name)}">
+        <i class="ti ti-x" aria-hidden="true"></i>
+      </button>
+    </li>`;
+  }).join('');
+}
+
+function addTicketUpdateAttachments(container, fileList){
+  if (!fileList || !fileList.length) return;
+  if (!Array.isArray(omegaState.ticketUpdate?.attachments)) {
+    if (!omegaState.ticketUpdate) omegaState.ticketUpdate = {};
+    omegaState.ticketUpdate.attachments = [];
+  }
+  const entries = Array.from(fileList).filter(Boolean).map((file) => ({
+    id: createLocalId('upd'),
+    name: file.name || 'Arquivo sem nome',
+    size: Number.isFinite(file.size) ? file.size : null,
+    file,
+  }));
+  if (!entries.length) return;
+  omegaState.ticketUpdate.attachments = [...omegaState.ticketUpdate.attachments, ...entries];
+  renderTicketUpdateAttachments(container);
+}
+
+function removeTicketUpdateAttachment(container, attachmentId){
+  if (!attachmentId || !Array.isArray(omegaState.ticketUpdate?.attachments)) return;
+  omegaState.ticketUpdate.attachments = omegaState.ticketUpdate.attachments.filter((item) => item.id !== attachmentId);
+  renderTicketUpdateAttachments(container);
+}
+
+function formatDateTime(value, { withTime = false } = {}){
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  const options = { day: '2-digit', month: '2-digit', year: 'numeric' };
+  if (withTime) {
+    options.hour = '2-digit';
+    options.minute = '2-digit';
+  }
+  return new Intl.DateTimeFormat('pt-BR', options).format(date);
+}
+
+function formatDateInput(value){
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    const direct = value.toString().slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(direct) ? direct : '';
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function setDrawerOpen(open){
+  const root = document.getElementById('omega-modal');
+  const drawer = root?.querySelector('#omega-drawer');
+  if (!drawer) return;
+  omegaState.drawerOpen = !!open;
+  drawer.hidden = !open;
+  if (open) {
+    populateFormOptions(root);
+    prefillTicketForm(root);
+  } else {
+    const form = root.querySelector('#omega-form');
+    if (form) form.reset();
+    resetFormAttachments(root);
+    clearFormFeedback(root);
+  }
+}
+
+function setTicketModalOpen(open){
+  omegaState.ticketModalOpen = !!open;
+  const modal = document.getElementById('omega-ticket-modal');
+  if (!modal) return;
+  if (!omegaState.ticketModalOpen) {
+    modal.hidden = true;
+    resetTicketUpdateState();
+  }
+}
+
+function setFilterPanelOpen(open){
+  omegaState.filterPanelOpen = !!open;
+  const root = document.getElementById('omega-modal');
+  if (!root) return;
+  const panel = root.querySelector('#omega-filter-panel');
+  const toggle = root.querySelector('#omega-filters-toggle');
+  if (panel) panel.hidden = !open;
+  if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    populateFilterPanelOptions(root);
+    syncFilterFormState(root);
+  }
+  updateFilterButtonState(root);
+}
+
+function toggleFilterPanel(force){
+  const next = typeof force === 'boolean' ? force : !omegaState.filterPanelOpen;
+  setFilterPanelOpen(next);
+}
+
+function populateUserSelect(root){
+  const select = root.querySelector('#omega-user-select');
+  if (!select) return;
+  if (!OMEGA_USERS.length) {
+    select.innerHTML = '';
+    return;
+  }
+  const order = { usuario: 0, analista: 1, supervisor: 2, admin: 3 };
+  const options = [...OMEGA_USERS].sort((a, b) => {
+    const roleDiff = (order[a.role] ?? 10) - (order[b.role] ?? 10);
+    if (roleDiff !== 0) return roleDiff;
+    return a.name.localeCompare(b.name, 'pt-BR');
+  });
+  select.innerHTML = options.map((user) => {
+    const roleLabel = getUserRoleLabel(user);
+    const meta = [];
+    if (user.position) meta.push(user.position);
+    if (user.junction) meta.push(user.junction);
+    const descriptor = meta.length ? meta.join(' • ') : roleLabel;
+    return `<option value="${user.id}">${escapeHTML(user.name)} — ${escapeHTML(descriptor)}</option>`;
+  }).join('');
+  const defaultId = omegaState.currentUserId || options[0]?.id || '';
+  select.value = defaultId;
+  omegaState.currentUserId = defaultId || null;
+}
+
+function populateFormOptions(root){
+  const form = root.querySelector('#omega-form');
+  if (!form) return;
+  const departmentSelect = form.querySelector('#omega-form-department');
+  const user = getCurrentUser();
+  const departments = getAvailableDepartmentsForUser(user);
+  if (departmentSelect) {
+    const previous = departmentSelect.value;
+    if (departments.length) {
+      departmentSelect.innerHTML = departments
+        .map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`)
+        .join('');
+      if (previous && departments.includes(previous)) {
+        departmentSelect.value = previous;
+      } else {
+        departmentSelect.value = departments[0];
+      }
+    } else {
+      departmentSelect.innerHTML = '<option value="" disabled>Nenhum departamento disponível</option>';
+      departmentSelect.value = '';
+    }
+    departmentSelect.disabled = !departments.length;
+  }
+  const department = departmentSelect?.value || departments[0] || '';
+  syncTicketTypeOptions(form, department);
+  renderFormAttachments(root);
+}
+
+function buildOmegaSubject({ typeLabel = '', productLabel = '', requester = '' } = {}){
+  const parts = [];
+  if (typeLabel) parts.push(typeLabel);
+  if (productLabel && !parts.includes(productLabel)) parts.push(productLabel);
+  if (requester) parts.push(requester);
+  return parts.length ? parts.join(' • ') : 'Chamado Omega';
+}
+
+function updateOmegaFormSubject(root){
+  const form = root.querySelector('#omega-form');
+  if (!form) return;
+  const subjectInput = form.querySelector('#omega-form-subject');
+  if (!subjectInput) return;
+  const typeSelect = form.querySelector('#omega-form-type');
+  const productId = form.querySelector('#omega-form-product')?.value;
+  const productMeta = OMEGA_PRODUCT_CATALOG.find((item) => item.id === productId) || null;
+  const typeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim() || '';
+  const requester = form.querySelector('#omega-form-user')?.value?.trim() || '';
+  subjectInput.value = buildOmegaSubject({
+    typeLabel,
+    productLabel: productMeta?.label || '',
+    requester,
+  });
+}
+
+function prefillTicketForm(root){
+  const form = root.querySelector('#omega-form');
+  if (!form) return;
+  resetFormAttachments(root);
+  const productInput = form.querySelector('#omega-form-product');
+  const departmentSelect = form.querySelector('#omega-form-department');
+  const requesterInput = form.querySelector('#omega-form-user');
+  const observationInput = form.querySelector('#omega-form-observation');
+
+  const detail = omegaState.contextDetail;
+  const user = getCurrentUser();
+  const availableDepartments = getAvailableDepartmentsForUser(user);
+  const fallbackDepartment = availableDepartments[0] || '';
+  let productMeta = null;
+  if (detail?.levelKey === 'prodsub') {
+    productMeta = OMEGA_PRODUCT_CATALOG.find((item) => normalizeText(item.label) === normalizeText(detail.label)) || null;
+  } else if (detail?.levelKey === 'familia') {
+    productMeta = OMEGA_PRODUCT_CATALOG.find((item) => normalizeText(item.family) === normalizeText(detail.label)) || null;
+  } else if (detail?.levelKey === 'secao') {
+    productMeta = OMEGA_PRODUCT_CATALOG.find((item) => normalizeText(item.section) === normalizeText(detail.label)) || null;
+  }
+  if (!productMeta) {
+    const trailProduct = detail?.trail?.find?.((entry) => !!entry && typeof entry === 'string') || '';
+    productMeta = OMEGA_PRODUCT_CATALOG.find((item) => normalizeText(item.label) === normalizeText(trailProduct)) || null;
+  }
+  if (!productMeta) productMeta = OMEGA_PRODUCT_CATALOG[0] || null;
+
+  if (productInput) {
+    productInput.value = productMeta?.id || '';
+  }
+  if (departmentSelect) {
+    const preferred = user?.defaultQueue && availableDepartments.includes(user.defaultQueue)
+      ? user.defaultQueue
+      : fallbackDepartment;
+    if (!availableDepartments.includes(departmentSelect.value)) {
+      departmentSelect.value = preferred;
+    }
+    syncTicketTypeOptions(form, departmentSelect.value || preferred);
+  } else {
+    syncTicketTypeOptions(form, fallbackDepartment);
+  }
+  if (requesterInput) {
+    requesterInput.value = detail?.label && (detail.levelKey === 'contrato' || detail.levelKey === 'cliente')
+      ? detail.label
+      : '';
+  }
+  updateOmegaFormSubject(root);
+  if (observationInput) {
+    observationInput.value = '';
+  }
+  clearFormFeedback(root);
+}
+
+function handleNewTicketSubmit(form){
+  const root = document.getElementById('omega-modal');
+  if (!root) return;
+  updateOmegaFormSubject(root);
+  const requesterName = form.querySelector('#omega-form-user')?.value?.trim();
+  const productId = form.querySelector('#omega-form-product')?.value;
+  const category = form.querySelector('#omega-form-type')?.value;
+  const queue = form.querySelector('#omega-form-department')?.value;
+  const subject = form.querySelector('#omega-form-subject')?.value?.trim();
+  const description = form.querySelector('#omega-form-observation')?.value?.trim();
+  const attachments = Array.isArray(omegaState.formAttachments)
+    ? omegaState.formAttachments.map((item) => item.name)
+    : [];
+  if (!requesterName || !productId || !category || !queue || !subject || !description) {
+    showFormFeedback(root, 'Preencha todos os campos obrigatórios para registrar o chamado.', 'warning');
+    return;
+  }
+  const productMeta = OMEGA_PRODUCT_CATALOG.find((item) => item.id === productId) || { label: productId, family: '', section: '' };
+  const now = new Date();
+  omegaTicketCounter += 1;
+  const ticketId = String(omegaTicketCounter);
+  const user = getCurrentUser();
+  const detail = omegaState.contextDetail;
+  const context = {
+    diretoria: detail?.lineage?.find?.((entry) => entry.levelKey === 'diretoria')?.label || '',
+    gerencia: detail?.lineage?.find?.((entry) => entry.levelKey === 'gerencia')?.label || '',
+    agencia: detail?.lineage?.find?.((entry) => entry.levelKey === 'agencia')?.label || '',
+    ggestao: detail?.lineage?.find?.((entry) => entry.levelKey === 'ggestao')?.label || '',
+    gerente: detail?.lineage?.find?.((entry) => entry.levelKey === 'gerente')?.label || '',
+    familia: productMeta.family,
+    secao: productMeta.section,
+    prodsub: productMeta.label,
+  };
+  const newTicket = {
+    id: ticketId,
+    subject,
+    company: requesterName,
+    requesterName,
+    productId,
+    product: productMeta.label,
+    family: productMeta.family,
+    section: productMeta.section,
+    queue,
+    status: 'aberto',
+    category,
+    priority: 'media',
+    dueDate: null,
+    opened: now.toISOString(),
+    updated: now.toISOString(),
+    requesterId: user.id,
+    ownerId: ['analista', 'supervisor', 'admin'].includes(user.role) ? user.id : null,
+    teamId: user.teamId || null,
+    context,
+    attachments,
+    history: [
+      {
+        date: now.toISOString(),
+        actorId: user.id,
+        action: 'Abertura do chamado',
+        comment: description,
+        status: 'aberto',
+      },
+    ],
+  };
+  OMEGA_TICKETS.unshift(newTicket);
+  omegaState.selectedTicketId = newTicket.id;
+  omegaState.view = 'my';
+  omegaState.search = '';
+  setDrawerOpen(false);
+  renderOmega();
+}
+
+function showFormFeedback(root, message, tone = 'info'){
+  const feedback = root.querySelector('#omega-form-feedback');
+  if (!feedback) return;
+  feedback.textContent = message;
+  feedback.hidden = false;
+  feedback.className = `omega-feedback omega-feedback--${tone}`;
+}
+
+function clearFormFeedback(root){
+  const feedback = root.querySelector('#omega-form-feedback');
+  if (!feedback) return;
+  feedback.hidden = true;
+  feedback.textContent = '';
+  feedback.className = 'omega-feedback';
+}
+
+document.addEventListener('detail:open-ticket', (event) => {
+  try {
+    event.preventDefault();
+  } catch (err) {
+    /* ignore preventDefault failures */
+  }
+  openOmega(event.detail || null);
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  const menuItem = document.querySelector('.userbox__menu-item[data-action="omega"]');
+  if (menuItem && !menuItem.dataset.omegaBound) {
+    menuItem.dataset.omegaBound = '1';
+    menuItem.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      openOmega();
+    });
+  }
+});
+
+window.openOmegaModule = openOmega;

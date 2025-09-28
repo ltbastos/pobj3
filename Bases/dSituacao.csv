@@ -1,0 +1,6 @@
+id,label,tone,ordem,descricao
+aberto,Aberto,neutral,1,Chamado registrado e aguardando triagem.
+aguardando,Aguardando,warning,2,Aguardando retorno de usuário ou área parceira.
+em_atendimento,Em atendimento,progress,3,Analista atuando na demanda.
+resolvido,Resolvido,success,4,Chamado finalizado com solução.
+cancelado,Cancelado,danger,5,Chamado encerrado pelo solicitante.
