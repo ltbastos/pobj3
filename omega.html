@@ -4,10 +4,9 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Omega • Central de chamados</title>
-  <link rel="icon" type="image/png" href="img/pobj.png" sizes="32x32"/>
-  <link rel="icon" type="image/png" href="img/pobj.png" sizes="192x192"/>
-  <link rel="apple-touch-icon" href="img/pobj.png" sizes="180x180"/>
-  <link rel="shortcut icon" href="img/pobj.png"/>
+  <link rel="icon" type="image/svg+xml" href="img/omega-logo.svg"/>
+  <link rel="apple-touch-icon" href="img/omega-logo.svg" sizes="180x180"/>
+  <link rel="shortcut icon" href="img/omega-logo.svg"/>
   <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" rel="stylesheet"/>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="style.css"/>
@@ -19,38 +18,30 @@
     <section class="omega-modal__panel" role="dialog" aria-modal="true" aria-labelledby="omega-title">
       <header class="omega-header">
         <div class="omega-header__left">
-          <span class="omega-badge omega-badge--brand">Omega</span>
+          <img class="omega-logo" src="img/omega-logo.svg" alt="Logotipo da Omega" width="48" height="48"/>
           <div class="omega-header__titles">
             <h2 id="omega-title">Central de chamados Omega</h2>
-            <p id="omega-subtitle">Registre ocorrências, acompanhe atendimentos e gerencie permissões da equipe PJ.</p>
+            <p id="omega-subtitle">Registre ocorrências e acompanhe atendimentos.</p>
           </div>
         </div>
-        <div class="omega-header__right">
+        <div class="omega-header__actions">
           <button id="omega-notifications" class="omega-icon-btn" type="button" title="Notificações">
             <i class="ti ti-bell"></i>
           </button>
+          <label class="omega-user-switch" for="omega-user-select">
+            <span class="sr-only">Trocar perfil</span>
+            <select id="omega-user-select" class="omega-select" aria-label="Trocar perfil"></select>
+          </label>
         </div>
       </header>
 
       <div class="omega-body">
         <aside class="omega-sidebar" id="omega-sidebar">
-          <section class="omega-profile" aria-labelledby="omega-profile-title">
-            <div class="omega-profile__info">
-              <figure class="omega-avatar" aria-hidden="true">
-                <img id="omega-avatar" src="https://i.pravatar.cc/160?img=52" alt="" loading="lazy"/>
-              </figure>
-              <div class="omega-profile__text">
-                <h3 id="omega-profile-title">Perfil atual</h3>
-                <strong id="omega-user-name">—</strong>
-                <span id="omega-user-role">—</span>
-                <span id="omega-user-meta">—</span>
-              </div>
-            </div>
-            <label class="omega-field" for="omega-user-select">
-              <span class="omega-field__label">Entrar como</span>
-              <select id="omega-user-select" class="omega-select" aria-describedby="omega-role-hint"></select>
-            </label>
-            <p id="omega-role-hint" class="omega-hint">Simule as permissões de cada papel para testar fluxos.</p>
+          <section class="omega-profile" aria-label="Perfil selecionado">
+            <figure class="omega-avatar" aria-hidden="true">
+              <img id="omega-avatar" src="https://i.pravatar.cc/160?img=52" alt="" loading="lazy"/>
+            </figure>
+            <strong id="omega-user-name" class="omega-profile__name">—</strong>
           </section>
 
           <nav id="omega-nav" class="omega-nav" aria-label="Menu Omega"></nav>
@@ -76,6 +67,10 @@
                   <button id="omega-clear-filters-top" class="omega-btn omega-btn--ghost" type="button">
                     <i class="ti ti-x"></i>
                     <span>Limpar filtros</span>
+                  </button>
+                  <button id="omega-refresh" class="omega-btn omega-btn--ghost" type="button">
+                    <i class="ti ti-refresh"></i>
+                    <span>Atualizar lista</span>
                   </button>
                   <div id="omega-filter-panel" class="omega-filter-panel" role="dialog" aria-modal="false" hidden>
                     <form id="omega-filter-form" class="omega-filter-form">
@@ -177,7 +172,9 @@
                     </th>
                     <th scope="col">ID</th>
                     <th scope="col">Chamado</th>
+                    <th scope="col">Tipo de chamado</th>
                     <th scope="col">Usuário</th>
+                    <th scope="col">Prioridade</th>
                     <th scope="col">Produto</th>
                     <th scope="col">Fila</th>
                     <th scope="col">Abertura</th>
@@ -191,7 +188,6 @@
             <div id="omega-empty" class="omega-empty" hidden>
               <i class="ti ti-inbox"></i>
               <p>Nenhum chamado encontrado para este recorte.</p>
-              <button id="omega-reset-filters" class="omega-btn" type="button">Limpar filtros</button>
             </div>
           </div>
         </section>
