@@ -14,8 +14,17 @@ const OMEGA_ROLE_LABELS = {
 const OMEGA_NAV_ITEMS = [
   { id: "my", label: "Meus chamados", icon: "ti ti-user", roles: ["usuario", "analista", "supervisor", "admin"] },
   { id: "assigned", label: "Meus atendimentos", icon: "ti ti-clipboard-check", roles: ["analista", "supervisor", "admin"] },
-  { id: "queue", label: "Fila da equipe", icon: "ti ti-inbox", roles: ["supervisor", "admin"] },
-  { id: "team", label: "Visão da supervisão", icon: "ti ti-users", roles: ["supervisor", "admin"] },
+  { id: "queue", label: "Fila da equipe", icon: "ti ti-inbox", roles: ["analista", "supervisor", "admin"] },
+  {
+    id: "team",
+    label: "Visão da supervisão",
+    icon: "ti ti-users",
+    roles: ["supervisor", "admin"],
+    children: [
+      { id: "team-edit-analyst", label: "Editar analista", icon: "ti ti-user-cog" },
+      { id: "team-edit-status", label: "Editar status", icon: "ti ti-adjustments-alt" },
+    ],
+  },
   { id: "admin", label: "Administração", icon: "ti ti-shield-lock", roles: ["admin"] },
 ];
 
@@ -42,7 +51,7 @@ const OMEGA_DEFAULT_STATUSES = [
 
 const OMEGA_QUEUE_OPTIONS = [
   "Encarteiramento",
-  "Meta",
+  "Metas",
   "Orçamento",
   "POBJ",
   "Matriz",
@@ -51,7 +60,7 @@ const OMEGA_QUEUE_OPTIONS = [
 
 const OMEGA_QUEUE_FIELD_MAP = {
   Encarteiramento: "encarteiramento",
-  Meta: "meta",
+  Metas: "meta",
   "Orçamento": "orcamento",
   POBJ: "pobj",
   Matriz: "matriz",
@@ -60,16 +69,21 @@ const OMEGA_QUEUE_FIELD_MAP = {
 
 const OMEGA_TICKET_TYPES_BY_DEPARTMENT = {
   Encarteiramento: [
-    "Inclusão - Conta Empresas",
-    "Inclusão - Conta Varejo",
-    "Transferência - Empresas para Empresas",
-    "Transferência - Empresas para Varejo",
-    "Transferência - Mesma Agência",
-    "Transferência - Varejo para Empresas",
+    "Inclusão de carteira",
+    "Transferência de relacionamento",
+    "Atualização cadastral",
+    "Treinamento de equipe",
   ],
-  Meta: ["Contestar Meta"],
-  Metas: ["Contestar Meta"],
-  "Orçamento": ["A construir"],
+  Metas: [
+    "Ajuste de meta",
+    "Contestação de meta",
+    "Acompanhamento de indicadores",
+  ],
+  "Orçamento": [
+    "Revisão orçamentária",
+    "Reserva de verba",
+    "Redistribuição de verba",
+  ],
   POBJ: [
     "Adicionais",
     "Financeiro",
@@ -101,14 +115,17 @@ const OMEGA_LEVEL_LABELS = {
 const OMEGA_USERS_SOURCE = "Bases/omega_usuarios.csv";
 
 const OMEGA_USER_METADATA = {
-  "usr-01": { avatar: "https://i.pravatar.cc/160?img=47", teamId: "sudeste" },
-  "usr-02": { avatar: "https://i.pravatar.cc/160?img=12", teamId: "sudeste" },
-  "usr-03": { avatar: "https://i.pravatar.cc/160?img=32", teamId: "sudeste" },
-  "usr-04": { avatar: "https://i.pravatar.cc/160?img=8", teamId: null },
-  "usr-05": { avatar: "https://i.pravatar.cc/160?img=21", teamId: "norte" },
-  "usr-06": { avatar: "https://i.pravatar.cc/160?img=36", teamId: "norte" },
-  "usr-07": { avatar: "https://i.pravatar.cc/160?img=55", teamId: "sudeste" },
-  "usr-08": { avatar: "https://i.pravatar.cc/160?img=41", teamId: "corporate" },
+  "usr-01": { avatar: "https://i.pravatar.cc/160?img=47", teamId: "pobj" },
+  "usr-02": { avatar: "https://i.pravatar.cc/160?img=23", teamId: "orcamento" },
+  "usr-03": { avatar: "https://i.pravatar.cc/160?img=35", teamId: "matriz" },
+  "usr-04": { avatar: "https://i.pravatar.cc/160?img=12", teamId: "matriz" },
+  "usr-05": { avatar: "https://i.pravatar.cc/160?img=41", teamId: "metas" },
+  "usr-06": { avatar: "https://i.pravatar.cc/160?img=18", teamId: "metas" },
+  "usr-07": { avatar: "https://i.pravatar.cc/160?img=29", teamId: "orcamento" },
+  "usr-08": { avatar: "https://i.pravatar.cc/160?img=8", teamId: "corporate" },
+  "usr-09": { avatar: "https://i.pravatar.cc/160?img=55", teamId: "corporate" },
+  "usr-10": { avatar: "https://i.pravatar.cc/160?img=52", teamId: "pobj" },
+  "usr-11": { avatar: "https://i.pravatar.cc/160?img=64", teamId: "orcamento" },
 };
 
 let OMEGA_USERS = [];
@@ -196,6 +213,13 @@ function ensureOmegaData(){
   return omegaDataPromise;
 }
 
+function reloadOmegaTickets(){
+  omegaDataPromise = null;
+  OMEGA_TICKETS = [];
+  omegaTicketCounter = 0;
+  return ensureOmegaData();
+}
+
 function ensureOmegaUsers(){
   if (OMEGA_USERS.length) return Promise.resolve(OMEGA_USERS);
   if (omegaUsersPromise) return omegaUsersPromise;
@@ -225,6 +249,37 @@ function ensureOmegaUsers(){
     });
 
   return omegaUsersPromise;
+}
+
+function setButtonLoading(button, loading){
+  if (!button) return;
+  button.disabled = !!loading;
+  if (loading) button.dataset.loading = 'true';
+  else delete button.dataset.loading;
+  const icon = button.querySelector('i');
+  if (!icon) return;
+  if (loading) {
+    icon.dataset.originalIcon = icon.className;
+    icon.className = 'ti ti-loader-2';
+  } else if (icon.dataset.originalIcon) {
+    icon.className = icon.dataset.originalIcon;
+    delete icon.dataset.originalIcon;
+  }
+}
+
+function refreshTicketList(button){
+  setButtonLoading(button, true);
+  reloadOmegaTickets()
+    .catch((err) => {
+      console.warn('Falha ao atualizar chamados Omega:', err);
+      return [];
+    })
+    .then(() => {
+      renderOmega();
+    })
+    .finally(() => {
+      setButtonLoading(button, false);
+    });
 }
 
 function ensureOmegaStatuses(){
@@ -336,9 +391,15 @@ function updateSelection(ticketId, selected){
   else selection.delete(ticketId);
 }
 
+function normalizeViewId(viewId){
+  if (!viewId) return viewId;
+  if (viewId === 'team-edit-analyst' || viewId === 'team-edit-status') return 'team';
+  return viewId;
+}
+
 function shouldAllowSelection(user){
   if (!user) return false;
-  if (omegaState.view !== 'assigned') return false;
+  if (normalizeViewId(omegaState.view) !== 'assigned') return false;
   return ['analista', 'supervisor', 'admin'].includes(user.role);
 }
 
@@ -612,15 +673,6 @@ function setupOmegaModule(root){
     btn.addEventListener('click', () => setDrawerOpen(false));
   });
 
-  const resetBtn = root.querySelector('#omega-reset-filters');
-  resetBtn?.addEventListener('click', () => {
-    omegaState.search = "";
-    resetAdvancedFilters();
-    setFilterPanelOpen(false);
-    syncFilterFormState(root);
-    renderOmega();
-  });
-
   const clearFiltersTop = root.querySelector('#omega-clear-filters-top');
   clearFiltersTop?.addEventListener('click', () => {
     resetAdvancedFilters();
@@ -632,6 +684,11 @@ function setupOmegaModule(root){
   searchInput?.addEventListener('input', (ev) => {
     omegaState.search = ev.target.value || "";
     renderOmega();
+  });
+
+  const refreshBtn = root.querySelector('#omega-refresh');
+  refreshBtn?.addEventListener('click', () => {
+    refreshTicketList(refreshBtn);
   });
 
   const statusFilterHost = root.querySelector('#omega-filter-status');
@@ -925,6 +982,7 @@ function renderOmega(){
   const root = document.getElementById('omega-modal');
   if (!root || root.hidden) return;
   const user = getCurrentUser();
+  const navStructure = ensureValidViewForUser(user);
   reconcileFiltersForUser(user);
   const contextTickets = filterTicketsByContext();
   const viewTicketsBase = filterTicketsByView(contextTickets, user);
@@ -936,8 +994,8 @@ function renderOmega(){
   }
 
   renderProfile(root, user);
+  renderNav(root, user, navStructure);
   renderBreadcrumb(root, user);
-  renderNav(root, user);
   renderContextBar(root, omegaState.contextDetail, contextTickets);
   updateFilterButtonState(root);
   if (omegaState.filterPanelOpen) {
@@ -954,45 +1012,102 @@ function renderOmega(){
 function renderProfile(root, user){
   const avatar = root.querySelector('#omega-avatar');
   const nameLabel = root.querySelector('#omega-user-name');
-  const roleLabel = root.querySelector('#omega-user-role');
-  const metaLabel = root.querySelector('#omega-user-meta');
-  if (avatar && user?.avatar) avatar.src = user.avatar;
-  if (nameLabel) nameLabel.textContent = user?.name || '—';
-  if (roleLabel) roleLabel.textContent = getUserRoleLabel(user);
-  if (metaLabel) {
-    const pieces = [];
-    if (user?.position) pieces.push(user.position);
-    if (user?.junction) pieces.push(user.junction);
-    metaLabel.textContent = pieces.length ? pieces.join(' • ') : '—';
+  if (avatar) {
+    if (user?.avatar) avatar.src = user.avatar;
+    avatar.alt = user?.name ? `Foto de ${user.name}` : '';
   }
+  if (nameLabel) nameLabel.textContent = user?.name || '—';
   const select = root.querySelector('#omega-user-select');
   if (select && select.value !== user?.id) select.value = user?.id || '';
+}
+
+function findNavEntry(viewId){
+  for (const item of OMEGA_NAV_ITEMS){
+    if (item.id === viewId) return { entry: item, parent: null };
+    if (Array.isArray(item.children)){
+      const child = item.children.find((option) => option.id === viewId);
+      if (child) return { entry: child, parent: item };
+    }
+  }
+  return null;
 }
 
 function renderBreadcrumb(root, user){
   const host = root.querySelector('#omega-breadcrumb');
   if (!host) return;
-  const view = OMEGA_NAV_ITEMS.find((item) => item.id === omegaState.view);
-  const viewLabel = view?.label || 'Visão atual';
+  const info = findNavEntry(omegaState.view);
+  const viewLabel = info?.entry?.label || 'Visão atual';
+  const parentLabel = info?.parent?.label;
   const userLabel = user?.name || 'Usuário';
-  host.innerHTML = `
-    <span class="omega-breadcrumb__item"><i class="ti ti-user"></i>${escapeHTML(userLabel)}</span>
-    <span class="omega-breadcrumb__sep"><i class="ti ti-chevron-right"></i></span>
-    <span class="omega-breadcrumb__item">${escapeHTML(viewLabel)}</span>
-  `;
+  const pieces = [
+    `<span class="omega-breadcrumb__item"><i class="ti ti-user"></i>${escapeHTML(userLabel)}</span>`,
+  ];
+  if (parentLabel && parentLabel !== viewLabel){
+    pieces.push('<span class="omega-breadcrumb__sep"><i class="ti ti-chevron-right"></i></span>');
+    pieces.push(`<span class="omega-breadcrumb__item">${escapeHTML(parentLabel)}</span>`);
+  }
+  pieces.push('<span class="omega-breadcrumb__sep"><i class="ti ti-chevron-right"></i></span>');
+  pieces.push(`<span class="omega-breadcrumb__item">${escapeHTML(viewLabel)}</span>`);
+  host.innerHTML = pieces.join('');
 }
 
-function renderNav(root, user){
+function getNavStructureForUser(user){
+  const role = user?.role || 'usuario';
+  return OMEGA_NAV_ITEMS
+    .filter((item) => Array.isArray(item.roles) && item.roles.includes(role))
+    .map((item) => {
+      const children = Array.isArray(item.children)
+        ? item.children.filter((child) => {
+            const roles = Array.isArray(child.roles) ? child.roles : item.roles;
+            return Array.isArray(roles) && roles.includes(role);
+          })
+        : [];
+      return { ...item, children };
+    });
+}
+
+function getAccessibleViewIdsFromNav(structure){
+  const views = [];
+  (structure || []).forEach((item) => {
+    views.push(item.id);
+    if (Array.isArray(item.children)) {
+      item.children.forEach((child) => views.push(child.id));
+    }
+  });
+  return views;
+}
+
+function ensureValidViewForUser(user){
+  const structure = getNavStructureForUser(user);
+  const accessible = getAccessibleViewIdsFromNav(structure);
+  if (!accessible.includes(omegaState.view)) {
+    omegaState.view = accessible[0] || 'my';
+  }
+  return structure;
+}
+
+function renderNav(root, user, structure){
   const nav = root.querySelector('#omega-nav');
   if (!nav) return;
-  const available = OMEGA_NAV_ITEMS.filter((item) => item.roles.includes(user?.role || 'usuario'));
-  if (!available.some((item) => item.id === omegaState.view)) {
-    omegaState.view = available[0]?.id || 'my';
-  }
-  nav.innerHTML = available.map((item) => {
-    const activeClass = item.id === omegaState.view ? ' is-active' : '';
-    return `<button type="button" class="omega-nav__item${activeClass}" data-view="${item.id}"><i class="${item.icon}"></i><span>${escapeHTML(item.label)}</span></button>`;
+  const available = Array.isArray(structure) ? structure : ensureValidViewForUser(user);
+  const markup = available.map((item) => {
+    const children = Array.isArray(item.children) ? item.children : [];
+    const childMarkup = children.length
+      ? `<div class="omega-nav__submenu">${children.map((child) => {
+          const icon = child.icon || item.icon;
+          const childActive = child.id === omegaState.view;
+          const childClass = `omega-nav__item omega-nav__item--sub${childActive ? ' is-active' : ''}`;
+          return `<button type="button" class="${childClass}" data-view="${child.id}"><i class="${icon}"></i><span>${escapeHTML(child.label)}</span></button>`;
+        }).join('')}</div>`
+      : '';
+    const hasChildren = children.length > 0;
+    const parentActive = item.id === omegaState.view || children.some((child) => child.id === omegaState.view);
+    const parentClasses = `omega-nav__item${hasChildren ? ' omega-nav__item--parent' : ''}${parentActive ? ' is-active' : ''}`;
+    const expandedAttr = hasChildren ? ` aria-expanded="${parentActive ? 'true' : 'false'}"` : '';
+    const parentButton = `<button type="button" class="${parentClasses}" data-view="${item.id}"${expandedAttr}><i class="${item.icon}"></i><span>${escapeHTML(item.label)}</span></button>`;
+    return `<div class="omega-nav__block">${parentButton}${childMarkup}</div>`;
   }).join('');
+  nav.innerHTML = markup;
 }
 
 function renderContextBar(root, detail, tickets){
@@ -1245,39 +1360,25 @@ function renderTable(root, tickets, user){
   const rows = tickets.map((ticket) => {
     const meta = OMEGA_STATUS_META[ticket.status] || { label: ticket.status, tone: 'neutral' };
     const requesterDisplay = resolveRequesterDisplay(ticket) || '—';
-    const requesterMetaValue = resolveUserMeta(ticket.requesterId);
-    const requesterMetaLabel = requesterMetaValue && requesterMetaValue !== '—' ? requesterMetaValue : requesterDisplay;
-    const ownerResolvedName = resolveUserName(ticket.ownerId);
-    const ownerName = ownerResolvedName && ownerResolvedName !== '—' ? ownerResolvedName : 'Sem responsável';
-    const ownerMetaValue = resolveUserMeta(ticket.ownerId);
-    const ownerMeta = ownerMetaValue && ownerMetaValue !== '—' ? ownerMetaValue : '';
-    const priorityMeta = OMEGA_PRIORITY_META[ticket.priority] || OMEGA_PRIORITY_META.media;
-    const activeClass = ticket.id === omegaState.selectedTicketId ? ' class="is-active"' : '';
-    const ownerLine = ownerName !== 'Sem responsável' ? `${ownerName}${ownerMeta ? ` • ${ownerMeta}` : ''}` : 'Sem responsável';
+    const ownerName = resolveUserName(ticket.ownerId);
+    const resolvedOwner = ownerName && ownerName !== '—' ? ownerName : 'Sem responsável';
+    const ownerTooltip = resolvedOwner === 'Sem responsável' ? 'Responsável não atribuído' : `Responsável: ${resolvedOwner}`;
+    const priorityKey = OMEGA_PRIORITY_META[ticket.priority] ? ticket.priority : 'media';
+    const priorityMeta = OMEGA_PRIORITY_META[priorityKey] || OMEGA_PRIORITY_META.media;
     const categoryLabel = ticket.category || 'Tipo não informado';
+    const activeClass = ticket.id === omegaState.selectedTicketId ? ' class="is-active"' : '';
     const isSelected = selectionAllowed && selection.has(ticket.id);
     const selectCell = `<td class="col-select">${selectionAllowed ? `<input type="checkbox" data-omega-select value="${ticket.id}"${isSelected ? ' checked' : ''}/>` : ''}</td>`;
-    const ticketMeta = `<div class="omega-ticket__meta"><span class="omega-ticket__priority"><span class="omega-priority-dot" data-priority="${ticket.priority}"></span>${escapeHTML(priorityMeta.label)}</span><span><i class="ti ti-category"></i>${escapeHTML(categoryLabel)}</span></div>`;
-    const userMetaAttr = selectionAllowed ? ' data-analyst-meta="true"' : '';
-    const requesterLine = selectionAllowed && requesterMetaValue && requesterMetaValue !== '—'
-      ? requesterMetaValue
-      : requesterMetaLabel;
-    const userMeta = selectionAllowed
-      ? `<div class="omega-ticket__meta"${userMetaAttr}><span><i class="ti ti-id-badge"></i>${escapeHTML(requesterLine)}</span><span><i class="ti ti-user-check"></i>${escapeHTML(ownerLine)}</span></div>`
-      : `<div class="omega-ticket__meta"><span><i class="ti ti-user"></i>${escapeHTML(requesterMetaLabel)}</span><span><i class="ti ti-user-check"></i>${escapeHTML(ownerLine)}</span></div>`;
     const selectedAttr = isSelected ? ' data-selected="true"' : '';
+    const priorityBadge = `<span class="omega-priority-badge" data-priority="${priorityKey}"><span class="omega-priority-dot" data-priority="${priorityKey}"></span>${escapeHTML(priorityMeta.label)}</span>`;
     return `<tr data-ticket-id="${ticket.id}"${activeClass}${selectedAttr}>
       ${selectCell}
       <td><span class="omega-ticket__id"><i class="ti ti-ticket"></i>${escapeHTML(ticket.id)}</span></td>
-      <td>
-        <div class="omega-ticket__title">${escapeHTML(ticket.subject)}</div>
-        ${ticketMeta}
-      </td>
-      <td>
-        <div class="omega-ticket__user">${escapeHTML(requesterDisplay)}</div>
-        ${userMeta}
-      </td>
-      <td>${escapeHTML(ticket.product)}</td>
+      <td><div class="omega-ticket__title">${escapeHTML(ticket.subject)}</div></td>
+      <td>${escapeHTML(categoryLabel)}</td>
+      <td><div class="omega-ticket__user" title="${escapeHTML(ownerTooltip)}">${escapeHTML(requesterDisplay)}</div></td>
+      <td>${priorityBadge}</td>
+      <td>${escapeHTML(ticket.product || '—')}</td>
       <td>${escapeHTML(ticket.queue || '—')}</td>
       <td>${formatDateTime(ticket.opened)}</td>
       <td>${formatDateTime(ticket.updated, { withTime: false })}</td>
@@ -1733,19 +1834,20 @@ function filterTicketsByView(tickets, user){
   const role = user.role || 'usuario';
   if (role === 'admin') return [...tickets];
   const queues = Array.isArray(user.queues) ? user.queues : [];
-  if (omegaState.view === 'my') {
+  const currentView = normalizeViewId(omegaState.view);
+  if (currentView === 'my') {
     return tickets.filter((ticket) => ticket.requesterId === user.id || ticket.ownerId === user.id);
   }
-  if (omegaState.view === 'assigned') {
+  if (currentView === 'assigned') {
     return tickets.filter((ticket) => ticket.ownerId === user.id);
   }
-  if (omegaState.view === 'queue') {
+  if (currentView === 'queue') {
     if (!queues.length) {
       return tickets.filter((ticket) => ticket.ownerId === user.id || ticket.teamId === user.teamId);
     }
     return tickets.filter((ticket) => queues.includes(ticket.queue) || ticket.ownerId === user.id);
   }
-  if (omegaState.view === 'team') {
+  if (currentView === 'team') {
     const base = tickets.filter((ticket) => ticket.teamId === user.teamId || ticket.ownerId === user.id);
     if (!queues.length) return base;
     return base.filter((ticket) => queues.includes(ticket.queue) || ticket.teamId === user.teamId || ticket.ownerId === user.id);
