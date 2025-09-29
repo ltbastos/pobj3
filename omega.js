@@ -1354,6 +1354,7 @@ function setupOmegaModule(root){
   departmentSelect?.addEventListener('change', (ev) => {
     syncTicketTypeOptions(root, ev.target.value);
     updateOmegaFormSubject(root);
+    renderFormFlowExtras(root);
   });
   typeSelect?.addEventListener('change', (ev) => {
     const flow = getFormFlowState();
@@ -3497,6 +3498,7 @@ function getAvailableDepartmentsForUser(user){
 }
 
 function syncTicketTypeOptions(container, department){
+  const departmentSelect = container?.querySelector?.('#omega-form-department');
   const typeSelect = container?.querySelector?.('#omega-form-type');
   if (!typeSelect) return;
   const options = getTicketTypesForDepartment(department);
@@ -3510,8 +3512,16 @@ function syncTicketTypeOptions(container, department){
   const flow = getFormFlowState();
   const previousDepartment = flow.department;
   const previousType = flow.type;
-  flow.department = department || '';
-  flow.type = options.length ? options[0] : '';
+  const selectedDepartmentLabel = departmentSelect?.selectedOptions?.[0]?.textContent?.trim()
+    || departmentSelect?.value
+    || department
+    || '';
+  const selectedTypeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim()
+    || typeSelect?.value
+    || options[0]
+    || '';
+  flow.department = selectedDepartmentLabel;
+  flow.type = selectedTypeLabel;
   if (previousDepartment !== flow.department || previousType !== flow.type) {
     flow.targetManagerName = '';
     flow.targetManagerEmail = '';
@@ -3559,18 +3569,19 @@ function renderFormFlowExtras(context){
   const flow = getFormFlowState();
   const departmentSelect = scope?.querySelector?.('#omega-form-department') || document.getElementById('omega-form-department');
   const typeSelect = scope?.querySelector?.('#omega-form-type') || document.getElementById('omega-form-type');
-  const departmentValue = departmentSelect ? (departmentSelect.value || '') : (flow.department || '');
-  let typeValue = typeSelect ? (typeSelect.value || '') : (flow.type || '');
-  const selectedTypeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim();
-  if (selectedTypeLabel) typeValue = selectedTypeLabel;
-  if (departmentSelect && departmentValue !== flow.department) flow.department = departmentValue;
-  if (typeSelect) {
-    const storedType = selectedTypeLabel || typeSelect.value || '';
-    if (storedType !== flow.type) flow.type = storedType;
-  }
-  const hasExplicitSelection = !!departmentValue && !!typeValue && !!departmentSelect && !!typeSelect;
+  const departmentLabel = departmentSelect?.selectedOptions?.[0]?.textContent?.trim()
+    || departmentSelect?.value
+    || flow.department
+    || '';
+  const typeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim()
+    || typeSelect?.value
+    || flow.type
+    || '';
+  if (departmentSelect && departmentLabel !== flow.department) flow.department = departmentLabel;
+  if (typeSelect && typeLabel !== flow.type) flow.type = typeLabel;
+  const hasExplicitSelection = !!departmentLabel && !!typeLabel && !!departmentSelect && !!typeSelect;
   const shouldShow = hasExplicitSelection
-    ? isTransferEmpresasFlow({ department: departmentValue, type: typeValue })
+    ? isTransferEmpresasFlow({ department: departmentLabel, type: typeLabel })
     : false;
   container.hidden = !shouldShow;
   container.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
