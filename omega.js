@@ -264,7 +264,9 @@ const omegaState = {
   cancelDialogOpen: false,
   formFlow: {
     department: "",
+    departmentValue: "",
     type: "",
+    typeValue: "",
     targetManagerName: "",
     targetManagerEmail: "",
     requesterManagerName: "",
@@ -1354,12 +1356,19 @@ function setupOmegaModule(root){
   departmentSelect?.addEventListener('change', (ev) => {
     syncTicketTypeOptions(root, ev.target.value);
     updateOmegaFormSubject(root);
+    renderFormFlowExtras(root);
   });
   typeSelect?.addEventListener('change', (ev) => {
     const flow = getFormFlowState();
-    const previous = flow.type;
-    flow.type = ev.target.value || '';
-    if (flow.type !== previous) {
+    const selectedLabel = ev.target?.selectedOptions?.[0]?.textContent?.trim()
+      || ev.target.value
+      || '';
+    const selectedValue = ev.target?.value || '';
+    const previousLabel = flow.type;
+    const previousValue = flow.typeValue;
+    flow.type = selectedLabel;
+    flow.typeValue = selectedValue || selectedLabel;
+    if (flow.type !== previousLabel || flow.typeValue !== previousValue) {
       flow.targetManagerName = '';
       flow.targetManagerEmail = '';
       flow.requesterManagerName = '';
@@ -3283,6 +3292,13 @@ function normalizePlain(value){
     .trim();
 }
 
+function normalizeFlowKey(value){
+  return normalizePlain(value).replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+const OMEGA_TRANSFER_DEPARTMENT_KEY = normalizeFlowKey('Encarteiramento');
+const OMEGA_TRANSFER_EMPRESAS_KEY = normalizeFlowKey(OMEGA_TRANSFER_EMPRESAS_LABEL);
+
 function normalizeToSlug(value){
   return normalizePlain(value).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
@@ -3494,6 +3510,7 @@ function getAvailableDepartmentsForUser(user){
 }
 
 function syncTicketTypeOptions(container, department){
+  const departmentSelect = container?.querySelector?.('#omega-form-department');
   const typeSelect = container?.querySelector?.('#omega-form-type');
   if (!typeSelect) return;
   const options = getTicketTypesForDepartment(department);
@@ -3507,9 +3524,28 @@ function syncTicketTypeOptions(container, department){
   const flow = getFormFlowState();
   const previousDepartment = flow.department;
   const previousType = flow.type;
-  flow.department = department || '';
-  flow.type = options.length ? options[0] : '';
-  if (previousDepartment !== flow.department || previousType !== flow.type) {
+  const previousDepartmentValue = flow.departmentValue;
+  const previousTypeValue = flow.typeValue;
+  const selectedDepartmentLabel = departmentSelect?.selectedOptions?.[0]?.textContent?.trim()
+    || departmentSelect?.value
+    || department
+    || '';
+  const selectedTypeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim()
+    || typeSelect?.value
+    || options[0]
+    || '';
+  const selectedDepartmentValue = departmentSelect?.value || department || '';
+  const selectedTypeValue = typeSelect?.value || options[0] || '';
+  flow.department = selectedDepartmentLabel;
+  flow.type = selectedTypeLabel;
+  flow.departmentValue = selectedDepartmentValue;
+  flow.typeValue = selectedTypeValue;
+  if (
+    previousDepartment !== flow.department
+    || previousType !== flow.type
+    || previousDepartmentValue !== flow.departmentValue
+    || previousTypeValue !== flow.typeValue
+  ) {
     flow.targetManagerName = '';
     flow.targetManagerEmail = '';
     flow.requesterManagerName = '';
@@ -3522,7 +3558,9 @@ function getFormFlowState(){
   if (!omegaState.formFlow || typeof omegaState.formFlow !== 'object') {
     omegaState.formFlow = {
       department: '',
+      departmentValue: '',
       type: '',
+      typeValue: '',
       targetManagerName: '',
       targetManagerEmail: '',
       requesterManagerName: '',
@@ -3532,10 +3570,12 @@ function getFormFlowState(){
   return omegaState.formFlow;
 }
 
-function resetFormFlowState({ department = '', type = '' } = {}){
+function resetFormFlowState({ department = '', type = '', departmentValue = '', typeValue = '' } = {}){
   const flow = getFormFlowState();
   flow.department = department;
+  flow.departmentValue = departmentValue || department;
   flow.type = type;
+  flow.typeValue = typeValue || type;
   flow.targetManagerName = '';
   flow.targetManagerEmail = '';
   flow.requesterManagerName = '';
@@ -3544,17 +3584,60 @@ function resetFormFlowState({ department = '', type = '' } = {}){
 
 function isTransferEmpresasFlow(flow){
   if (!flow) return false;
-  const department = normalizePlain(flow.department);
-  const type = normalizePlain(flow.type);
-  return department === normalizePlain('Encarteiramento') && type === normalizePlain(OMEGA_TRANSFER_EMPRESAS_LABEL);
+  const departmentKey = normalizeFlowKey(flow.department || flow.departmentValue);
+  const typeKey = normalizeFlowKey(flow.type || flow.typeValue);
+  return departmentKey === OMEGA_TRANSFER_DEPARTMENT_KEY && typeKey === OMEGA_TRANSFER_EMPRESAS_KEY;
 }
 
 function renderFormFlowExtras(context){
-  const container = context?.querySelector?.('#omega-form-flow') || document.getElementById('omega-form-flow');
+  const scope = context?.querySelector ? context : document;
+  const container = scope?.querySelector?.('#omega-form-flow') || document.getElementById('omega-form-flow');
   if (!container) return;
   const flow = getFormFlowState();
-  const shouldShow = isTransferEmpresasFlow(flow);
+  const departmentSelect = scope?.querySelector?.('#omega-form-department') || document.getElementById('omega-form-department');
+  const typeSelect = scope?.querySelector?.('#omega-form-type') || document.getElementById('omega-form-type');
+  const departmentValue = departmentSelect?.value || flow.departmentValue || '';
+  const typeValue = typeSelect?.value || flow.typeValue || '';
+  const departmentLabel = departmentSelect?.selectedOptions?.[0]?.textContent?.trim()
+    || departmentValue
+    || flow.department
+    || '';
+  const typeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim()
+    || typeValue
+    || flow.type
+    || '';
+  if (departmentSelect) {
+    flow.department = departmentLabel;
+    flow.departmentValue = departmentValue;
+  }
+  if (typeSelect) {
+    flow.type = typeLabel;
+    flow.typeValue = typeValue;
+  }
+  const hasExplicitSelection = !!departmentValue && !!typeValue && !!departmentSelect && !!typeSelect;
+  const departmentKey = normalizeFlowKey(
+    departmentLabel
+    || departmentValue
+    || flow.department
+    || flow.departmentValue,
+  );
+  const typeKey = normalizeFlowKey(
+    typeLabel
+    || typeValue
+    || flow.type
+    || flow.typeValue,
+  );
+  const shouldShow = hasExplicitSelection
+    && departmentKey === OMEGA_TRANSFER_DEPARTMENT_KEY
+    && typeKey === OMEGA_TRANSFER_EMPRESAS_KEY;
   container.hidden = !shouldShow;
+  container.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+  if (!shouldShow) {
+    flow.targetManagerName = '';
+    flow.targetManagerEmail = '';
+    flow.requesterManagerName = '';
+    flow.requesterManagerEmail = '';
+  }
   const nameInput = container.querySelector('#omega-flow-target-name');
   const emailInput = container.querySelector('#omega-flow-target-email');
   const requesterNameInput = container.querySelector('#omega-flow-requester-name');
@@ -4176,7 +4259,14 @@ function populateFormOptions(root){
   syncTicketTypeOptions(form, department);
   const typeSelect = form.querySelector('#omega-form-type');
   const selectedType = typeSelect?.value || '';
-  resetFormFlowState({ department, type: selectedType });
+  const departmentLabel = departmentSelect?.selectedOptions?.[0]?.textContent?.trim() || department;
+  const typeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim() || selectedType;
+  resetFormFlowState({
+    department: departmentLabel,
+    type: typeLabel,
+    departmentValue: department,
+    typeValue: selectedType,
+  });
   renderFormFlowExtras(form);
   renderFormAttachments(root);
 }
@@ -4253,9 +4343,17 @@ function prefillTicketForm(root){
   } else {
     syncTicketTypeOptions(form, requestedDepartment || fallbackDepartment);
   }
+  const typeSelect = form.querySelector('#omega-form-type');
   const currentDepartment = departmentSelect?.value || requestedDepartment || fallbackDepartment || '';
-  const currentType = form.querySelector('#omega-form-type')?.value || '';
-  resetFormFlowState({ department: currentDepartment, type: currentType });
+  const currentType = typeSelect?.value || '';
+  const currentDepartmentLabel = departmentSelect?.selectedOptions?.[0]?.textContent?.trim() || currentDepartment;
+  const currentTypeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim() || currentType;
+  resetFormFlowState({
+    department: currentDepartmentLabel,
+    type: currentTypeLabel,
+    departmentValue: currentDepartment,
+    typeValue: currentType,
+  });
   renderFormFlowExtras(form);
   if (requesterDisplay) {
     requesterDisplay.textContent = user?.name || '—';
