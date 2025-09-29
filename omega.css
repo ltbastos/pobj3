@@ -582,15 +582,15 @@ body.has-omega-open{ overflow:hidden; }
 .omega-summary__item strong{ font-weight:800; color:var(--text); font-size:22px; }
 .omega-summary__item span{ color:#64748b; font-size:13px; }
 
-.omega-main__content{ flex:1; display:flex; flex-direction:column; min-height:0; }
+.omega-main__content{ flex:1; display:flex; flex-direction:column; min-height:0; gap:18px; }
 .omega-table-wrapper{
   flex:1;
   border-radius:20px;
   border:1px solid #e2e8f0;
-  overflow:auto;
+  overflow-x:auto;
+  overflow-y:visible;
   background:#fff;
   box-shadow:0 20px 46px rgba(15,20,36,.12);
-  min-height:max(640px, 70vh);
 }
 
 .omega-table{ width:100%; border-collapse:collapse; min-width:920px; }
@@ -658,6 +658,45 @@ body.has-omega-open{ overflow:hidden; }
   color:#64748b;
 }
 .omega-empty i{ font-size:36px; color:rgba(15,23,42,.25); }
+.omega-table-footer{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; padding:0 8px; color:#475569; font-size:13px; }
+.omega-table-footer[hidden]{ display:none; }
+.omega-table-range{ font-weight:600; }
+.omega-pagination{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.omega-pagination__button{
+  min-width:36px;
+  height:36px;
+  padding:0 12px;
+  border-radius:10px;
+  border:1px solid rgba(148,163,184,.5);
+  background:#fff;
+  color:#1f2937;
+  font-size:13px;
+  font-weight:600;
+  cursor:pointer;
+  transition:background .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.omega-pagination__button:hover,
+.omega-pagination__button:focus-visible{
+  background:rgba(36,107,253,.12);
+  border-color:rgba(36,107,253,.4);
+  color:var(--omega-progress);
+  outline:none;
+}
+.omega-pagination__button[disabled]{
+  cursor:not-allowed;
+  opacity:.55;
+  background:#f8fafc;
+  color:#94a3b8;
+  border-color:rgba(148,163,184,.35);
+  box-shadow:none;
+}
+.omega-pagination__button[aria-current="page"]{
+  background:#2563eb;
+  color:#fff;
+  border-color:#2563eb;
+  box-shadow:0 10px 20px rgba(37,99,235,.22);
+}
+.omega-pagination__gap{ padding:0 6px; color:#94a3b8; font-weight:700; }
 
 .omega-timeline{ position:relative; list-style:none; margin:0; padding:8px 0; display:flex; flex-direction:column; gap:28px; }
 .omega-timeline::before{ content:""; position:absolute; top:0; bottom:0; left:50%; width:2px; margin-left:-1px; background:rgba(148,163,184,.4); }
