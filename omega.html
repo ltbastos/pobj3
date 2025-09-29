@@ -195,7 +195,7 @@
                     <th scope="col">ID</th>
                     <th scope="col">Prévia</th>
                     <th scope="col">Departamento</th>
-                    <th scope="col">Tipo de chamado</th>
+                    <th scope="col">Tipo</th>
                     <th scope="col">Usuário</th>
                     <th scope="col">Prioridade</th>
                     <th scope="col">Produto</th>
@@ -251,6 +251,44 @@
               <span class="omega-field__label">Observação</span>
               <textarea id="omega-form-observation" class="omega-textarea" rows="6" placeholder="Descreva a demanda" required></textarea>
             </label>
+
+            <section id="omega-form-flow" class="omega-form-flow" hidden aria-hidden="true">
+              <header class="omega-form-flow__header">
+                <h4>Fluxo de aprovações</h4>
+                <p>Esta transferência exige os de acordo dos gerentes listados abaixo.</p>
+              </header>
+              <div class="omega-form-flow__approvals">
+                <article class="omega-flow-approval">
+                  <div class="omega-flow-approval__icon" aria-hidden="true"><i class="ti ti-user-check"></i></div>
+                  <div class="omega-flow-approval__body">
+                    <span class="omega-flow-approval__label">Gerente da agência solicitante</span>
+                    <label class="omega-field" for="omega-flow-requester-name">
+                      <span class="omega-field__label">Nome completo</span>
+                      <input id="omega-flow-requester-name" class="omega-input" type="text" placeholder="Informe o gerente responsável"/>
+                    </label>
+                    <label class="omega-field" for="omega-flow-requester-email">
+                      <span class="omega-field__label">E-mail corporativo</span>
+                      <input id="omega-flow-requester-email" class="omega-input" type="email" placeholder="nome.sobrenome@empresa.com"/>
+                    </label>
+                  </div>
+                </article>
+                <article class="omega-flow-approval">
+                  <div class="omega-flow-approval__icon" aria-hidden="true"><i class="ti ti-building-bank"></i></div>
+                  <div class="omega-flow-approval__body">
+                    <span class="omega-flow-approval__label">Gerente da agência cedente</span>
+                    <label class="omega-field" for="omega-flow-target-name">
+                      <span class="omega-field__label">Nome completo</span>
+                      <input id="omega-flow-target-name" class="omega-input" type="text" placeholder="Informe o gerente responsável"/>
+                    </label>
+                    <label class="omega-field" for="omega-flow-target-email">
+                      <span class="omega-field__label">E-mail corporativo</span>
+                      <input id="omega-flow-target-email" class="omega-input" type="email" placeholder="nome.sobrenome@empresa.com"/>
+                    </label>
+                  </div>
+                </article>
+              </div>
+              <p class="omega-form-flow__hint">Após os dois de acordo, o chamado entra automaticamente na fila de Encarteiramento.</p>
+            </section>
 
             <div class="omega-field omega-field--attachments">
               <span class="omega-field__label" id="omega-form-file-label">Arquivos</span>
