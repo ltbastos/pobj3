@@ -264,7 +264,9 @@ const omegaState = {
   cancelDialogOpen: false,
   formFlow: {
     department: "",
+    departmentValue: "",
     type: "",
+    typeValue: "",
     targetManagerName: "",
     targetManagerEmail: "",
     requesterManagerName: "",
@@ -1361,9 +1363,12 @@ function setupOmegaModule(root){
     const selectedLabel = ev.target?.selectedOptions?.[0]?.textContent?.trim()
       || ev.target.value
       || '';
-    const previous = flow.type;
+    const selectedValue = ev.target?.value || '';
+    const previousLabel = flow.type;
+    const previousValue = flow.typeValue;
     flow.type = selectedLabel;
-    if (flow.type !== previous) {
+    flow.typeValue = selectedValue || selectedLabel;
+    if (flow.type !== previousLabel || flow.typeValue !== previousValue) {
       flow.targetManagerName = '';
       flow.targetManagerEmail = '';
       flow.requesterManagerName = '';
@@ -3512,6 +3517,8 @@ function syncTicketTypeOptions(container, department){
   const flow = getFormFlowState();
   const previousDepartment = flow.department;
   const previousType = flow.type;
+  const previousDepartmentValue = flow.departmentValue;
+  const previousTypeValue = flow.typeValue;
   const selectedDepartmentLabel = departmentSelect?.selectedOptions?.[0]?.textContent?.trim()
     || departmentSelect?.value
     || department
@@ -3520,9 +3527,18 @@ function syncTicketTypeOptions(container, department){
     || typeSelect?.value
     || options[0]
     || '';
+  const selectedDepartmentValue = departmentSelect?.value || department || '';
+  const selectedTypeValue = typeSelect?.value || options[0] || '';
   flow.department = selectedDepartmentLabel;
   flow.type = selectedTypeLabel;
-  if (previousDepartment !== flow.department || previousType !== flow.type) {
+  flow.departmentValue = selectedDepartmentValue;
+  flow.typeValue = selectedTypeValue;
+  if (
+    previousDepartment !== flow.department
+    || previousType !== flow.type
+    || previousDepartmentValue !== flow.departmentValue
+    || previousTypeValue !== flow.typeValue
+  ) {
     flow.targetManagerName = '';
     flow.targetManagerEmail = '';
     flow.requesterManagerName = '';
@@ -3535,7 +3551,9 @@ function getFormFlowState(){
   if (!omegaState.formFlow || typeof omegaState.formFlow !== 'object') {
     omegaState.formFlow = {
       department: '',
+      departmentValue: '',
       type: '',
+      typeValue: '',
       targetManagerName: '',
       targetManagerEmail: '',
       requesterManagerName: '',
@@ -3545,10 +3563,12 @@ function getFormFlowState(){
   return omegaState.formFlow;
 }
 
-function resetFormFlowState({ department = '', type = '' } = {}){
+function resetFormFlowState({ department = '', type = '', departmentValue = '', typeValue = '' } = {}){
   const flow = getFormFlowState();
   flow.department = department;
+  flow.departmentValue = departmentValue || department;
   flow.type = type;
+  flow.typeValue = typeValue || type;
   flow.targetManagerName = '';
   flow.targetManagerEmail = '';
   flow.requesterManagerName = '';
@@ -3557,8 +3577,8 @@ function resetFormFlowState({ department = '', type = '' } = {}){
 
 function isTransferEmpresasFlow(flow){
   if (!flow) return false;
-  const department = normalizePlain(flow.department);
-  const type = normalizePlain(flow.type);
+  const department = normalizePlain(flow.department || flow.departmentValue);
+  const type = normalizePlain(flow.type || flow.typeValue);
   return department === normalizePlain('Encarteiramento') && type === normalizePlain(OMEGA_TRANSFER_EMPRESAS_LABEL);
 }
 
@@ -3569,19 +3589,27 @@ function renderFormFlowExtras(context){
   const flow = getFormFlowState();
   const departmentSelect = scope?.querySelector?.('#omega-form-department') || document.getElementById('omega-form-department');
   const typeSelect = scope?.querySelector?.('#omega-form-type') || document.getElementById('omega-form-type');
+  const departmentValue = departmentSelect?.value || flow.departmentValue || '';
+  const typeValue = typeSelect?.value || flow.typeValue || '';
   const departmentLabel = departmentSelect?.selectedOptions?.[0]?.textContent?.trim()
-    || departmentSelect?.value
+    || departmentValue
     || flow.department
     || '';
   const typeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim()
-    || typeSelect?.value
+    || typeValue
     || flow.type
     || '';
-  if (departmentSelect && departmentLabel !== flow.department) flow.department = departmentLabel;
-  if (typeSelect && typeLabel !== flow.type) flow.type = typeLabel;
-  const hasExplicitSelection = !!departmentLabel && !!typeLabel && !!departmentSelect && !!typeSelect;
+  if (departmentSelect) {
+    flow.department = departmentLabel;
+    flow.departmentValue = departmentValue;
+  }
+  if (typeSelect) {
+    flow.type = typeLabel;
+    flow.typeValue = typeValue;
+  }
+  const hasExplicitSelection = !!departmentValue && !!typeValue && !!departmentSelect && !!typeSelect;
   const shouldShow = hasExplicitSelection
-    ? isTransferEmpresasFlow({ department: departmentLabel, type: typeLabel })
+    ? isTransferEmpresasFlow({ department: departmentValue, type: typeValue })
     : false;
   container.hidden = !shouldShow;
   container.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
@@ -4212,7 +4240,14 @@ function populateFormOptions(root){
   syncTicketTypeOptions(form, department);
   const typeSelect = form.querySelector('#omega-form-type');
   const selectedType = typeSelect?.value || '';
-  resetFormFlowState({ department, type: selectedType });
+  const departmentLabel = departmentSelect?.selectedOptions?.[0]?.textContent?.trim() || department;
+  const typeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim() || selectedType;
+  resetFormFlowState({
+    department: departmentLabel,
+    type: typeLabel,
+    departmentValue: department,
+    typeValue: selectedType,
+  });
   renderFormFlowExtras(form);
   renderFormAttachments(root);
 }
@@ -4289,9 +4324,17 @@ function prefillTicketForm(root){
   } else {
     syncTicketTypeOptions(form, requestedDepartment || fallbackDepartment);
   }
+  const typeSelect = form.querySelector('#omega-form-type');
   const currentDepartment = departmentSelect?.value || requestedDepartment || fallbackDepartment || '';
-  const currentType = form.querySelector('#omega-form-type')?.value || '';
-  resetFormFlowState({ department: currentDepartment, type: currentType });
+  const currentType = typeSelect?.value || '';
+  const currentDepartmentLabel = departmentSelect?.selectedOptions?.[0]?.textContent?.trim() || currentDepartment;
+  const currentTypeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim() || currentType;
+  resetFormFlowState({
+    department: currentDepartmentLabel,
+    type: currentTypeLabel,
+    departmentValue: currentDepartment,
+    typeValue: currentType,
+  });
   renderFormFlowExtras(form);
   if (requesterDisplay) {
     requesterDisplay.textContent = user?.name || '—';
