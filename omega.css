@@ -398,10 +398,10 @@ body.has-omega-open{ overflow:hidden; }
 .omega-main{
   position:relative;
   flex:1;
-  padding:32px 40px 36px;
+  padding:20px 32px 28px;
   display:flex;
   flex-direction:column;
-  gap:24px;
+  gap:16px;
   overflow:hidden;
   min-height:0;
 }
@@ -428,6 +428,7 @@ body.has-omega-open{ overflow:hidden; }
   align-items:flex-start;
   gap:12px;
 }
+.omega-context:empty{ display:none; }
 .omega-context i{ color:var(--info); margin-top:2px; }
 
 .omega-toolbar{
@@ -615,19 +616,19 @@ body.has-omega-open{ overflow:hidden; }
   box-shadow:0 6px 18px rgba(148,163,184,.28);
 }
 .omega-table th{
-  padding:10px 14px;
+  padding:8px 12px;
   text-align:left;
   border-bottom:1px solid rgba(148,163,184,.16);
-  font-size:12px;
+  font-size:11px;
   text-transform:uppercase;
   letter-spacing:.04em;
   color:#475569;
 }
 .omega-table td{
-  padding:10px 14px;
+  padding:8px 12px;
   text-align:left;
   border-bottom:1px solid rgba(148,163,184,.16);
-  font-size:12px;
+  font-size:11px;
   color:#1f2937;
   word-break:break-word;
 }
@@ -635,8 +636,8 @@ body.has-omega-open{ overflow:hidden; }
 .omega-table tbody tr:hover{ background:rgba(36,107,253,.08); }
 .omega-table tbody tr.is-active{ background:rgba(36,107,253,.12); box-shadow:inset 3px 0 0 var(--info); }
 .omega-table tbody tr[data-selected="true"]{ background:rgba(36,107,253,.12); box-shadow:inset 3px 0 0 var(--info); }
-.omega-table td .omega-ticket__title{ font-weight:700; color:var(--text); font-size:13px; }
-.omega-table td .omega-ticket__user{ font-weight:700; color:var(--text); font-size:13px; }
+.omega-table td .omega-ticket__title{ font-weight:700; color:var(--text); font-size:12px; }
+.omega-table td .omega-ticket__user{ font-weight:700; color:var(--text); font-size:12px; }
 .omega-priority-badge{ display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:4px 10px; font-size:11px; font-weight:700; background:rgba(148,163,184,.18); color:#1f2937; }
 .omega-priority-badge[data-priority="baixa"]{ background:rgba(34,197,94,.16); color:#166534; }
 .omega-priority-badge[data-priority="media"]{ background:rgba(250,204,21,.18); color:#854d0e; }
