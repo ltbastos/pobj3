@@ -3292,6 +3292,13 @@ function normalizePlain(value){
     .trim();
 }
 
+function normalizeFlowKey(value){
+  return normalizePlain(value).replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+const OMEGA_TRANSFER_DEPARTMENT_KEY = normalizeFlowKey('Encarteiramento');
+const OMEGA_TRANSFER_EMPRESAS_KEY = normalizeFlowKey(OMEGA_TRANSFER_EMPRESAS_LABEL);
+
 function normalizeToSlug(value){
   return normalizePlain(value).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
@@ -3577,9 +3584,9 @@ function resetFormFlowState({ department = '', type = '', departmentValue = '', 
 
 function isTransferEmpresasFlow(flow){
   if (!flow) return false;
-  const department = normalizePlain(flow.department || flow.departmentValue);
-  const type = normalizePlain(flow.type || flow.typeValue);
-  return department === normalizePlain('Encarteiramento') && type === normalizePlain(OMEGA_TRANSFER_EMPRESAS_LABEL);
+  const departmentKey = normalizeFlowKey(flow.department || flow.departmentValue);
+  const typeKey = normalizeFlowKey(flow.type || flow.typeValue);
+  return departmentKey === OMEGA_TRANSFER_DEPARTMENT_KEY && typeKey === OMEGA_TRANSFER_EMPRESAS_KEY;
 }
 
 function renderFormFlowExtras(context){
@@ -3608,9 +3615,21 @@ function renderFormFlowExtras(context){
     flow.typeValue = typeValue;
   }
   const hasExplicitSelection = !!departmentValue && !!typeValue && !!departmentSelect && !!typeSelect;
+  const departmentKey = normalizeFlowKey(
+    departmentLabel
+    || departmentValue
+    || flow.department
+    || flow.departmentValue,
+  );
+  const typeKey = normalizeFlowKey(
+    typeLabel
+    || typeValue
+    || flow.type
+    || flow.typeValue,
+  );
   const shouldShow = hasExplicitSelection
-    ? isTransferEmpresasFlow({ department: departmentValue, type: typeValue })
-    : false;
+    && departmentKey === OMEGA_TRANSFER_DEPARTMENT_KEY
+    && typeKey === OMEGA_TRANSFER_EMPRESAS_KEY;
   container.hidden = !shouldShow;
   container.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
   if (!shouldShow) {
