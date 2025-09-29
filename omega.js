@@ -188,21 +188,20 @@ const OMEGA_LEVEL_LABELS = {
 };
 
 const OMEGA_USERS_SOURCE = "Bases/omega_usuarios.csv";
-
 const OMEGA_USER_METADATA = {
-  "usr-01": { avatar: "https://i.pravatar.cc/160?img=47", teamId: "pobj" },
-  "usr-02": { avatar: "https://i.pravatar.cc/160?img=23", teamId: "orcamento" },
-  "usr-03": { avatar: "https://i.pravatar.cc/160?img=35", teamId: "matriz" },
-  "usr-04": { avatar: "https://i.pravatar.cc/160?img=12", teamId: "matriz" },
-  "usr-05": { avatar: "https://i.pravatar.cc/160?img=41", teamId: "metas" },
-  "usr-06": { avatar: "https://i.pravatar.cc/160?img=18", teamId: "metas" },
-  "usr-07": { avatar: "https://i.pravatar.cc/160?img=29", teamId: "orcamento" },
-  "usr-08": { avatar: "https://i.pravatar.cc/160?img=8", teamId: "corporate" },
-  "usr-09": { avatar: "https://i.pravatar.cc/160?img=55", teamId: "corporate" },
-  "usr-10": { avatar: "https://i.pravatar.cc/160?img=52", teamId: "pobj" },
-  "usr-11": { avatar: "https://i.pravatar.cc/160?img=64", teamId: "orcamento" },
-  "usr-12": { avatar: "https://i.pravatar.cc/160?img=57", teamId: "matriz" },
-  "usr-13": { avatar: "https://i.pravatar.cc/160?img=77", teamId: "pobj" },
+  "usr-01": { teamId: "pobj" },
+  "usr-02": { teamId: "orcamento" },
+  "usr-03": { teamId: "matriz" },
+  "usr-04": { teamId: "matriz" },
+  "usr-05": { teamId: "metas" },
+  "usr-06": { teamId: "metas" },
+  "usr-07": { teamId: "orcamento" },
+  "usr-08": { teamId: "corporate" },
+  "usr-09": { teamId: "corporate" },
+  "usr-10": { teamId: "pobj" },
+  "usr-11": { teamId: "orcamento" },
+  "usr-12": { teamId: "matriz" },
+  "usr-13": { teamId: "pobj" },
 };
 
 let OMEGA_USERS = [];
@@ -266,6 +265,8 @@ const omegaState = {
     type: "",
     targetManagerName: "",
     targetManagerEmail: "",
+    requesterManagerName: "",
+    requesterManagerEmail: "",
   },
   filters: {
     id: "",
@@ -280,6 +281,8 @@ const omegaState = {
   filterPanelOpen: false,
   bulkPanelOpen: false,
   bulkStatus: "",
+  notifications: [],
+  notificationPanelOpen: false,
 };
 
 let OMEGA_TICKETS = [];
@@ -288,10 +291,26 @@ let omegaDataPromise = null;
 let omegaUsersPromise = null;
 const OMEGA_TICKETS_SOURCE = "Bases/omega_chamados.csv";
 
+let OMEGA_COMMENT_FACT = [];
+let OMEGA_NOTIFICATION_FACT = [];
+let OMEGA_COMMENT_COUNTER = 0;
+let OMEGA_NOTIFICATION_COUNTER = 0;
+
+function resetOmegaFacts(){
+  OMEGA_COMMENT_FACT = [];
+  OMEGA_NOTIFICATION_FACT = [];
+  OMEGA_COMMENT_COUNTER = 0;
+  OMEGA_NOTIFICATION_COUNTER = 0;
+  if (!Array.isArray(omegaState.notifications)) omegaState.notifications = [];
+  else omegaState.notifications.length = 0;
+  omegaState.notificationPanelOpen = false;
+}
+
 function ensureOmegaData(){
   if (OMEGA_TICKETS.length) return Promise.resolve(OMEGA_TICKETS);
   if (omegaDataPromise) return omegaDataPromise;
 
+  resetOmegaFacts();
   const loader = (typeof loadCSVAuto === 'function')
     ? loadCSVAuto(OMEGA_TICKETS_SOURCE).catch((err) => {
         console.warn('Falha ao carregar CSV da Omega via loader principal:', err);
@@ -302,6 +321,7 @@ function ensureOmegaData(){
   omegaDataPromise = loader
     .then((rows) => {
       OMEGA_TICKETS = normalizeOmegaTicketRows(Array.isArray(rows) ? rows : []);
+      OMEGA_TICKETS.forEach((ticket) => ingestHistoryFacts(ticket, { initial: true }));
       omegaTicketCounter = OMEGA_TICKETS.reduce((max, ticket) => {
         const seq = parseInt(ticket.id, 10);
         return Number.isFinite(seq) ? Math.max(max, seq) : max;
@@ -788,7 +808,7 @@ function normalizeOmegaUserRows(rows){
       role: primaryRole,
       roles,
       matrixAccess,
-      avatar: meta.avatar || `https://i.pravatar.cc/160?u=${encodeURIComponent(id)}`,
+      avatar: meta.avatar || null,
       position,
       junction,
       functional,
@@ -927,6 +947,114 @@ function parseOmegaHistory(raw){
   }).filter((entry) => entry.date && entry.actorId);
 }
 
+function classifyHistoryEntry(entry){
+  if (!entry) return 'atualizacao';
+  const action = normalizePlain(entry.action);
+  const status = normalizePlain(entry.status);
+  const comment = (entry.comment || '').trim();
+  if (action.includes('aprov')) return 'aprovacao';
+  if (action.includes('status') || action.includes('cancel') || action.includes('resolvid')) return 'status';
+  if (comment) return 'comentario';
+  if (status && ['cancelado', 'resolvido'].includes(status)) return 'status';
+  return 'atualizacao';
+}
+
+function shouldNotifyForHistory(type){
+  return ['comentario', 'status', 'aprovacao'].includes(type);
+}
+
+function registerCommentFact(ticket, entry, type, { initial = false, sequence = null } = {}){
+  if (!ticket || !entry) return null;
+  OMEGA_COMMENT_COUNTER += 1;
+  const record = {
+    id: `cmt-${OMEGA_COMMENT_COUNTER.toString().padStart(4, '0')}`,
+    ticketId: ticket.id,
+    ticketSubject: ticket.subject || `Chamado ${ticket.id}`,
+    sequence: sequence ?? (Array.isArray(ticket.history) ? ticket.history.length : 0),
+    date: entry.date || new Date().toISOString(),
+    actorId: entry.actorId || '',
+    action: entry.action || 'Atualização do chamado',
+    comment: entry.comment || '',
+    status: entry.status || ticket.status || 'aberto',
+    type: type || classifyHistoryEntry(entry),
+    initial,
+  };
+  OMEGA_COMMENT_FACT.push(record);
+  return record;
+}
+
+function registerNotification(ticket, entry, type, { initial = false } = {}){
+  if (!ticket || !entry || !shouldNotifyForHistory(type)) return null;
+  OMEGA_NOTIFICATION_COUNTER += 1;
+  const record = {
+    id: `ntf-${OMEGA_NOTIFICATION_COUNTER.toString().padStart(4, '0')}`,
+    ticketId: ticket.id,
+    ticketSubject: ticket.subject || `Chamado ${ticket.id}`,
+    date: entry.date || new Date().toISOString(),
+    actorId: entry.actorId || '',
+    action: entry.action || '',
+    comment: entry.comment || '',
+    status: entry.status || ticket.status || 'aberto',
+    type,
+    read: !!initial,
+  };
+  OMEGA_NOTIFICATION_FACT.push(record);
+  if (!Array.isArray(omegaState.notifications)) omegaState.notifications = [];
+  const stateRecord = { ...record };
+  if (initial) omegaState.notifications.push(stateRecord);
+  else omegaState.notifications.unshift(stateRecord);
+  omegaState.notifications.sort((a, b) => {
+    const aTime = new Date(a.date || 0).getTime();
+    const bTime = new Date(b.date || 0).getTime();
+    return bTime - aTime;
+  });
+  if (omegaState.notificationPanelOpen) {
+    markNotificationsAsRead();
+    const root = document.getElementById('omega-modal');
+    if (root) renderNotificationCenter(root);
+  }
+  return record;
+}
+
+function appendTicketHistory(ticket, entry, { type, notify = true } = {}){
+  if (!ticket || !entry) return null;
+  if (!Array.isArray(ticket.history)) ticket.history = [];
+  const payload = {
+    date: entry.date || new Date().toISOString(),
+    actorId: entry.actorId || '',
+    action: entry.action || 'Atualização do chamado',
+    comment: entry.comment || '',
+    status: (entry.status || ticket.status || 'aberto').toLowerCase(),
+    attachments: Array.isArray(entry.attachments) ? entry.attachments : [],
+  };
+  ticket.history.push(payload);
+  const resolvedType = type || classifyHistoryEntry(payload);
+  registerCommentFact(ticket, payload, resolvedType, { sequence: ticket.history.length });
+  if (notify && shouldNotifyForHistory(resolvedType)) {
+    registerNotification(ticket, payload, resolvedType);
+  }
+  return payload;
+}
+
+function ingestHistoryFacts(ticket, { initial = false } = {}){
+  if (!ticket) return;
+  const history = Array.isArray(ticket.history) ? ticket.history : [];
+  history.forEach((entry, index) => {
+    const normalized = {
+      date: entry.date || ticket.opened || new Date().toISOString(),
+      actorId: entry.actorId || '',
+      action: entry.action || 'Atualização do chamado',
+      comment: entry.comment || '',
+      status: entry.status || ticket.status || 'aberto',
+    };
+    const type = classifyHistoryEntry(normalized);
+    registerCommentFact(ticket, normalized, type, { initial, sequence: index + 1 });
+    if (shouldNotifyForHistory(type)) {
+      registerNotification(ticket, normalized, type, { initial });
+    }
+  });
+}
+
 function ensureOmegaTemplate(){
   const existing = document.getElementById("omega-modal");
   if (existing) return Promise.resolve(existing);
@@ -1028,6 +1156,11 @@ function setupOmegaModule(root){
   });
   const overlay = root.querySelector('.omega-modal__overlay');
   overlay?.addEventListener('click', () => closeOmega());
+
+  const notificationsBtn = root.querySelector('#omega-notifications');
+  const notificationsClose = root.querySelector('#omega-notification-close');
+  notificationsBtn?.addEventListener('click', () => toggleNotificationPanel());
+  notificationsClose?.addEventListener('click', () => setNotificationPanelOpen(false));
 
   root.querySelectorAll('[data-omega-ticket-close]').forEach((btn) => {
     btn.addEventListener('click', () => setTicketModalOpen(false));
@@ -1210,6 +1343,8 @@ function setupOmegaModule(root){
     if (flow.type !== previous) {
       flow.targetManagerName = '';
       flow.targetManagerEmail = '';
+      flow.requesterManagerName = '';
+      flow.requesterManagerEmail = '';
     }
     updateOmegaFormSubject(root);
     renderFormFlowExtras(root);
@@ -1235,6 +1370,8 @@ function setupOmegaModule(root){
 
   const flowNameInput = root.querySelector('#omega-flow-target-name');
   const flowEmailInput = root.querySelector('#omega-flow-target-email');
+  const flowRequesterNameInput = root.querySelector('#omega-flow-requester-name');
+  const flowRequesterEmailInput = root.querySelector('#omega-flow-requester-email');
   flowNameInput?.addEventListener('input', (ev) => {
     const flow = getFormFlowState();
     flow.targetManagerName = ev.target.value || '';
@@ -1242,6 +1379,14 @@ function setupOmegaModule(root){
   flowEmailInput?.addEventListener('input', (ev) => {
     const flow = getFormFlowState();
     flow.targetManagerEmail = ev.target.value || '';
+  });
+  flowRequesterNameInput?.addEventListener('input', (ev) => {
+    const flow = getFormFlowState();
+    flow.requesterManagerName = ev.target.value || '';
+  });
+  flowRequesterEmailInput?.addEventListener('input', (ev) => {
+    const flow = getFormFlowState();
+    flow.requesterManagerEmail = ev.target.value || '';
   });
   root.querySelectorAll('[data-omega-cancel-dismiss]')?.forEach((btn) => {
     btn.addEventListener('click', () => dismissTicketCancelDialog());
@@ -1474,6 +1619,9 @@ function handleOmegaKeydown(ev){
     } else if (omegaState.ticketModalOpen) {
       setTicketModalOpen(false);
       ev.stopPropagation();
+    } else if (omegaState.notificationPanelOpen) {
+      setNotificationPanelOpen(false);
+      ev.stopPropagation();
     } else if (omegaState.filterPanelOpen) {
       toggleFilterPanel(false);
       ev.stopPropagation();
@@ -1485,9 +1633,22 @@ function handleOmegaKeydown(ev){
 }
 
 function handleOmegaDocumentClick(ev){
-  if (!omegaState.filterPanelOpen) return;
   const root = document.getElementById('omega-modal');
   if (!root || root.hidden) return;
+
+  if (omegaState.notificationPanelOpen) {
+    const notificationPanel = root.querySelector('#omega-notification-panel');
+    const notificationButton = root.querySelector('#omega-notifications');
+    const panelVisible = notificationPanel && !notificationPanel.hidden;
+    const insidePanel = panelVisible && typeof notificationPanel.contains === 'function' && notificationPanel.contains(ev.target);
+    const clickedButton = notificationButton && typeof notificationButton.contains === 'function'
+      && notificationButton.contains(ev.target);
+    if (panelVisible && !insidePanel && !clickedButton) {
+      setNotificationPanelOpen(false);
+    }
+  }
+
+  if (!omegaState.filterPanelOpen) return;
   const panel = root.querySelector('#omega-filter-panel');
   const toggle = root.querySelector('#omega-filters-toggle');
   if (!panel || panel.hidden) return;
@@ -1515,6 +1676,7 @@ function renderOmega(){
   }
 
   renderProfile(root, user);
+  renderNotificationCenter(root);
   renderNav(root, user, navStructure);
   renderBreadcrumb(root, user);
   renderContextBar(root, omegaState.contextDetail, contextTickets);
@@ -1538,12 +1700,122 @@ function renderProfile(root, user){
   const avatar = root.querySelector('#omega-avatar');
   const nameLabel = root.querySelector('#omega-user-name');
   if (avatar) {
-    if (user?.avatar) avatar.src = user.avatar;
-    avatar.alt = user?.name ? `Foto de ${user.name}` : '';
+    const hasAvatar = Boolean(user?.avatar);
+    if (hasAvatar) {
+      avatar.src = user.avatar;
+      avatar.alt = user?.name ? `Foto de ${user.name}` : '';
+      avatar.hidden = false;
+    } else {
+      avatar.removeAttribute('src');
+      avatar.alt = '';
+      avatar.hidden = true;
+    }
   }
   if (nameLabel) nameLabel.textContent = user?.name || '—';
   const select = root.querySelector('#omega-user-select');
   if (select && select.value !== user?.id) select.value = user?.id || '';
+}
+
+function getUnreadNotificationCount(){
+  if (!Array.isArray(omegaState.notifications)) return 0;
+  return omegaState.notifications.reduce((count, item) => count + (!item.read ? 1 : 0), 0);
+}
+
+function markNotificationsAsRead(){
+  if (!Array.isArray(omegaState.notifications)) return;
+  let updated = false;
+  omegaState.notifications.forEach((notification) => {
+    if (!notification.read) {
+      notification.read = true;
+      updated = true;
+    }
+  });
+  if (!updated) return;
+  OMEGA_NOTIFICATION_FACT = OMEGA_NOTIFICATION_FACT.map((record) => {
+    if (!record || record.read) return record;
+    const hasMatch = omegaState.notifications.some((notification) => notification.id === record.id);
+    return hasMatch ? { ...record, read: true } : record;
+  });
+}
+
+function setNotificationPanelOpen(open){
+  omegaState.notificationPanelOpen = !!open;
+  if (omegaState.notificationPanelOpen) {
+    markNotificationsAsRead();
+  }
+  const root = document.getElementById('omega-modal');
+  if (root) renderNotificationCenter(root);
+}
+
+function toggleNotificationPanel(force){
+  const next = typeof force === 'boolean' ? force : !omegaState.notificationPanelOpen;
+  setNotificationPanelOpen(next);
+}
+
+function renderNotificationCenter(root){
+  if (!root) return;
+  const button = root.querySelector('#omega-notifications');
+  const badge = root.querySelector('#omega-notification-badge');
+  const panel = root.querySelector('#omega-notification-panel');
+  const list = root.querySelector('#omega-notification-list');
+  const empty = root.querySelector('#omega-notification-empty');
+  const notifications = Array.isArray(omegaState.notifications) ? omegaState.notifications : [];
+  const unread = getUnreadNotificationCount();
+  if (badge) {
+    if (unread > 0) {
+      badge.textContent = unread > 9 ? '9+' : String(unread);
+      badge.hidden = false;
+    } else {
+      badge.textContent = '0';
+      badge.hidden = true;
+    }
+  }
+  if (button) button.setAttribute('aria-expanded', omegaState.notificationPanelOpen ? 'true' : 'false');
+  if (panel) panel.hidden = !omegaState.notificationPanelOpen;
+  if (list) {
+    if (notifications.length) {
+      list.innerHTML = notifications.map((notification) => {
+        const classes = ['omega-notification-item'];
+        if (!notification.read) classes.push('omega-notification-item--unread');
+        const ticket = OMEGA_TICKETS.find((item) => item.id === notification.ticketId) || null;
+        const subject = ticket?.subject || notification.ticketSubject || `Chamado ${notification.ticketId}`;
+        const actor = resolveUserName(notification.actorId);
+        const actorLabel = actor && actor !== '—' ? actor : 'Equipe Omega';
+        const time = formatDateTime(notification.date, { withTime: true });
+        const statusLabel = OMEGA_STATUS_META[notification.status]?.label || notification.status || '';
+        let title = `Atualização • ${subject}`;
+        let message = notification.action || '';
+        if (notification.type === 'comentario') {
+          title = `Novo comentário • ${subject}`;
+          message = notification.comment || notification.action || 'Comentário registrado.';
+        } else if (notification.type === 'status') {
+          title = `Status atualizado • ${subject}`;
+          message = notification.action || (statusLabel ? `Status atualizado para ${statusLabel}.` : 'Status atualizado.');
+          if (notification.comment) {
+            message = `${message} ${notification.comment}`.trim();
+          }
+        } else if (notification.type === 'aprovacao') {
+          title = `Aprovação registrada • ${subject}`;
+          message = notification.action || 'Aprovação registrada.';
+          if (notification.comment) {
+            message = `${message} ${notification.comment}`.trim();
+          }
+        }
+        const metaParts = [];
+        if (actorLabel) metaParts.push(actorLabel);
+        if (time && time !== '—') metaParts.push(time);
+        const meta = metaParts.join(' • ');
+        return `<li class="${classes.join(' ')}">`
+          + `<span class="omega-notification-item__title">${escapeHTML(title)}</span>`
+          + `<p class="omega-notification-item__message">${escapeHTML(message)}</p>`
+          + (meta ? `<span class="omega-notification-item__meta">${escapeHTML(meta)}</span>` : '')
+          + `</li>`;
+      }).join('');
+    } else {
+      list.innerHTML = '';
+    }
+  }
+  if (empty) empty.hidden = notifications.length > 0;
 }
 
 function findNavEntry(viewId){
@@ -2282,7 +2554,7 @@ function handleTicketUpdateSubmit(form){
     const ownerLabel = newOwner && ownerName && ownerName !== '—' ? ownerName : 'Sem responsável';
     actionLabel = newOwner ? `Responsável atualizado para ${ownerLabel}` : 'Responsável removido';
   }
-  ticket.history.push({
+  appendTicketHistory(ticket, {
     date: now,
     actorId: user?.id || '',
     action: actionLabel,
@@ -2337,7 +2609,7 @@ function confirmTicketCancel(){
   ticket.status = 'cancelado';
   ticket.updated = now;
   if (!Array.isArray(ticket.history)) ticket.history = [];
-  ticket.history.push({
+  appendTicketHistory(ticket, {
     date: now,
     actorId: user.id,
     action: 'Chamado cancelado pelo solicitante',
@@ -2364,7 +2636,7 @@ function handleBulkStatusSubmit(status){
     ticket.status = status;
     ticket.updated = now;
     if (!Array.isArray(ticket.history)) ticket.history = [];
-    ticket.history.push({
+    appendTicketHistory(ticket, {
       date: now,
       actorId: user?.id || '',
       action: `Status atualizado em lote para ${statusMeta.label}`,
@@ -3091,6 +3363,8 @@ function syncTicketTypeOptions(container, department){
   if (previousDepartment !== flow.department || previousType !== flow.type) {
     flow.targetManagerName = '';
     flow.targetManagerEmail = '';
+    flow.requesterManagerName = '';
+    flow.requesterManagerEmail = '';
   }
   renderFormFlowExtras(container);
 }
@@ -3102,6 +3376,8 @@ function getFormFlowState(){
       type: '',
       targetManagerName: '',
       targetManagerEmail: '',
+      requesterManagerName: '',
+      requesterManagerEmail: '',
     };
   }
   return omegaState.formFlow;
@@ -3113,6 +3389,8 @@ function resetFormFlowState({ department = '', type = '' } = {}){
   flow.type = type;
   flow.targetManagerName = '';
   flow.targetManagerEmail = '';
+  flow.requesterManagerName = '';
+  flow.requesterManagerEmail = '';
 }
 
 function isTransferEmpresasFlow(flow){
@@ -3130,7 +3408,8 @@ function renderFormFlowExtras(context){
   container.hidden = !shouldShow;
   const nameInput = container.querySelector('#omega-flow-target-name');
   const emailInput = container.querySelector('#omega-flow-target-email');
-  const requesterInfo = container.querySelector('#omega-flow-requester-approver');
+  const requesterNameInput = container.querySelector('#omega-flow-requester-name');
+  const requesterEmailInput = container.querySelector('#omega-flow-requester-email');
   if (nameInput) {
     if (shouldShow) nameInput.value = flow.targetManagerName || '';
     nameInput.required = shouldShow;
@@ -3141,18 +3420,15 @@ function renderFormFlowExtras(context){
     emailInput.required = shouldShow;
     if (!shouldShow) emailInput.value = '';
   }
-  if (requesterInfo) {
-    if (shouldShow) {
-      const approver = getMesuManagerForUser(getCurrentUser());
-      if (approver?.name) {
-        const email = approver.email || buildCorporateEmail(approver.name);
-        requesterInfo.innerHTML = `<strong>${escapeHTML(approver.name)}</strong>${email ? `<span>${escapeHTML(email)}</span>` : ''}`;
-      } else {
-        requesterInfo.innerHTML = '<em>Gerente não identificado na base MESU</em>';
-      }
-    } else {
-      requesterInfo.innerHTML = '';
-    }
+  if (requesterNameInput) {
+    if (shouldShow) requesterNameInput.value = flow.requesterManagerName || '';
+    requesterNameInput.required = shouldShow;
+    if (!shouldShow) requesterNameInput.value = '';
+  }
+  if (requesterEmailInput) {
+    if (shouldShow) requesterEmailInput.value = flow.requesterManagerEmail || '';
+    requesterEmailInput.required = shouldShow;
+    if (!shouldShow) requesterEmailInput.value = '';
   }
 }
 
@@ -3850,48 +4126,45 @@ function applyTransferEmpresasFlow(ticket, extras, user){
   const baseTime = now.getTime();
   const minute = 60000;
   let step = 1;
-  const addHistory = (entry) => {
+  const addHistory = (entry, options = {}) => {
     const date = new Date(baseTime + step * minute).toISOString();
     step += 1;
-    ticket.history.push({
-      date,
-      actorId: entry.actorId || 'omega-flow',
-      action: entry.action || '',
-      comment: entry.comment || '',
-      status: entry.status || 'aguardando',
-      attachments: [],
-    });
-    return date;
+    return appendTicketHistory(ticket, { ...entry, date }, options);
   };
   const approvals = [];
-  const requesterManager = getMesuManagerForUser(user);
-  if (requesterManager?.name) {
+  const requesterInfo = extras?.requester || {};
+  const targetInfo = extras?.target || {};
+  let requesterContactId = null;
+  if (requesterInfo.name) {
+    requesterContactId = registerExternalContact(createLocalId('mesu-requester'), {
+      name: requesterInfo.name,
+      email: requesterInfo.email,
+      position: 'Gerente da agência solicitante',
+      type: 'manager',
+      side: 'solicitante',
+    });
     approvals.push({
       role: 'solicitante',
-      contactId: requesterManager.contactId,
-      name: requesterManager.name,
-      email: requesterManager.email,
+      contactId: requesterContactId,
+      name: requesterInfo.name,
+      email: requesterInfo.email,
     });
     addHistory({
       actorId: 'omega-flow',
-      action: `Notificação enviada para ${requesterManager.name}`,
-      comment: `O gerente da agência solicitante (${requesterManager.email || 'contato indisponível'}) recebeu o pedido de aprovação.`,
+      action: `Notificação enviada para ${requesterInfo.name}`,
+      comment: `O gerente da agência solicitante (${requesterInfo.email || 'contato indisponível'}) recebeu o pedido de aprovação.`,
+      status: 'aguardando',
     });
     addHistory({
-      actorId: requesterManager.contactId,
+      actorId: requesterContactId,
       action: 'Agência solicitante aprovou a transferência',
-      comment: `${requesterManager.name} concedeu o de acordo da agência solicitante.`,
-    });
-  } else {
-    addHistory({
-      actorId: 'omega-flow',
-      action: 'Notificação enviada para o gerente da agência solicitante',
-      comment: 'Não foi possível identificar automaticamente o gerente na base MESU.',
+      comment: `${requesterInfo.name} concedeu o de acordo da agência solicitante.`,
+      status: 'aguardando',
     });
   }
   const targetContactId = registerExternalContact(createLocalId('mesu-target'), {
-    name: extras.name,
-    email: extras.email,
+    name: targetInfo.name,
+    email: targetInfo.email,
     position: 'Gerente da agência cedente',
     type: 'manager',
     side: 'analista',
@@ -3899,18 +4172,20 @@ function applyTransferEmpresasFlow(ticket, extras, user){
   approvals.push({
     role: 'cedente',
     contactId: targetContactId,
-    name: extras.name,
-    email: extras.email,
+    name: targetInfo.name,
+    email: targetInfo.email,
   });
   addHistory({
     actorId: 'omega-flow',
-    action: `Solicitação enviada para ${extras.name}`,
-    comment: `Convite encaminhado para ${extras.email} validar a transferência.`,
+    action: `Solicitação enviada para ${targetInfo.name}`,
+    comment: `Convite encaminhado para ${targetInfo.email || 'contato indisponível'} validar a transferência.`,
+    status: 'aguardando',
   });
   addHistory({
     actorId: targetContactId,
     action: 'Agência cedente aprovou a transferência',
-    comment: `${extras.name} autorizou a transferência da carteira.`,
+    comment: `${targetInfo.name} autorizou a transferência da carteira.`,
+    status: 'aguardando',
   });
   const analyst = getAssignableAnalystsForQueue(ticket.queue, user)[0] || null;
   if (analyst) {
@@ -3924,6 +4199,7 @@ function applyTransferEmpresasFlow(ticket, extras, user){
       actorId: analyst.id,
       action: 'Chamado encaminhado para análise de encarteiramento',
       comment: `${analyst.name} receberá o chamado após os de acordo registrados.`,
+      status: 'aguardando',
     });
     ticket.ownerId = analyst.id;
   } else {
@@ -3931,6 +4207,7 @@ function applyTransferEmpresasFlow(ticket, extras, user){
       actorId: 'omega-flow',
       action: 'Chamado aguardando distribuição na fila de encarteiramento',
       comment: 'Assim que um analista estiver disponível, o chamado será atribuído automaticamente.',
+      status: 'aguardando',
     });
   }
   ticket.status = 'aguardando';
@@ -3938,9 +4215,9 @@ function applyTransferEmpresasFlow(ticket, extras, user){
   ticket.updated = lastEntry?.date || ticket.updated;
   ticket.flow = {
     type: 'encarteiramento-transfer-empresas',
-    targetManager: { name: extras.name, email: extras.email, contactId: targetContactId },
-    requesterManager: requesterManager
-      ? { name: requesterManager.name, email: requesterManager.email, contactId: requesterManager.contactId }
+    targetManager: { name: targetInfo.name, email: targetInfo.email, contactId: targetContactId },
+    requesterManager: requesterContactId
+      ? { name: requesterInfo.name, email: requesterInfo.email, contactId: requesterContactId }
       : null,
     approvals,
   };
@@ -3967,10 +4244,36 @@ function handleNewTicketSubmit(form){
   const requiresTransferFlow = isTransferEmpresasFlow({ department: queue, type: category });
   let flowTargetName = '';
   let flowTargetEmail = '';
+  let flowRequesterName = '';
+  let flowRequesterEmail = '';
   if (requiresTransferFlow) {
     const flow = getFormFlowState();
     flowTargetName = (flow.targetManagerName || '').trim();
     flowTargetEmail = (flow.targetManagerEmail || '').trim();
+    flowRequesterName = (flow.requesterManagerName || '').trim();
+    flowRequesterEmail = (flow.requesterManagerEmail || '').trim();
+    if (!flowRequesterName || !flowRequesterEmail) {
+      showFormFeedback(root, 'Informe o nome e o e-mail do gerente da agência solicitante para concluir a transferência.', 'warning');
+      const focusInput = !flowRequesterName
+        ? root.querySelector('#omega-flow-requester-name')
+        : root.querySelector('#omega-flow-requester-email');
+      if (focusInput) {
+        requestAnimationFrame(() => {
+          try { focusInput.focus(); } catch (err) { /* noop */ }
+        });
+      }
+      return;
+    }
+    if (!isValidEmail(flowRequesterEmail)) {
+      showFormFeedback(root, 'Informe um e-mail corporativo válido para o gerente da agência solicitante.', 'warning');
+      const emailInput = root.querySelector('#omega-flow-requester-email');
+      if (emailInput) {
+        requestAnimationFrame(() => {
+          try { emailInput.focus(); emailInput.select(); } catch (err) { /* noop */ }
+        });
+      }
+      return;
+    }
     if (!flowTargetName || !flowTargetEmail) {
       showFormFeedback(root, 'Informe o nome e o e-mail do gerente da agência cedente para concluir a transferência.', 'warning');
       const focusInput = !flowTargetName
@@ -4030,19 +4333,29 @@ function handleNewTicketSubmit(form){
     teamId: user.teamId || null,
     context,
     attachments,
-    history: [
-      {
-        date: now.toISOString(),
-        actorId: user.id,
-        action: 'Abertura do chamado',
-        comment: description,
-        status: 'aberto',
-      },
-    ],
+    history: [],
     flow: null,
   };
+  appendTicketHistory(
+    newTicket,
+    {
+      date: now.toISOString(),
+      actorId: user.id,
+      action: 'Abertura do chamado',
+      comment: description,
+      status: 'aberto',
+    },
+    { notify: false }
+  );
   if (requiresTransferFlow) {
-    applyTransferEmpresasFlow(newTicket, { name: flowTargetName, email: flowTargetEmail }, user);
+    applyTransferEmpresasFlow(
+      newTicket,
+      {
+        target: { name: flowTargetName, email: flowTargetEmail },
+        requester: { name: flowRequesterName, email: flowRequesterEmail },
+      },
+      user
+    );
   }
   OMEGA_TICKETS.unshift(newTicket);
   omegaState.selectedTicketId = newTicket.id;

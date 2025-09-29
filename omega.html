@@ -28,9 +28,24 @@
           </div>
         </div>
         <div class="omega-header__actions">
-          <button id="omega-notifications" class="omega-icon-btn" type="button" title="Notificações">
-            <i class="ti ti-bell"></i>
-          </button>
+          <div class="omega-notification-center">
+            <button id="omega-notifications" class="omega-icon-btn" type="button" title="Notificações" aria-expanded="false" aria-controls="omega-notification-panel">
+              <i class="ti ti-bell"></i>
+              <span id="omega-notification-badge" class="omega-notification-badge" hidden>0</span>
+            </button>
+            <section id="omega-notification-panel" class="omega-notification-panel" role="dialog" aria-modal="false" aria-label="Notificações" hidden>
+              <header class="omega-notification-panel__header">
+                <strong>Notificações</strong>
+                <button id="omega-notification-close" class="omega-icon-btn" type="button" aria-label="Fechar notificações">
+                  <i class="ti ti-x"></i>
+                </button>
+              </header>
+              <div class="omega-notification-panel__body">
+                <ul id="omega-notification-list" class="omega-notification-list"></ul>
+                <p id="omega-notification-empty" class="omega-notification-empty">Nenhuma notificação registrada.</p>
+              </div>
+            </section>
+          </div>
           <label class="omega-user-switch" for="omega-user-select">
             <span class="sr-only">Trocar perfil</span>
             <select id="omega-user-select" class="omega-select" aria-label="Trocar perfil"></select>
@@ -46,7 +61,7 @@
           </button>
           <section class="omega-profile" aria-label="Perfil selecionado">
             <figure class="omega-avatar" aria-hidden="true">
-              <img id="omega-avatar" src="https://i.pravatar.cc/160?img=52" alt="" loading="lazy"/>
+              <img id="omega-avatar" alt="" loading="lazy" hidden/>
             </figure>
             <strong id="omega-user-name" class="omega-profile__name">—</strong>
           </section>
@@ -242,7 +257,14 @@
                   <div class="omega-flow-approval__icon" aria-hidden="true"><i class="ti ti-user-check"></i></div>
                   <div class="omega-flow-approval__body">
                     <span class="omega-flow-approval__label">Gerente da agência solicitante</span>
-                    <div id="omega-flow-requester-approver" class="omega-flow-approval__value">—</div>
+                    <label class="omega-field" for="omega-flow-requester-name">
+                      <span class="omega-field__label">Nome completo</span>
+                      <input id="omega-flow-requester-name" class="omega-input" type="text" placeholder="Informe o gerente responsável"/>
+                    </label>
+                    <label class="omega-field" for="omega-flow-requester-email">
+                      <span class="omega-field__label">E-mail corporativo</span>
+                      <input id="omega-flow-requester-email" class="omega-input" type="email" placeholder="nome.sobrenome@empresa.com"/>
+                    </label>
                   </div>
                 </article>
                 <article class="omega-flow-approval">
