@@ -3509,19 +3509,33 @@ function getAvailableDepartmentsForUser(user){
   return base.filter((item) => item !== 'Matriz');
 }
 
-function syncTicketTypeOptions(container, department){
+function syncTicketTypeOptions(container, department, { preserveSelection = false, selectedType = '' } = {}){
   const departmentSelect = container?.querySelector?.('#omega-form-department');
   const typeSelect = container?.querySelector?.('#omega-form-type');
   if (!typeSelect) return;
   const options = getTicketTypesForDepartment(department);
-  typeSelect.innerHTML = options
-    .map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`)
-    .join('');
-  typeSelect.disabled = !options.length;
-  if (options.length) {
-    typeSelect.selectedIndex = 0;
-  }
   const flow = getFormFlowState();
+  const previousValue = preserveSelection
+    ? selectedType || typeSelect.value || flow.typeValue || ''
+    : selectedType;
+  if (options.length) {
+    const placeholder = '<option value="">Selecione o tipo de chamado</option>';
+    typeSelect.innerHTML = [
+      placeholder,
+      ...options.map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`),
+    ].join('');
+    const nextValue = previousValue && options.includes(previousValue) ? previousValue : '';
+    if (nextValue) {
+      typeSelect.value = nextValue;
+    } else {
+      typeSelect.value = '';
+      typeSelect.selectedIndex = 0;
+    }
+  } else {
+    typeSelect.innerHTML = '<option value="" disabled>Nenhum tipo disponível</option>';
+    typeSelect.value = '';
+  }
+  typeSelect.disabled = !options.length;
   const previousDepartment = flow.department;
   const previousType = flow.type;
   const previousDepartmentValue = flow.departmentValue;
@@ -3531,13 +3545,12 @@ function syncTicketTypeOptions(container, department){
     || department
     || '';
   const selectedTypeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim()
-    || typeSelect?.value
-    || options[0]
     || '';
   const selectedDepartmentValue = departmentSelect?.value || department || '';
-  const selectedTypeValue = typeSelect?.value || options[0] || '';
+  const selectedTypeValue = typeSelect?.value || '';
+  const effectiveTypeLabel = selectedTypeValue ? selectedTypeLabel : '';
   flow.department = selectedDepartmentLabel;
-  flow.type = selectedTypeLabel;
+  flow.type = effectiveTypeLabel;
   flow.departmentValue = selectedDepartmentValue;
   flow.typeValue = selectedTypeValue;
   if (
@@ -3602,34 +3615,22 @@ function renderFormFlowExtras(context){
     || departmentValue
     || flow.department
     || '';
-  const typeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim()
-    || typeValue
-    || flow.type
-    || '';
+  const typeLabel = typeValue
+    ? typeSelect?.selectedOptions?.[0]?.textContent?.trim() || flow.type || ''
+    : flow.type || '';
   if (departmentSelect) {
     flow.department = departmentLabel;
     flow.departmentValue = departmentValue;
   }
   if (typeSelect) {
-    flow.type = typeLabel;
+    flow.type = typeValue ? typeLabel : '';
     flow.typeValue = typeValue;
   }
   const hasExplicitSelection = !!departmentValue && !!typeValue && !!departmentSelect && !!typeSelect;
-  const departmentKey = normalizeFlowKey(
-    departmentLabel
-    || departmentValue
-    || flow.department
-    || flow.departmentValue,
-  );
-  const typeKey = normalizeFlowKey(
-    typeLabel
-    || typeValue
-    || flow.type
-    || flow.typeValue,
-  );
+  const effectiveDepartment = departmentLabel || departmentValue || flow.department || flow.departmentValue;
+  const effectiveType = typeLabel || typeValue || flow.type || flow.typeValue;
   const shouldShow = hasExplicitSelection
-    && departmentKey === OMEGA_TRANSFER_DEPARTMENT_KEY
-    && typeKey === OMEGA_TRANSFER_EMPRESAS_KEY;
+    && isTransferEmpresasFlow({ department: effectiveDepartment, type: effectiveType });
   container.hidden = !shouldShow;
   container.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
   if (!shouldShow) {
@@ -4256,7 +4257,7 @@ function populateFormOptions(root){
     departmentSelect.disabled = !departments.length;
   }
   const department = departmentSelect?.value || departments[0] || '';
-  syncTicketTypeOptions(form, department);
+  syncTicketTypeOptions(form, department, { preserveSelection: true });
   const typeSelect = form.querySelector('#omega-form-type');
   const selectedType = typeSelect?.value || '';
   const departmentLabel = departmentSelect?.selectedOptions?.[0]?.textContent?.trim() || department;
@@ -4287,7 +4288,10 @@ function updateOmegaFormSubject(root){
   const typeSelect = form.querySelector('#omega-form-type');
   const productId = form.querySelector('#omega-form-product')?.value;
   const productMeta = OMEGA_PRODUCT_CATALOG.find((item) => item.id === productId) || null;
-  const typeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim() || '';
+  const typeValue = typeSelect?.value || '';
+  const typeLabel = typeValue
+    ? typeSelect?.selectedOptions?.[0]?.textContent?.trim() || ''
+    : '';
   const requester = getCurrentUser()?.name || '';
   subjectInput.value = buildOmegaSubject({
     typeLabel,
