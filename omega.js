@@ -1682,7 +1682,7 @@ function handleOmegaDocumentClick(ev){
 
 function getTicketsPerPage(){
   const raw = parseInt(omegaState.ticketsPerPage, 10);
-  return Number.isFinite(raw) && raw > 0 ? raw : 15;
+  return Number.isFinite(raw) && raw > 0 ? raw : 10;
 }
 
 function resetTablePage(){
