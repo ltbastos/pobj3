@@ -3626,11 +3626,8 @@ function renderFormFlowExtras(context){
     flow.type = typeValue ? typeLabel : '';
     flow.typeValue = typeValue;
   }
-  const hasExplicitSelection = !!departmentValue && !!typeValue && !!departmentSelect && !!typeSelect;
-  const effectiveDepartment = departmentLabel || departmentValue || flow.department || flow.departmentValue;
   const effectiveType = typeLabel || typeValue || flow.type || flow.typeValue;
-  const shouldShow = hasExplicitSelection
-    && isTransferEmpresasFlow({ department: effectiveDepartment, type: effectiveType });
+  const shouldShow = normalizeFlowKey(effectiveType) === OMEGA_TRANSFER_EMPRESAS_KEY;
   container.hidden = !shouldShow;
   container.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
   if (!shouldShow) {
