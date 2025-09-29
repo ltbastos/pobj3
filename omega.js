@@ -3550,11 +3550,25 @@ function isTransferEmpresasFlow(flow){
 }
 
 function renderFormFlowExtras(context){
-  const container = context?.querySelector?.('#omega-form-flow') || document.getElementById('omega-form-flow');
+  const scope = context?.querySelector ? context : document;
+  const container = scope?.querySelector?.('#omega-form-flow') || document.getElementById('omega-form-flow');
   if (!container) return;
   const flow = getFormFlowState();
-  const shouldShow = isTransferEmpresasFlow(flow);
+  const departmentSelect = scope?.querySelector?.('#omega-form-department') || document.getElementById('omega-form-department');
+  const typeSelect = scope?.querySelector?.('#omega-form-type') || document.getElementById('omega-form-type');
+  const departmentValue = departmentSelect ? (departmentSelect.value || '') : (flow.department || '');
+  const typeValue = typeSelect ? (typeSelect.value || '') : (flow.type || '');
+  if (departmentSelect && departmentValue !== flow.department) flow.department = departmentValue;
+  if (typeSelect && typeValue !== flow.type) flow.type = typeValue;
+  const shouldShow = isTransferEmpresasFlow({ department: departmentValue, type: typeValue });
   container.hidden = !shouldShow;
+  container.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+  if (!shouldShow) {
+    flow.targetManagerName = '';
+    flow.targetManagerEmail = '';
+    flow.requesterManagerName = '';
+    flow.requesterManagerEmail = '';
+  }
   const nameInput = container.querySelector('#omega-flow-target-name');
   const emailInput = container.querySelector('#omega-flow-target-email');
   const requesterNameInput = container.querySelector('#omega-flow-requester-name');
