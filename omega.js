@@ -205,6 +205,7 @@ const OMEGA_USER_METADATA = {
 };
 
 let OMEGA_USERS = [];
+const OMEGA_AVATAR_PLACEHOLDER = "img/omega-avatar-placeholder.svg";
 
 const OMEGA_EXTERNAL_CONTACTS = new Map();
 
@@ -1743,16 +1744,21 @@ function renderProfile(root, user){
   const avatar = root.querySelector('#omega-avatar');
   const nameLabel = root.querySelector('#omega-user-name');
   if (avatar) {
-    const hasAvatar = Boolean(user?.avatar);
-    if (hasAvatar) {
-      avatar.src = user.avatar;
-      avatar.alt = user?.name ? `Foto de ${user.name}` : '';
-      avatar.hidden = false;
-    } else {
-      avatar.removeAttribute('src');
-      avatar.alt = '';
-      avatar.hidden = true;
+    if (!avatar.dataset.omegaPlaceholderBound) {
+      avatar.addEventListener('error', () => {
+        if (avatar.src !== OMEGA_AVATAR_PLACEHOLDER) {
+          avatar.src = OMEGA_AVATAR_PLACEHOLDER;
+        }
+      });
+      avatar.dataset.omegaPlaceholderBound = 'true';
     }
+    const hasAvatar = Boolean(user?.avatar);
+    const source = hasAvatar ? user.avatar : OMEGA_AVATAR_PLACEHOLDER;
+    avatar.src = source;
+    avatar.alt = user?.name
+      ? (hasAvatar ? `Foto de ${user.name}` : `Avatar de ${user.name}`)
+      : 'Avatar padrão';
+    avatar.hidden = false;
   }
   if (nameLabel) nameLabel.textContent = user?.name || '—';
   const select = root.querySelector('#omega-user-select');
@@ -2194,6 +2200,18 @@ function renderSummary(root, contextTickets, viewTickets, user){
   host.innerHTML = parts.join('');
 }
 
+function getOpeningCommentText(ticket){
+  if (!ticket || !Array.isArray(ticket.history) || !ticket.history.length) return '';
+  const ordered = ticket.history.slice().sort((a, b) => {
+    const aTime = new Date(a?.date || 0).getTime();
+    const bTime = new Date(b?.date || 0).getTime();
+    return aTime - bTime;
+  });
+  const withComment = ordered.find((entry) => (entry?.comment || '').trim());
+  if (!withComment) return '';
+  return withComment.comment.trim().replace(/\s+/g, ' ');
+}
+
 function renderTable(root, tickets, user){
   const body = root.querySelector('#omega-ticket-rows');
   if (!body) return;
@@ -2218,6 +2236,9 @@ function renderTable(root, tickets, user){
     const priorityKey = OMEGA_PRIORITY_META[ticket.priority] ? ticket.priority : 'media';
     const priorityMeta = OMEGA_PRIORITY_META[priorityKey] || OMEGA_PRIORITY_META.media;
     const categoryLabel = ticket.category || 'Tipo não informado';
+    const openingComment = getOpeningCommentText(ticket);
+    const commentPreview = openingComment ? openingComment.slice(0, 10) : '—';
+    const departmentLabel = ticket.queue || '—';
     const activeClass = ticket.id === omegaState.selectedTicketId ? ' class="is-active"' : '';
     const isSelected = selectionAllowed && selection.has(ticket.id);
     const selectCell = `<td class="col-select">${selectionAllowed ? `<input type="checkbox" data-omega-select value="${ticket.id}"${isSelected ? ' checked' : ''}/>` : ''}</td>`;
@@ -2226,7 +2247,8 @@ function renderTable(root, tickets, user){
     return `<tr data-ticket-id="${ticket.id}"${activeClass}${selectedAttr}>
       ${selectCell}
       <td><span class="omega-ticket__id"><i class="ti ti-ticket"></i>${escapeHTML(ticket.id)}</span></td>
-      <td><div class="omega-ticket__title">${escapeHTML(ticket.subject)}</div></td>
+      <td><span class="omega-ticket__preview" title="${escapeHTML(openingComment || 'Sem comentário de abertura')}" aria-label="${escapeHTML(openingComment || 'Sem comentário de abertura')}">${escapeHTML(commentPreview)}</span></td>
+      <td><div class="omega-ticket__title">${escapeHTML(departmentLabel)}</div></td>
       <td>${escapeHTML(categoryLabel)}</td>
       <td><div class="omega-ticket__user" title="${escapeHTML(ownerTooltip)}">${escapeHTML(requesterDisplay)}</div></td>
       <td>${priorityBadge}</td>

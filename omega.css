@@ -623,6 +623,7 @@ body.has-omega-open{ overflow:hidden; }
 .omega-table tbody tr.is-active{ background:rgba(36,107,253,.12); box-shadow:inset 3px 0 0 var(--info); }
 .omega-table tbody tr[data-selected="true"]{ background:rgba(36,107,253,.12); box-shadow:inset 3px 0 0 var(--info); }
 .omega-table td .omega-ticket__title{ font-weight:700; color:var(--text); font-size:12px; }
+.omega-table td .omega-ticket__preview{ font-size:12px; color:var(--muted); max-width:12ch; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }
 .omega-table td .omega-ticket__user{ font-weight:700; color:var(--text); font-size:12px; }
 .omega-priority-badge{ display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:4px 10px; font-size:11px; font-weight:700; background:rgba(148,163,184,.18); color:#1f2937; }
 .omega-priority-badge[data-priority="baixa"]{ background:rgba(34,197,94,.16); color:#166534; }
