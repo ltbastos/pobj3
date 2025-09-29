@@ -1702,15 +1702,10 @@ select.input{
   overscroll-behavior:contain;
 }
 .detail-designer.is-open{
-  display:flex;
+  display:grid;
   align-items:center;
   justify-content:center;
-}
-@supports (place-items: center){
-  .detail-designer.is-open{
-    display:grid;
-    place-items:center;
-  }
+  place-items:center;
 }
 .detail-designer__overlay{
   position:fixed;
