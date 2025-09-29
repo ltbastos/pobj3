@@ -3803,6 +3803,59 @@ function setupUserMenu(){
   userMenuBound = true;
 }
 
+let topbarNotificationsBound = false;
+function setupTopbarNotifications(){
+  if (topbarNotificationsBound) return;
+  const trigger = document.getElementById("btn-topbar-notifications");
+  const panel = document.getElementById("topbar-notification-panel");
+  const badge = document.getElementById("topbar-notification-badge");
+  if (!trigger || !panel) return;
+
+  const closePanel = () => {
+    panel.setAttribute("aria-hidden", "true");
+    panel.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+  };
+
+  const openPanel = () => {
+    panel.hidden = false;
+    panel.setAttribute("aria-hidden", "false");
+    trigger.setAttribute("aria-expanded", "true");
+  };
+
+  trigger.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const expanded = trigger.getAttribute("aria-expanded") === "true";
+    if (expanded) closePanel(); else openPanel();
+  });
+
+  document.addEventListener("click", (ev) => {
+    if (panel.contains(ev.target) || trigger.contains(ev.target)) return;
+    closePanel();
+  });
+
+  window.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") closePanel();
+  });
+
+  const setBadge = (count) => {
+    if (!badge) return;
+    const safe = Number.isFinite(count) ? Math.max(0, count) : 0;
+    if (safe > 0) {
+      badge.textContent = safe > 99 ? "99+" : String(safe);
+      badge.hidden = false;
+    } else {
+      badge.hidden = true;
+    }
+  };
+
+  setBadge(0);
+  closePanel();
+  topbarNotificationsBound = true;
+  setupTopbarNotifications.setBadge = setBadge;
+}
+
 function initMobileCarousel(){
   const host = document.getElementById("mobile-carousel");
   if (!host) return;
@@ -9457,6 +9510,7 @@ async function loadCSVAuto(url) {
   enableSimpleTooltip();
   injectStyles();
   setupUserMenu();
+  setupTopbarNotifications();
   await loadBaseData();
   initCombos();
   bindEvents();
