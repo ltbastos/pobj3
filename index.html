@@ -29,6 +29,16 @@
     </div>
 
     <div class="topbar__right">
+      <div class="topbar__notifications">
+        <button id="btn-topbar-notifications" class="topbar__bell" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="topbar-notification-panel">
+          <i class="ti ti-bell" aria-hidden="true"></i>
+          <span id="topbar-notification-badge" class="topbar__badge" hidden>0</span>
+          <span class="sr-only">Abrir notificações</span>
+        </button>
+        <div id="topbar-notification-panel" class="topbar-notification-panel" role="menu" aria-hidden="true">
+          <p class="topbar-notification-panel__empty">Nenhuma notificação no momento.</p>
+        </div>
+      </div>
       <div class="userbox">
         <button class="userbox__trigger" id="btn-user-menu" type="button" aria-haspopup="true" aria-expanded="false">
           <img class="userbox__avatar" src="https://i.pravatar.cc/80?img=12" alt="Foto do usuário"/>

@@ -42,12 +42,16 @@ body.omega-standalone .omega-modal__panel{
   height:auto;
   min-height:calc(100vh - 40px);
   box-shadow:0 24px 60px rgba(15,20,36,.16);
+  max-height:none;
+  overflow:visible;
 }
 
 @media (max-width: 768px){
   body.omega-standalone #omega-modal{ padding:28px 12px; }
   body.omega-standalone .omega-modal__panel{ min-height:calc(100vh - 56px); border-radius:20px; }
 }
+
+body.omega-standalone .omega-main{ overflow:visible; padding-bottom:40px; }
 
 body.has-omega-open{ overflow:hidden; }
 
@@ -144,7 +148,7 @@ body.has-omega-open{ overflow:hidden; }
 .omega-header__titles p{ margin:0; color:var(--muted); font-size:12px; }
 
 .omega-header__actions{ display:flex; align-items:center; gap:8px; }
-.omega-notification-center{ position:relative; display:none; }
+.omega-notification-center{ position:relative; display:inline-flex; align-items:center; }
 .omega-notification-badge{
   position:absolute;
   top:-4px;
