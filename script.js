@@ -4136,6 +4136,9 @@ function initDetailDesigner(){
 function openDetailDesigner(){
   const host = document.getElementById("detail-designer");
   if (!host) return;
+  if (host.parentElement !== document.body) {
+    document.body.appendChild(host);
+  }
   const current = detailViewById(state.details.activeViewId) || DETAIL_DEFAULT_VIEW;
   const baseId = current.id === "__custom__"
     ? (state.details.customView?.baseId && state.details.customView.baseId !== "__custom__"
