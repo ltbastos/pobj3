@@ -1,0 +1,32 @@
+notification_id,ticket_id,data,ator_id,ator_nome,acao,comentario,status,tipo,lido
+NTF-0024,12,2025-02-10T10:00:00,usr-07,Thalita Gregório,Abertura do chamado,Solicitação de ajuste devido à sazonalidade.,aberto,comentario,Sim
+NTF-0022,11,2025-02-15T14:05:00,usr-10,Gabriel Figueiredo,Abertura do chamado,Cliente questionou tarifa aplicada na remessa.,aberto,comentario,Sim
+NTF-0023,11,2025-02-16T08:20:00,usr-05,Fellipe Yamassaki,Cancelamento solicitado,Gerente informou que era dúvida já tratada.,cancelado,status,Sim
+NTF-0020,10,2025-02-18T09:32:00,usr-10,Gabriel Figueiredo,Abertura do chamado,Analista perdeu acesso ao dashboard após atualização.,aberto,comentario,Sim
+NTF-0025,12,2025-02-18T15:22:00,usr-06,Yuri Viglio,Reunião com diretoria,Validado racional da meta revisada.,em_atendimento,comentario,Sim
+NTF-0010,5,2025-02-20T11:12:00,usr-03,Cassio Perussi,Abertura do chamado,Diretoria solicitou consultoria para expansão de cobertura.,aberto,comentario,Sim
+NTF-0021,10,2025-02-20T15:10:00,usr-02,Marcos Pena,Acesso restaurado,Login reativado após limpeza de cache.,resolvido,comentario,Sim
+NTF-0016,8,2025-02-22T10:22:00,usr-01,Juliane Negretti,Abertura do chamado,Solicitada integração para disparar antecipações automáticas.,aberto,comentario,Sim
+NTF-0014,7,2025-02-24T13:05:00,usr-10,Gabriel Figueiredo,Abertura do chamado,Necessidade de rever limite devido à estiagem.,aberto,comentario,Sim
+NTF-0006,3,2025-02-25T08:05:00,usr-01,Juliane Negretti,Abertura do chamado,Cliente reportou cobranças duplicadas após atualização.,aberto,comentario,Sim
+NTF-0007,3,2025-02-26T10:42:00,usr-02,Marcos Pena,Interação com time de tecnologia,Identificada divergência na API de cobrança programada.,em_atendimento,comentario,Sim
+NTF-0018,9,2025-02-26T17:48:00,usr-04,Bruno Quesada,Abertura do chamado,Tratar renovação de cota PJ e atualização cadastral.,aberto,comentario,Sim
+NTF-0004,2,2025-02-27T16:18:00,usr-07,Thalita Gregório,Abertura do chamado,Solicitada revisão orçamentária para ampliar a frota de maquininhas.,aberto,comentario,Sim
+NTF-0012,6,2025-02-28T15:50:00,usr-10,Gabriel Figueiredo,Abertura do chamado,Cliente precisa reciclagem da equipe de RH.,aberto,comentario,Sim
+NTF-0026,12,2025-02-28T16:40:00,usr-06,Yuri Viglio,Meta ajustada,Definido novo target mensal para carteira.,resolvido,comentario,Sim
+NTF-0001,1,2025-03-01T09:20:00,usr-01,Juliane Negretti,Abertura do chamado,Gerente reportou necessidade de ampliar limite para rodada de capital de giro.,aberto,comentario,Sim
+NTF-0011,5,2025-03-01T10:05:00,usr-03,Cassio Perussi,Reunião com seguradora,Aguardando aprovação de clausulado customizado.,aguardando,comentario,Sim
+NTF-0002,1,2025-03-02T11:05:00,usr-02,Marcos Pena,Análise inicial,Validou elegibilidade e encaminhou proposta à mesa de crédito.,aguardando,comentario,Sim
+NTF-0013,6,2025-03-03T09:30:00,usr-05,Fellipe Yamassaki,Agenda com cliente,Treinamento remoto agendado para próxima semana.,aguardando,comentario,Sim
+NTF-0030,15,2025-03-03T14:15:00,usr-01,Juliane Negretti,Abertura do chamado,Cliente em processo de adesão precisa apoio na formalização.,aberto,comentario,Sim
+NTF-0008,3,2025-03-03T17:28:00,usr-02,Marcos Pena,Retorno ao cliente,Parametrização corrigida e homologada em produção.,resolvido,comentario,Sim
+NTF-0027,13,2025-03-04T08:40:00,usr-10,Gabriel Figueiredo,Abertura do chamado,Cliente abriu nova loja e precisa de terminais extras.,aberto,comentario,Sim
+NTF-0019,9,2025-03-04T09:00:00,usr-03,Cassio Perussi,Aguardando documentação complementar,Cliente ficou de enviar balanço consolidado.,aguardando,comentario,Sim
+NTF-0005,2,2025-03-04T10:12:00,usr-02,Marcos Pena,Ajuste aprovado,Verba realocada para aquisição do kit adicional.,aguardando,aprovacao,Sim
+NTF-0015,7,2025-03-05T08:50:00,usr-06,Yuri Viglio,Coleta de documentos,Cliente enviou certidões atualizadas.,em_atendimento,comentario,Sim
+NTF-0031,15,2025-03-05T09:50:00,usr-02,Marcos Pena,Contato com cliente,Solicitado envio de contrato social atualizado.,aguardando,comentario,Sim
+NTF-0003,1,2025-03-05T14:45:00,usr-02,Marcos Pena,Contato com gerente PJ,Solicitou última DRE e anexou documentação no chamado.,em_atendimento,comentario,Sim
+NTF-0017,8,2025-03-06T09:15:00,usr-02,Marcos Pena,Homologação em pré-produção,Cliente validou lote piloto. Ajustar política de alçada.,em_atendimento,comentario,Sim
+NTF-0029,14,2025-03-06T11:25:00,usr-03,Cassio Perussi,Abertura do chamado,Meta cadastrada acima do potencial da carteira.,aberto,comentario,Sim
+NTF-0009,4,2025-03-06T12:45:00,usr-07,Thalita Gregório,Abertura do chamado,"Indicador de metas zerou no relatório, ajuste solicitado.",aberto,comentario,Sim
+NTF-0028,13,2025-03-06T18:05:00,usr-05,Fellipe Yamassaki,Acompanhamento de logística,Transportadora confirmou saída do kit adicional.,em_atendimento,comentario,Sim
