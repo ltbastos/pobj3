@@ -2580,13 +2580,15 @@ function toNumber(value) {
 }
 
 // Aqui eu fujo de problemas de XSS escapando HTML sempre que crio strings manualmente.
-const escapeHTML = (value = "") => String(value).replace(/[&<>"']/g, (ch) => ({
-  "&":"&amp;",
-  "<":"&lt;",
-  ">":"&gt;",
-  '"':"&quot;",
-  "'":"&#39;"
-}[ch]));
+var escapeHTML = typeof escapeHTML === "function"
+  ? escapeHTML
+  : (value = "") => String(value).replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[ch]));
 
 // Aqui eu deixo um formatador genérico para exibir números grandes com sufixo (mil, milhão...).
 function formatNumberWithSuffix(value, { currency = false } = {}) {
