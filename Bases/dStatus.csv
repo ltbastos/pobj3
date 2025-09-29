@@ -1,0 +1,31 @@
+departamento_id,status_id,label,tone,ordem,descricao
+1,aberto,Aberto,neutral,1,Chamado registrado e aguardando triagem.
+1,aguardando,Aguardando,warning,2,Aguardando retorno de usuário ou área parceira.
+1,em_atendimento,Em atendimento,progress,3,Analista atuando na demanda.
+1,resolvido,Resolvido,success,4,Chamado finalizado com solução.
+1,cancelado,Cancelado,danger,5,Chamado encerrado pelo solicitante.
+2,aberto,Aberto,neutral,1,Chamado registrado e aguardando triagem.
+2,aguardando,Aguardando,warning,2,Aguardando retorno de usuário ou área parceira.
+2,em_atendimento,Em atendimento,progress,3,Analista atuando na demanda.
+2,resolvido,Resolvido,success,4,Chamado finalizado com solução.
+2,cancelado,Cancelado,danger,5,Chamado encerrado pelo solicitante.
+3,aberto,Aberto,neutral,1,Chamado registrado e aguardando triagem.
+3,aguardando,Aguardando,warning,2,Aguardando retorno de usuário ou área parceira.
+3,em_atendimento,Em atendimento,progress,3,Analista atuando na demanda.
+3,resolvido,Resolvido,success,4,Chamado finalizado com solução.
+3,cancelado,Cancelado,danger,5,Chamado encerrado pelo solicitante.
+4,aberto,Aberto,neutral,1,Chamado registrado e aguardando triagem.
+4,aguardando,Aguardando,warning,2,Aguardando retorno de usuário ou área parceira.
+4,em_atendimento,Em atendimento,progress,3,Analista atuando na demanda.
+4,resolvido,Resolvido,success,4,Chamado finalizado com solução.
+4,cancelado,Cancelado,danger,5,Chamado encerrado pelo solicitante.
+5,aberto,Aberto,neutral,1,Chamado registrado e aguardando triagem.
+5,aguardando,Aguardando,warning,2,Aguardando retorno de usuário ou área parceira.
+5,em_atendimento,Em atendimento,progress,3,Analista atuando na demanda.
+5,resolvido,Resolvido,success,4,Chamado finalizado com solução.
+5,cancelado,Cancelado,danger,5,Chamado encerrado pelo solicitante.
+6,aberto,Aberto,neutral,1,Chamado registrado e aguardando triagem.
+6,aguardando,Aguardando,warning,2,Aguardando retorno de usuário ou área parceira.
+6,em_atendimento,Em atendimento,progress,3,Analista atuando na demanda.
+6,resolvido,Resolvido,success,4,Chamado finalizado com solução.
+6,cancelado,Cancelado,danger,5,Chamado encerrado pelo solicitante.

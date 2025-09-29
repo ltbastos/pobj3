@@ -4,9 +4,11 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Omega • Central de chamados</title>
-  <link rel="icon" type="image/svg+xml" href="img/omega-logo.svg"/>
-  <link rel="apple-touch-icon" href="img/omega-logo.svg" sizes="180x180"/>
-  <link rel="shortcut icon" href="img/omega-logo.svg"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="img/logo-omega.png"/>
+  <link rel="icon" type="image/png" sizes="192x192" href="img/logo-omega.png"/>
+  <link rel="icon" type="image/png" sizes="512x512" href="img/logo-omega.png"/>
+  <link rel="apple-touch-icon" href="img/logo-omega.png" sizes="180x180"/>
+  <link rel="shortcut icon" href="img/logo-omega.png"/>
   <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" rel="stylesheet"/>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="style.css"/>
@@ -16,9 +18,10 @@
   <div id="omega-modal" class="omega-modal" data-omega-standalone hidden>
     <div class="omega-modal__overlay" data-omega-close></div>
     <section class="omega-modal__panel" role="dialog" aria-modal="true" aria-labelledby="omega-title">
+      <div id="omega-toast-stack" class="omega-toast-stack" aria-live="polite" aria-atomic="true"></div>
       <header class="omega-header">
         <div class="omega-header__left">
-          <img class="omega-logo" src="img/omega-logo.svg" alt="Logotipo da Omega" width="48" height="48"/>
+          <img class="omega-logo" src="img/logo-omega.png" alt="Logotipo da Omega" width="112" height="112"/>
           <div class="omega-header__titles">
             <h2 id="omega-title">Central de chamados Omega</h2>
             <p id="omega-subtitle">Registre ocorrências e acompanhe atendimentos.</p>
@@ -37,6 +40,10 @@
 
       <div class="omega-body">
         <aside class="omega-sidebar" id="omega-sidebar">
+          <button id="omega-sidebar-toggle" class="omega-sidebar__toggle" type="button" aria-label="Recolher menu" aria-pressed="false" aria-expanded="true" title="Recolher menu">
+            <span class="sr-only">Alternar menu</span>
+            <i class="ti ti-chevron-left" aria-hidden="true"></i>
+          </button>
           <section class="omega-profile" aria-label="Perfil selecionado">
             <figure class="omega-avatar" aria-hidden="true">
               <img id="omega-avatar" src="https://i.pravatar.cc/160?img=52" alt="" loading="lazy"/>
@@ -85,8 +92,8 @@
                         </label>
                         <label class="omega-field" for="omega-filter-department">
                           <span class="omega-field__label">Departamento</span>
-                          <select id="omega-filter-department" class="omega-select" multiple size="6" aria-describedby="omega-filter-department-hint"></select>
-                          <small id="omega-filter-department-hint" class="omega-hint">Selecione uma ou mais filas</small>
+                          <select id="omega-filter-department" class="omega-select" aria-describedby="omega-filter-department-hint"></select>
+                          <small id="omega-filter-department-hint" class="omega-hint">Escolha a fila desejada</small>
                         </label>
                         <label class="omega-field" for="omega-filter-type">
                           <span class="omega-field__label">Tipo de chamado</span>
@@ -99,9 +106,9 @@
                           </select>
                         </label>
                         <fieldset class="omega-field omega-filter-form__status" aria-describedby="omega-filter-status-hint">
-                          <span class="omega-field__label">Situação do chamado</span>
+                          <span class="omega-field__label">Status do chamado</span>
                           <div id="omega-filter-status" class="omega-filter-status"></div>
-                          <small id="omega-filter-status-hint" class="omega-hint">Selecione uma ou mais situações</small>
+                          <small id="omega-filter-status-hint" class="omega-hint">Selecione um ou mais status</small>
                         </fieldset>
                         <div class="omega-filter-form__dates">
                           <label class="omega-field" for="omega-filter-from">
@@ -127,7 +134,7 @@
               </div>
               <button id="omega-bulk-status" class="omega-btn omega-btn--ghost" type="button" hidden>
                 <i class="ti ti-arrows-exchange"></i>
-                <span>Alterar situação</span>
+                <span>Alterar status</span>
               </button>
               <button id="omega-new-ticket" class="omega-btn omega-btn--primary" type="button">
                 <i class="ti ti-plus"></i>
@@ -139,14 +146,14 @@
           <div id="omega-bulk-panel" class="omega-bulk-panel" role="dialog" aria-modal="false" hidden>
             <form id="omega-bulk-form" class="omega-bulk-form">
               <header class="omega-bulk-form__header">
-                <strong>Alterar situação</strong>
+                <strong>Alterar status</strong>
                 <button type="button" class="omega-icon-btn" id="omega-bulk-close" aria-label="Fechar">
                   <i class="ti ti-x"></i>
                 </button>
               </header>
-              <p id="omega-bulk-hint">Selecione os chamados desejados para aplicar a nova situação.</p>
+              <p id="omega-bulk-hint">Selecione os chamados desejados para aplicar o novo status.</p>
               <label class="omega-field" for="omega-bulk-status-select">
-                <span class="omega-field__label">Nova situação</span>
+                <span class="omega-field__label">Novo status</span>
                 <select id="omega-bulk-status-select" class="omega-select" required></select>
               </label>
               <footer class="omega-bulk-form__actions">
@@ -179,15 +186,11 @@
                     <th scope="col">Fila</th>
                     <th scope="col">Abertura</th>
                     <th scope="col">Atualização</th>
-                    <th scope="col" class="col-status">Situação</th>
+                    <th scope="col" class="col-status">Status</th>
                   </tr>
                 </thead>
                 <tbody id="omega-ticket-rows"></tbody>
               </table>
-            </div>
-            <div id="omega-empty" class="omega-empty" hidden>
-              <i class="ti ti-inbox"></i>
-              <p>Nenhum chamado encontrado para este recorte.</p>
             </div>
           </div>
         </section>
@@ -208,10 +211,10 @@
           </header>
           <div id="omega-form-feedback" class="omega-feedback" role="alert" hidden></div>
           <form id="omega-form" class="omega-form">
-            <label class="omega-field" for="omega-form-user">
-              <span class="omega-field__label">Usuário</span>
-              <input id="omega-form-user" class="omega-input" type="text" placeholder="Digite o solicitante" required/>
-            </label>
+            <div class="omega-field omega-field--static" aria-live="polite">
+              <span class="omega-field__label">Solicitante</span>
+              <div id="omega-form-requester" class="omega-field__static">—</div>
+            </div>
 
             <div class="omega-form__grid">
               <label class="omega-field" for="omega-form-department">
@@ -226,8 +229,39 @@
 
             <label class="omega-field" for="omega-form-observation">
               <span class="omega-field__label">Observação</span>
-              <textarea id="omega-form-observation" class="omega-textarea" rows="6" placeholder="Descreva a situação" required></textarea>
+              <textarea id="omega-form-observation" class="omega-textarea" rows="6" placeholder="Descreva a demanda" required></textarea>
             </label>
+
+            <section id="omega-form-flow" class="omega-form-flow" hidden>
+              <header class="omega-form-flow__header">
+                <h4>Fluxo de aprovações</h4>
+                <p>Esta transferência exige os de acordo dos gerentes listados abaixo.</p>
+              </header>
+              <div class="omega-form-flow__approvals">
+                <article class="omega-flow-approval">
+                  <div class="omega-flow-approval__icon" aria-hidden="true"><i class="ti ti-user-check"></i></div>
+                  <div class="omega-flow-approval__body">
+                    <span class="omega-flow-approval__label">Gerente da agência solicitante</span>
+                    <div id="omega-flow-requester-approver" class="omega-flow-approval__value">—</div>
+                  </div>
+                </article>
+                <article class="omega-flow-approval">
+                  <div class="omega-flow-approval__icon" aria-hidden="true"><i class="ti ti-building-bank"></i></div>
+                  <div class="omega-flow-approval__body">
+                    <span class="omega-flow-approval__label">Gerente da agência cedente</span>
+                    <label class="omega-field" for="omega-flow-target-name">
+                      <span class="omega-field__label">Nome completo</span>
+                      <input id="omega-flow-target-name" class="omega-input" type="text" placeholder="Informe o gerente responsável"/>
+                    </label>
+                    <label class="omega-field" for="omega-flow-target-email">
+                      <span class="omega-field__label">E-mail corporativo</span>
+                      <input id="omega-flow-target-email" class="omega-input" type="email" placeholder="nome.sobrenome@empresa.com"/>
+                    </label>
+                  </div>
+                </article>
+              </div>
+              <p class="omega-form-flow__hint">Após os dois de acordo, o chamado entra automaticamente na fila de Encarteiramento.</p>
+            </section>
 
             <div class="omega-field omega-field--attachments">
               <span class="omega-field__label" id="omega-form-file-label">Arquivos</span>
@@ -297,7 +331,7 @@
                   <small id="omega-ticket-opened-time">—</small>
                 </article>
                 <article class="omega-ticket-card">
-                  <span class="omega-ticket-card__label">Situação</span>
+                  <span class="omega-ticket-card__label">Status</span>
                   <strong id="omega-ticket-status">—</strong>
                   <small id="omega-ticket-updated">—</small>
                 </article>
@@ -324,7 +358,7 @@
               <form id="omega-ticket-update-form" class="omega-ticket-actions__form">
                 <div id="omega-ticket-actions-advanced" class="omega-ticket-actions__advanced" hidden>
                   <label class="omega-field" for="omega-ticket-update-status">
-                    <span class="omega-field__label">Situação</span>
+                    <span class="omega-field__label">Status</span>
                     <select id="omega-ticket-update-status" class="omega-select"></select>
                   </label>
                   <label class="omega-field" for="omega-ticket-update-priority">
@@ -334,6 +368,10 @@
                   <label class="omega-field" for="omega-ticket-update-queue">
                     <span class="omega-field__label">Fila</span>
                     <select id="omega-ticket-update-queue" class="omega-select"></select>
+                  </label>
+                  <label class="omega-field" for="omega-ticket-update-owner">
+                    <span class="omega-field__label">Analista responsável</span>
+                    <select id="omega-ticket-update-owner" class="omega-select"></select>
                   </label>
                   <label class="omega-field" for="omega-ticket-update-category">
                     <span class="omega-field__label">Tipo de chamado</span>
@@ -377,6 +415,123 @@
               </form>
             </section>
           </div>
+        </section>
+      </div>
+
+      <div id="omega-cancel-dialog" class="omega-confirm" hidden>
+        <div class="omega-confirm__overlay" data-omega-cancel-close></div>
+        <section class="omega-confirm__panel" role="dialog" aria-modal="true" aria-labelledby="omega-cancel-title">
+          <header class="omega-confirm__header">
+            <i class="ti ti-circle-x" aria-hidden="true"></i>
+            <div>
+              <h3 id="omega-cancel-title">Cancelar chamado</h3>
+              <p>Revise as informações antes de confirmar o cancelamento.</p>
+            </div>
+          </header>
+          <div class="omega-confirm__body">
+            <div class="omega-confirm__ticket">
+              <span>Chamado</span>
+              <strong id="omega-cancel-ticket-id">—</strong>
+              <small id="omega-cancel-ticket-subject">—</small>
+            </div>
+            <dl class="omega-confirm__meta">
+              <div>
+                <dt>Status atual</dt>
+                <dd id="omega-cancel-ticket-status">—</dd>
+              </div>
+              <div>
+                <dt>Solicitante</dt>
+                <dd id="omega-cancel-ticket-requester">—</dd>
+              </div>
+            </dl>
+            <p id="omega-cancel-message" class="omega-confirm__message">Tem certeza de que deseja cancelar este chamado?</p>
+          </div>
+          <footer class="omega-confirm__actions">
+            <button type="button" class="omega-btn omega-btn--ghost" data-omega-cancel-dismiss>Manter chamado</button>
+            <button type="button" class="omega-btn omega-btn--danger" data-omega-cancel-confirm>
+              <i class="ti ti-circle-x"></i>
+              <span>Cancelar chamado</span>
+            </button>
+          </footer>
+        </section>
+      </div>
+
+      <div id="omega-manage-analyst" class="omega-manage-modal" hidden>
+        <div class="omega-manage-modal__overlay" data-omega-manage-analyst-close></div>
+        <section class="omega-manage-modal__panel" role="dialog" aria-modal="true" aria-labelledby="omega-manage-analyst-title">
+          <header class="omega-manage-modal__header">
+            <div>
+              <h3 id="omega-manage-analyst-title">Editar analistas</h3>
+              <p>Atualize as filas atendidas pelos analistas da sua equipe.</p>
+            </div>
+            <button type="button" class="omega-icon-btn" data-omega-manage-analyst-close aria-label="Fechar edição de analistas">
+              <i class="ti ti-x"></i>
+            </button>
+          </header>
+          <form id="omega-manage-analyst-form" class="omega-manage-modal__form">
+            <label class="omega-field" for="omega-manage-analyst-select">
+              <span class="omega-field__label">Analista</span>
+              <select id="omega-manage-analyst-select" class="omega-select"></select>
+            </label>
+            <fieldset class="omega-field" aria-describedby="omega-manage-analyst-hint">
+              <legend class="omega-field__label">Filas atendidas</legend>
+              <div id="omega-manage-analyst-queues" class="omega-manage-list"></div>
+              <small id="omega-manage-analyst-hint" class="omega-hint">Marque as filas que o analista deverá acompanhar.</small>
+            </fieldset>
+            <footer class="omega-manage-modal__actions">
+              <button type="button" class="omega-btn" data-omega-manage-analyst-close>Cancelar</button>
+              <button type="submit" class="omega-btn omega-btn--primary">
+                <i class="ti ti-device-floppy"></i>
+                <span>Salvar alterações</span>
+              </button>
+            </footer>
+          </form>
+          <div id="omega-manage-analyst-empty" class="omega-manage-modal__empty" hidden></div>
+        </section>
+      </div>
+
+      <div id="omega-manage-status" class="omega-manage-modal" hidden>
+        <div class="omega-manage-modal__overlay" data-omega-manage-status-close></div>
+        <section class="omega-manage-modal__panel" role="dialog" aria-modal="true" aria-labelledby="omega-manage-status-title">
+          <header class="omega-manage-modal__header">
+            <div>
+              <h3 id="omega-manage-status-title">Editar status</h3>
+              <p>Personalize os status disponíveis para as filas selecionadas.</p>
+            </div>
+            <button type="button" class="omega-icon-btn" data-omega-manage-status-close aria-label="Fechar edição de status">
+              <i class="ti ti-x"></i>
+            </button>
+          </header>
+          <form id="omega-manage-status-form" class="omega-manage-modal__form">
+            <label class="omega-field" for="omega-manage-status-department">
+              <span class="omega-field__label">Fila</span>
+              <select id="omega-manage-status-department" class="omega-select"></select>
+            </label>
+            <label class="omega-field" for="omega-manage-status-select">
+              <span class="omega-field__label">Status</span>
+              <select id="omega-manage-status-select" class="omega-select"></select>
+            </label>
+            <label class="omega-field" for="omega-manage-status-label">
+              <span class="omega-field__label">Título</span>
+              <input id="omega-manage-status-label" class="omega-input" type="text" placeholder="Nome do status"/>
+            </label>
+            <label class="omega-field" for="omega-manage-status-tone">
+              <span class="omega-field__label">Tom</span>
+              <select id="omega-manage-status-tone" class="omega-select"></select>
+            </label>
+            <label class="omega-field" for="omega-manage-status-description">
+              <span class="omega-field__label">Descrição</span>
+              <textarea id="omega-manage-status-description" class="omega-textarea" rows="3" placeholder="Quando esse status deve ser utilizado?"></textarea>
+            </label>
+            <footer class="omega-manage-modal__actions">
+              <button type="button" class="omega-btn" data-omega-manage-status-close>Cancelar</button>
+              <button type="submit" class="omega-btn omega-btn--primary">
+                <i class="ti ti-device-floppy"></i>
+                <span>Salvar alterações</span>
+              </button>
+            </footer>
+          </form>
+          <div id="omega-manage-status-empty" class="omega-manage-modal__empty" hidden></div>
         </section>
       </div>
     </section>

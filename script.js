@@ -8924,6 +8924,10 @@ function openDetailTicket(node = {}, trail = []){
     levelKey: node?.levelKey || "",
     lineage: Array.isArray(node?.lineage) ? node.lineage.map(entry => ({ ...entry })) : [],
   };
+  detail.openDrawer = true;
+  detail.intent = "new-ticket";
+  detail.preferredQueue = "POBJ";
+  detail.queue = "POBJ";
   let handled = false;
   try {
     const event = new CustomEvent("detail:open-ticket", { detail, cancelable: true });
