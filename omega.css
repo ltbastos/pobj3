@@ -322,6 +322,7 @@ body.has-omega-open{ overflow:hidden; }
 .omega-field{ display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--text); }
 .omega-field__label{ font-weight:700; text-transform:uppercase; font-size:11px; letter-spacing:.08em; color:#6b7280; }
 .omega-form-flow{ display:flex; flex-direction:column; gap:16px; padding:18px 20px; border-radius:20px; background:linear-gradient(135deg, rgba(231,236,251,.65), rgba(208,219,255,.4)); box-shadow:inset 0 0 0 1px rgba(71,85,105,.08); }
+.omega-form-flow[hidden]{ display:none !important; }
 .omega-form-flow__header{ display:flex; flex-direction:column; gap:4px; }
 .omega-form-flow__header h4{ margin:0; font-size:18px; font-weight:800; color:#1f2a44; }
 .omega-form-flow__header p{ margin:0; font-size:13px; color:#475569; }

@@ -3528,50 +3528,49 @@ function renderFormFlowExtras(context){
   if (!container) return;
   const flow = getFormFlowState();
   const typeSelect = scope?.querySelector?.('#omega-form-type') || document.getElementById('omega-form-type');
-  const hasTypeSelect = !!typeSelect;
-  const typeValue = hasTypeSelect ? typeSelect.value || '' : flow.typeValue || '';
-  const typeLabel = hasTypeSelect
-    ? typeValue
-      ? typeSelect?.selectedOptions?.[0]?.textContent?.trim() || typeValue
-      : ''
-    : flow.type || flow.typeValue || '';
-  flow.type = typeLabel;
-  flow.typeValue = typeValue;
-  const normalizedType = normalizePlain(typeLabel || typeValue);
-  const shouldShow = normalizedType === normalizePlain(OMEGA_TRANSFER_EMPRESAS_LABEL);
+  const currentTypeValue = typeSelect?.value || flow.typeValue || '';
+  const currentTypeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim()
+    || flow.type
+    || currentTypeValue;
+  const normalizedType = normalizePlain(currentTypeLabel || currentTypeValue);
+  const normalizedTransfer = normalizePlain(OMEGA_TRANSFER_EMPRESAS_LABEL);
+  const shouldShow = normalizedType === normalizedTransfer;
   container.hidden = !shouldShow;
   container.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
-  if (!shouldShow) {
-    flow.type = '';
-    flow.typeValue = '';
-    flow.targetManagerName = '';
-    flow.targetManagerEmail = '';
-    flow.requesterManagerName = '';
-    flow.requesterManagerEmail = '';
-  }
+
   const targetNameInput = container.querySelector('#omega-flow-target-name');
   const targetEmailInput = container.querySelector('#omega-flow-target-email');
   const requesterNameInput = container.querySelector('#omega-flow-requester-name');
   const requesterEmailInput = container.querySelector('#omega-flow-requester-email');
+
+  if (!shouldShow) {
+    resetFormFlowState();
+    [targetNameInput, targetEmailInput, requesterNameInput, requesterEmailInput].forEach((input) => {
+      if (!input) return;
+      input.required = false;
+      input.value = '';
+    });
+    return;
+  }
+
+  flow.type = currentTypeLabel;
+  flow.typeValue = currentTypeValue;
+
   if (targetNameInput) {
-    targetNameInput.required = shouldShow;
-    if (shouldShow) targetNameInput.value = flow.targetManagerName || '';
-    else targetNameInput.value = '';
+    targetNameInput.required = true;
+    targetNameInput.value = flow.targetManagerName || '';
   }
   if (targetEmailInput) {
-    targetEmailInput.required = shouldShow;
-    if (shouldShow) targetEmailInput.value = flow.targetManagerEmail || '';
-    else targetEmailInput.value = '';
+    targetEmailInput.required = true;
+    targetEmailInput.value = flow.targetManagerEmail || '';
   }
   if (requesterNameInput) {
-    requesterNameInput.required = shouldShow;
-    if (shouldShow) requesterNameInput.value = flow.requesterManagerName || '';
-    else requesterNameInput.value = '';
+    requesterNameInput.required = true;
+    requesterNameInput.value = flow.requesterManagerName || '';
   }
   if (requesterEmailInput) {
-    requesterEmailInput.required = shouldShow;
-    if (shouldShow) requesterEmailInput.value = flow.requesterManagerEmail || '';
-    else requesterEmailInput.value = '';
+    requesterEmailInput.required = true;
+    requesterEmailInput.value = flow.requesterManagerEmail || '';
   }
 }
 
