@@ -83,7 +83,6 @@ const OMEGA_STATUS_TONE_LABELS = {
 const OMEGA_STRUCTURE_SOURCE = "Bases/dEstruturaChamados.csv";
 
 const OMEGA_TRANSFER_EMPRESAS_LABEL = "Transferência - Empresas para Empresas";
-const OMEGA_TRANSFER_EMPRESAS_DEPARTMENT = "POBJ";
 
 const OMEGA_QUEUE_FIELD_MAP = {
   Encarteiramento: "encarteiramento",
@@ -253,8 +252,6 @@ const omegaState = {
   ticketsPerPage: 15,
   formAttachments: [],
   formFlow: {
-    department: "",
-    departmentValue: "",
     type: "",
     typeValue: "",
     targetManagerName: "",
@@ -3498,8 +3495,6 @@ function getTicketTypesForDepartment(department){
 function getFormFlowState(){
   if (!omegaState.formFlow || typeof omegaState.formFlow !== 'object') {
     omegaState.formFlow = {
-      department: '',
-      departmentValue: '',
       type: '',
       typeValue: '',
       targetManagerName: '',
@@ -3511,10 +3506,8 @@ function getFormFlowState(){
   return omegaState.formFlow;
 }
 
-function resetFormFlowState({ department = '', departmentValue = '', type = '', typeValue = '' } = {}){
+function resetFormFlowState({ type = '', typeValue = '' } = {}){
   const flow = getFormFlowState();
-  flow.department = department;
-  flow.departmentValue = departmentValue || department;
   flow.type = type;
   flow.typeValue = typeValue || type;
   flow.targetManagerName = '';
@@ -3534,23 +3527,15 @@ function renderFormFlowExtras(context){
   const container = scope?.querySelector?.('#omega-form-flow') || document.getElementById('omega-form-flow');
   if (!container) return;
   const flow = getFormFlowState();
-  const departmentSelect = scope?.querySelector?.('#omega-form-department') || document.getElementById('omega-form-department');
   const typeSelect = scope?.querySelector?.('#omega-form-type') || document.getElementById('omega-form-type');
-  const departmentValue = departmentSelect?.value || flow.departmentValue || '';
   const typeValue = typeSelect?.value || flow.typeValue || '';
-  const departmentLabel = departmentValue
-    ? departmentSelect?.selectedOptions?.[0]?.textContent?.trim() || departmentValue
-    : '';
   const typeLabel = typeValue
     ? typeSelect?.selectedOptions?.[0]?.textContent?.trim() || typeValue
     : '';
-  flow.department = departmentLabel;
-  flow.departmentValue = departmentValue;
   flow.type = typeLabel;
   flow.typeValue = typeValue;
-  const normalizedDepartment = normalizePlain(departmentLabel || departmentValue);
-  const shouldShow = normalizedDepartment === normalizePlain(OMEGA_TRANSFER_EMPRESAS_DEPARTMENT)
-    && (typeValue ? isTransferEmpresasFlow({ type: typeValue }) : false);
+  const normalizedType = normalizePlain(typeLabel || typeValue);
+  const shouldShow = normalizedType === normalizePlain(OMEGA_TRANSFER_EMPRESAS_LABEL);
   container.hidden = !shouldShow;
   container.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
   if (!shouldShow) {
@@ -4315,8 +4300,6 @@ function prefillTicketForm(root){
     ? typeSelect?.selectedOptions?.[0]?.textContent?.trim() || currentType
     : '';
   resetFormFlowState({
-    department: currentDepartmentLabel,
-    departmentValue: currentDepartment,
     type: currentTypeLabel,
     typeValue: currentType,
   });
