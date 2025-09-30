@@ -3528,10 +3528,13 @@ function renderFormFlowExtras(context){
   if (!container) return;
   const flow = getFormFlowState();
   const typeSelect = scope?.querySelector?.('#omega-form-type') || document.getElementById('omega-form-type');
-  const typeValue = typeSelect?.value || flow.typeValue || '';
-  const typeLabel = typeValue
-    ? typeSelect?.selectedOptions?.[0]?.textContent?.trim() || typeValue
-    : '';
+  const hasTypeSelect = !!typeSelect;
+  const typeValue = hasTypeSelect ? typeSelect.value || '' : flow.typeValue || '';
+  const typeLabel = hasTypeSelect
+    ? typeValue
+      ? typeSelect?.selectedOptions?.[0]?.textContent?.trim() || typeValue
+      : ''
+    : flow.type || flow.typeValue || '';
   flow.type = typeLabel;
   flow.typeValue = typeValue;
   const normalizedType = normalizePlain(typeLabel || typeValue);
@@ -3539,6 +3542,8 @@ function renderFormFlowExtras(context){
   container.hidden = !shouldShow;
   container.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
   if (!shouldShow) {
+    flow.type = '';
+    flow.typeValue = '';
     flow.targetManagerName = '';
     flow.targetManagerEmail = '';
     flow.requesterManagerName = '';
