@@ -53,6 +53,7 @@ const SUFFIX_RULES = [
   { value: 1_000_000,         singular: "milhão",  plural: "milhões" },
   { value: 1_000,             singular: "mil",     plural: "mil" }
 ];
+const RESUMO_MODE_STORAGE_KEY = "pobj.resumoMode";
 // Aqui eu deixo uma lista padrão de motivos para simulação de cancelamento quando a base não traz o detalhe.
 const MOTIVOS_CANCELAMENTO = [
   "Solicitação do cliente",
@@ -3146,7 +3147,9 @@ const state = {
   _rankingRaw:[],
   facts:{ dados:[], campanhas:[], variavel:[], historico:[] },
   dashboard:{ sections:[], summary:{} },
+  dashboardVisibleSections:[],
   activeView:"cards",
+  resumoMode: readLocalStorageItem(RESUMO_MODE_STORAGE_KEY) === "legacy" ? "legacy" : "cards",
   tableView:"diretoria",
   tableRendered:false,
   isAnimating:false,
@@ -5835,6 +5838,7 @@ function bindEvents() {
   });
 
   ensureExtraTabs();
+  setupResumoModeToggle();
 
   $$(".tab").forEach(t => {
     t.addEventListener("click", () => {
@@ -6312,6 +6316,46 @@ function renderResumoKPI(summary, context = {}) {
   triggerBarAnimation(kpi.querySelectorAll('.hitbar'), shouldAnimateResumo);
   if (resumoAnim) resumoAnim.kpiKey = nextResumoKey;
 }
+
+function applyResumoMode(mode = "cards") {
+  const normalized = mode === "legacy" ? "legacy" : "cards";
+  const cardsView = $("#resumo-cards");
+  const legacyView = $("#resumo-legacy");
+  if (cardsView) cardsView.classList.toggle("hidden", normalized !== "cards");
+  if (legacyView) legacyView.classList.toggle("hidden", normalized !== "legacy");
+
+  const toggle = $("#resumo-mode-toggle");
+  if (toggle) {
+    toggle.querySelectorAll(".seg-btn").forEach(btn => {
+      const btnMode = btn.dataset.mode === "legacy" ? "legacy" : "cards";
+      const isActive = btnMode === normalized;
+      btn.classList.toggle("is-active", isActive);
+      btn.setAttribute("aria-pressed", String(isActive));
+    });
+  }
+}
+
+function setResumoMode(mode, { persist = true } = {}) {
+  const normalized = mode === "legacy" ? "legacy" : "cards";
+  if (state.resumoMode !== normalized) {
+    state.resumoMode = normalized;
+    if (persist) writeLocalStorageItem(RESUMO_MODE_STORAGE_KEY, normalized);
+  }
+  applyResumoMode(normalized);
+}
+
+function setupResumoModeToggle() {
+  const container = $("#resumo-mode-toggle");
+  if (!container || container.dataset.bound) return;
+  container.dataset.bound = "1";
+  container.querySelectorAll(".seg-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const mode = btn.dataset.mode === "legacy" ? "legacy" : "cards";
+      setResumoMode(mode);
+    });
+  });
+  applyResumoMode(state.resumoMode || "cards");
+}
 /* ===== Aqui eu cuido do tooltip dos cards para explicar cada indicador ===== */
 function buildCardTooltipHTML(item) {
   const { total: diasTotais, elapsed: diasDecorridos, remaining: diasRestantes } = getCurrentMonthBusinessSnapshot();
@@ -6620,6 +6664,8 @@ function renderFamilias(sections, summary){
   const prevVarRatios = resumoAnim?.varRatios instanceof Map ? resumoAnim.varRatios : new Map();
   const nextVarRatios = new Map();
 
+  const visibleSections = [];
+
   const status = getStatusFilter();
   const secaoFilterId = $("#f-secao")?.value || "Todas";
   const familiaFilterId = $("#f-familia")?.value || "Todas";
@@ -6668,6 +6714,23 @@ function renderFamilias(sections, summary){
     const sectionPointsTotalDisp = formatPoints(sectionTotalPoints);
     const sectionPointsHitFull = formatPoints(sectionPointsHit, { withUnit: true });
     const sectionPointsTotalFull = formatPoints(sectionTotalPoints, { withUnit: true });
+
+    const sectionMetaTotal = itemsFiltered.reduce((acc, item) => acc + (Number(item.meta) || 0), 0);
+    const sectionRealizadoTotal = itemsFiltered.reduce((acc, item) => acc + (Number(item.realizado) || 0), 0);
+    const sectionAtingPct = sectionMetaTotal ? (sectionRealizadoTotal / sectionMetaTotal) * 100 : 0;
+
+    visibleSections.push({
+      id: sec.id,
+      label: sec.label,
+      items: itemsFiltered,
+      totals: {
+        pontosTotal: sectionTotalPoints,
+        pontosHit: sectionPointsHit,
+        metaTotal: sectionMetaTotal,
+        realizadoTotal: sectionRealizadoTotal,
+        atingPct: sectionAtingPct
+      }
+    });
 
     const sectionEl = document.createElement("section");
     sectionEl.className = "fam-section";
@@ -6796,6 +6859,11 @@ function renderFamilias(sections, summary){
     visibleVarMeta: hasVisibleVar ? varMetaVisiveis : null
   });
 
+  state.dashboardVisibleSections = visibleSections;
+  renderResumoLegacyTable(visibleSections, summary);
+
+  applyResumoMode(state.resumoMode || "cards");
+
   $$(".prod-card").forEach(card=>{
     const tip = card.querySelector(".kpi-tip");
     const badge = card.querySelector(".badge");
@@ -6841,6 +6909,154 @@ function renderFamilias(sections, summary){
       renderAppliedFilters();
     });
   });
+}
+
+function renderResumoLegacyTable(sections = [], summary = {}) {
+  const host = $("#resumo-legacy");
+  if (!host) return;
+
+  host.innerHTML = "";
+
+  if (!Array.isArray(sections) || !sections.length) {
+    host.innerHTML = `<div class="resumo-legacy__empty">Nenhum indicador encontrado para os filtros selecionados.</div>`;
+    return;
+  }
+
+  const metricInfo = {
+    valor: { label: "Valor", title: "Indicador financeiro" },
+    qtd:   { label: "Quantidade", title: "Indicador por quantidade" },
+    perc:  { label: "Percentual", title: "Indicador percentual" }
+  };
+
+  sections.forEach(section => {
+    const items = Array.isArray(section.items) ? section.items : [];
+    if (!items.length) return;
+
+    const totals = section.totals || {};
+    const pontosTotal = Number(totals.pontosTotal) || items.reduce((acc, item) => acc + (Number(item.pontosMeta ?? item.peso) || 0), 0);
+    const pontosHit = Number(totals.pontosHit) || items.reduce((acc, item) => acc + Math.min(Number(item.pontos ?? 0) || 0, Number(item.pontosMeta ?? item.peso) || 0), 0);
+    const metaTotal = Number(totals.metaTotal) || items.reduce((acc, item) => acc + (Number(item.meta) || 0), 0);
+    const realizadoTotal = Number(totals.realizadoTotal) || items.reduce((acc, item) => acc + (Number(item.realizado) || 0), 0);
+
+    const atingPctBase = Number.isFinite(totals.atingPct) ? totals.atingPct : (metaTotal ? (realizadoTotal / metaTotal) * 100 : 0);
+    const hasMeta = metaTotal > 0;
+    const atingSectionClamped = hasMeta ? Math.max(0, Math.min(200, atingPctBase)) : 0;
+    const atingSectionLabel = hasMeta ? `${atingSectionClamped.toFixed(1)}%` : "—";
+
+    const uniqueMetrics = new Set(items.map(item => item.metric));
+    const singleMetric = uniqueMetrics.size === 1 ? (uniqueMetrics.values().next().value || "") : "";
+    const normalizedMetric = typeof singleMetric === "string" ? singleMetric.toLowerCase() : "";
+    const canAggregateMetric = normalizedMetric === "valor" || normalizedMetric === "qtd";
+    const aggregatedLabel = normalizedMetric === "qtd" ? "Quantidade" : "Negócios";
+    const aggregatedValue = canAggregateMetric ? formatMetricFull(normalizedMetric, realizadoTotal) : "";
+
+    const sectionEl = document.createElement("section");
+    sectionEl.className = "resumo-legacy__section card card--legacy";
+    const safeLabel = escapeHTML(section.label || "Indicadores");
+    const chipPointsTitle = `Pontos: ${formatPoints(pontosHit, { withUnit: true })} / ${formatPoints(pontosTotal, { withUnit: true })}`;
+    const pontosHitLabel = escapeHTML(fmtONE.format(pontosHit || 0));
+    const pontosTotalLabel = escapeHTML(fmtONE.format(pontosTotal || 0));
+
+    const statsPieces = [
+      `<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">Peso total</span><strong class=\"resumo-legacy__stat-value\">${escapeHTML(fmtONE.format(pontosTotal || 0))}</strong></div>`
+    ];
+    if (canAggregateMetric) {
+      statsPieces.push(`<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">${aggregatedLabel}</span><strong class=\"resumo-legacy__stat-value\">${escapeHTML(aggregatedValue)}</strong></div>`);
+    }
+    statsPieces.push(`<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">Atingimento médio</span><strong class=\"resumo-legacy__stat-value\">${atingSectionLabel}</strong></div>`);
+
+    sectionEl.innerHTML = `
+      <header class="resumo-legacy__head">
+        <div class="resumo-legacy__heading">
+          <span class="resumo-legacy__name">${safeLabel}</span>
+          <div class="resumo-legacy__chips">
+            <span class="resumo-legacy__chip"><i class="ti ti-box-multiple" aria-hidden="true"></i>${escapeHTML(fmtINT.format(items.length))} indicadores</span>
+            <span class="resumo-legacy__chip" title="${escapeHTML(chipPointsTitle)}">Pontos ${pontosHitLabel} / ${pontosTotalLabel}</span>
+          </div>
+        </div>
+        <div class="resumo-legacy__stats">
+          ${statsPieces.join("")}
+        </div>
+      </header>
+      <div class="resumo-legacy__table-wrapper">
+        <table class="resumo-legacy__table">
+          <thead>
+            <tr>
+              <th scope="col">Produto</th>
+              <th scope="col">Peso</th>
+              <th scope="col">Métrica</th>
+              <th scope="col">Meta</th>
+              <th scope="col">Negócios</th>
+              <th scope="col">Ating.</th>
+              <th scope="col">Atualização</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    `;
+
+    const tbody = sectionEl.querySelector("tbody");
+    if (!tbody) return;
+
+    items.forEach(item => {
+      const pesoValor = Number(item.pontosMeta ?? item.peso ?? 0);
+      const pesoLabel = escapeHTML(fmtONE.format(pesoValor || 0));
+      const metricKeyRaw = typeof item.metric === "string" ? item.metric.toLowerCase() : "";
+      const metricMeta = metricInfo[metricKeyRaw] || { label: item.metric || "—", title: "Métrica do indicador" };
+      const metricClasses = ["resumo-legacy__metric"];
+      if (metricKeyRaw === "valor" || metricKeyRaw === "qtd" || metricKeyRaw === "perc") {
+        metricClasses.push(`resumo-legacy__metric--${metricKeyRaw}`);
+      }
+      const metricLabel = escapeHTML(metricMeta.label || "—");
+      const metricTitle = escapeHTML(metricMeta.title || "Métrica do indicador");
+
+      const metaFull = formatMetricFull(item.metric, item.meta);
+      const realizadoFull = formatMetricFull(item.metric, item.realizado);
+      const metaCell = escapeHTML(metaFull);
+      const realizadoCell = escapeHTML(realizadoFull);
+
+      const atingPct = Math.max(0, Math.min(200, toNumber(item.ating) * 100));
+      const atingFill = Math.max(0, Math.min(1, atingPct / 100));
+      const atingLabel = `${atingPct.toFixed(1)}%`;
+      const atingMeterClass = atingPct >= 100 ? "is-ok" : (atingPct >= 50 ? "is-warn" : "is-low");
+
+      const familiaLabel = item.familiaLabel && item.familiaLabel !== section.label ? escapeHTML(item.familiaLabel) : "";
+      const familiaHtml = familiaLabel ? `<span class=\"resumo-legacy__prod-meta\">Família: ${familiaLabel}</span>` : "";
+      const updateLabel = item.ultimaAtualizacao ? escapeHTML(item.ultimaAtualizacao) : "—";
+
+      tbody.insertAdjacentHTML("beforeend", `
+        <tr>
+          <th scope="row">
+            <div class="resumo-legacy__prod">
+              <span class="resumo-legacy__prod-name" title="${escapeHTML(item.nome || "")}">${escapeHTML(item.nome || "—")}</span>
+              ${familiaHtml}
+            </div>
+          </th>
+          <td class="resumo-legacy__col--peso" title="Peso do indicador">${pesoLabel}</td>
+          <td>
+            <span class="${metricClasses.join(" ")}" title="${metricTitle}">${metricLabel}</span>
+          </td>
+          <td class="resumo-legacy__col--meta" title="${metaCell}">${metaCell}</td>
+          <td class="resumo-legacy__col--real" title="${realizadoCell}">${realizadoCell}</td>
+          <td class="resumo-legacy__col--ating">
+            <div class="resumo-legacy__ating" title="Atingimento">
+              <div class="resumo-legacy__ating-meter ${atingMeterClass}" style="--fill:${atingFill.toFixed(4)};" role="progressbar" aria-valuemin="0" aria-valuemax="200" aria-valuenow="${atingPct.toFixed(1)}" aria-valuetext="${atingLabel}">
+                <span class="resumo-legacy__ating-value">${atingLabel}</span>
+              </div>
+            </div>
+          </td>
+          <td class="resumo-legacy__col--update">${updateLabel}</td>
+        </tr>
+      `);
+    });
+
+    host.appendChild(sectionEl);
+  });
+
+  if (!host.children.length) {
+    host.innerHTML = `<div class="resumo-legacy__empty">Nenhum indicador encontrado para os filtros selecionados.</div>`;
+  }
 }
 /* ===== Aqui eu preparo comportamentos extras das abas quando surgirem novas ===== */
 function ensureExtraTabs(){

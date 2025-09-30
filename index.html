@@ -207,9 +207,22 @@
       </div>
     </section>
 
-    <!-- Aqui eu apresento a visão de resumo só com cards -->
+    <!-- Aqui eu apresento a visão de resumo com opção de cards ou tabela clássica -->
     <section id="view-cards">
-      <div id="grid-familias" class="cards-grid"></div>
+      <div class="resumo-mode">
+        <div class="resumo-mode__toggle" id="resumo-mode-toggle" role="group" aria-label="Alterar visão do resumo">
+          <div class="segmented">
+            <button type="button" class="seg-btn is-active" data-mode="cards" aria-pressed="true">Visão por cards</button>
+            <button type="button" class="seg-btn" data-mode="legacy" aria-pressed="false">Visão clássica</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="resumo-cards" class="resumo-mode__view">
+        <div id="grid-familias" class="cards-grid"></div>
+      </div>
+
+      <div id="resumo-legacy" class="resumo-mode__view hidden" aria-live="polite"></div>
     </section>
 
     <!-- Aqui eu apresento a visão de detalhamento com a tabela em árvore -->
