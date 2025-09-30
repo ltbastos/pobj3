@@ -6558,12 +6558,41 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
       agg.aliases.add(texto);
       registrarAliasIndicador(agg.id, texto);
     });
-    const subprodutoTexto = limparTexto(row.subproduto || row.subProduto || "");
+    const subprodutoOriginal = row.subproduto || row.subProduto || "";
+    const subprodutoTexto = limparTexto(subprodutoOriginal);
     if (subprodutoTexto) {
       if (!agg.subProdutos) agg.subProdutos = new Set();
       agg.subProdutos.add(subprodutoTexto);
       registrarAliasIndicador(agg.id, subprodutoTexto);
       SUBPRODUTO_TO_INDICADOR.set(simplificarTexto(subprodutoTexto), agg.id);
+      if (!agg.children) agg.children = new Map();
+      const childKey = simplificarTexto(subprodutoTexto) || subprodutoTexto.toLowerCase();
+      let child = agg.children.get(childKey);
+      if (!child) {
+        child = {
+          id: childKey || subprodutoTexto,
+          label: limparTexto(subprodutoOriginal) || subprodutoTexto,
+          metric: typeof row.metric === "string" ? row.metric.toLowerCase() : (typeof agg.metric === "string" ? agg.metric.toLowerCase() : "valor"),
+          meta: 0,
+          realizado: 0,
+          variavelMeta: 0,
+          variavelReal: 0,
+          peso: 0,
+          pontos: 0,
+          ultimaAtualizacao: ""
+        };
+        agg.children.set(childKey, child);
+      }
+      if (!child.metric && row.metric) child.metric = String(row.metric).toLowerCase();
+      child.meta += metaValor;
+      child.realizado += realizadoValor;
+      child.variavelMeta += Number(row.variavelMeta) || 0;
+      child.variavelReal += Number(row.variavelReal) || 0;
+      child.peso += pesoLinha;
+      child.pontos += Number(row.pontos) || 0;
+      if (row.data && row.data > child.ultimaAtualizacao) {
+        child.ultimaAtualizacao = row.data;
+      }
     }
   });
 
@@ -6605,6 +6634,20 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
       cardBase.prodOrSub = agg.produtoNome || agg.nome || agg.id;
       if (agg.aliases) cardBase.aliases = Array.from(agg.aliases);
       if (agg.subProdutos) cardBase.subProdutos = Array.from(agg.subProdutos);
+      if (agg.children && agg.children.size) {
+        cardBase.children = Array.from(agg.children.values()).map(child => ({
+          id: child.id,
+          label: child.label,
+          metric: child.metric || agg.metric,
+          meta: child.meta,
+          realizado: child.realizado,
+          variavelMeta: child.variavelMeta,
+          variavelReal: child.variavelReal,
+          peso: child.peso,
+          pontos: child.pontos,
+          ultimaAtualizacao: child.ultimaAtualizacao
+        }));
+      }
       return cardBase;
     }).filter(Boolean);
     if (items.length) {
@@ -6947,23 +6990,23 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
     const singleMetric = uniqueMetrics.size === 1 ? (uniqueMetrics.values().next().value || "") : "";
     const normalizedMetric = typeof singleMetric === "string" ? singleMetric.toLowerCase() : "";
     const canAggregateMetric = normalizedMetric === "valor" || normalizedMetric === "qtd";
-    const aggregatedLabel = normalizedMetric === "qtd" ? "Quantidade" : "Negócios";
+    const aggregatedLabel = normalizedMetric === "qtd" ? "Quantidade" : (normalizedMetric === "valor" ? "Realizado" : "");
     const aggregatedValue = canAggregateMetric ? formatMetricFull(normalizedMetric, realizadoTotal) : "";
 
     const sectionEl = document.createElement("section");
     sectionEl.className = "resumo-legacy__section card card--legacy";
     const safeLabel = escapeHTML(section.label || "Indicadores");
     const chipPointsTitle = `Pontos: ${formatPoints(pontosHit, { withUnit: true })} / ${formatPoints(pontosTotal, { withUnit: true })}`;
-    const pontosHitLabel = escapeHTML(fmtONE.format(pontosHit || 0));
-    const pontosTotalLabel = escapeHTML(fmtONE.format(pontosTotal || 0));
+    const pontosHitLabel = escapeHTML(fmtINT.format(Math.round(pontosHit || 0)));
+    const pontosTotalLabel = escapeHTML(fmtINT.format(Math.round(pontosTotal || 0)));
 
     const statsPieces = [
-      `<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">Peso total</span><strong class=\"resumo-legacy__stat-value\">${escapeHTML(fmtONE.format(pontosTotal || 0))}</strong></div>`
+      `<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">Peso total</span><strong class=\"resumo-legacy__stat-value\">${escapeHTML(fmtINT.format(Math.round(pontosTotal || 0)))}</strong></div>`
     ];
-    if (canAggregateMetric) {
+    if (canAggregateMetric && aggregatedLabel) {
       statsPieces.push(`<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">${aggregatedLabel}</span><strong class=\"resumo-legacy__stat-value\">${escapeHTML(aggregatedValue)}</strong></div>`);
     }
-    statsPieces.push(`<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">Atingimento médio</span><strong class=\"resumo-legacy__stat-value\">${atingSectionLabel}</strong></div>`);
+    statsPieces.push(`<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">Atingimento</span><strong class=\"resumo-legacy__stat-value\">${atingSectionLabel}</strong></div>`);
 
     sectionEl.innerHTML = `
       <header class="resumo-legacy__head">
@@ -6983,12 +7026,12 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
           <thead>
             <tr>
               <th scope="col">Produto</th>
-              <th scope="col">Peso</th>
+              <th scope="col" class="resumo-legacy__col--peso">Peso</th>
               <th scope="col">Métrica</th>
-              <th scope="col">Meta</th>
-              <th scope="col">Negócios</th>
-              <th scope="col">Ating.</th>
-              <th scope="col">Atualização</th>
+              <th scope="col" class="resumo-legacy__col--meta">Meta</th>
+              <th scope="col" class="resumo-legacy__col--real">Realizado</th>
+              <th scope="col" class="resumo-legacy__col--ating">Ating.</th>
+              <th scope="col" class="resumo-legacy__col--update">Atualização</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -6999,9 +7042,11 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
     const tbody = sectionEl.querySelector("tbody");
     if (!tbody) return;
 
+    let rowAutoId = 0;
+
     items.forEach(item => {
       const pesoValor = Number(item.pontosMeta ?? item.peso ?? 0);
-      const pesoLabel = escapeHTML(fmtONE.format(pesoValor || 0));
+      const pesoLabel = escapeHTML(fmtINT.format(Math.round(pesoValor || 0)));
       const metricKeyRaw = typeof item.metric === "string" ? item.metric.toLowerCase() : "";
       const metricMeta = metricInfo[metricKeyRaw] || { label: item.metric || "—", title: "Métrica do indicador" };
       const metricClasses = ["resumo-legacy__metric"];
@@ -7021,17 +7066,65 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
       const atingLabel = `${atingPct.toFixed(1)}%`;
       const atingMeterClass = atingPct >= 100 ? "is-ok" : (atingPct >= 50 ? "is-warn" : "is-low");
 
-      const familiaLabel = item.familiaLabel && item.familiaLabel !== section.label ? escapeHTML(item.familiaLabel) : "";
-      const familiaHtml = familiaLabel ? `<span class=\"resumo-legacy__prod-meta\">Família: ${familiaLabel}</span>` : "";
       const updateLabel = item.ultimaAtualizacao ? escapeHTML(item.ultimaAtualizacao) : "—";
+      const hasChildren = Array.isArray(item.children) && item.children.length > 0;
+      const rowId = `legacy-${section.id || "sec"}-${rowAutoId++}`;
+
+      const produtoCellHtml = hasChildren
+        ? `<div class="resumo-legacy__prod"><button type="button" class="resumo-legacy__prod-toggle" aria-expanded="false"><i class="ti ti-chevron-right resumo-legacy__prod-toggle-icon" aria-hidden="true"></i><span class="resumo-legacy__prod-name" title="${escapeHTML(item.nome || "")}">${escapeHTML(item.nome || "—")}</span></button></div>`
+        : `<div class="resumo-legacy__prod"><span class="resumo-legacy__prod-name" title="${escapeHTML(item.nome || "")}">${escapeHTML(item.nome || "—")}</span></div>`;
+
+      let childRowsHtml = "";
+      if (hasChildren) {
+        childRowsHtml = item.children.map(child => {
+          const childMetricKey = typeof child.metric === "string" ? child.metric.toLowerCase() : metricKeyRaw;
+          const childMetricMeta = metricInfo[childMetricKey] || { label: child.metric || "—", title: "Métrica do indicador" };
+          const childMetricClasses = ["resumo-legacy__metric"];
+          if (childMetricKey === "valor" || childMetricKey === "qtd" || childMetricKey === "perc") {
+            childMetricClasses.push(`resumo-legacy__metric--${childMetricKey}`);
+          }
+          const childMetricLabel = escapeHTML(childMetricMeta.label || "—");
+          const childMetricTitle = escapeHTML(childMetricMeta.title || "Métrica do indicador");
+          const childMetaCell = escapeHTML(formatMetricFull(childMetricKey, child.meta));
+          const childRealCell = escapeHTML(formatMetricFull(childMetricKey, child.realizado));
+          const childAtingPct = Math.max(0, Math.min(200, Number(child.meta) ? (Number(child.realizado) / Number(child.meta)) * 100 : 0));
+          const childAtingFill = Math.max(0, Math.min(1, childAtingPct / 100));
+          const childAtingLabel = `${childAtingPct.toFixed(1)}%`;
+          const childAtingMeterClass = childAtingPct >= 100 ? "is-ok" : (childAtingPct >= 50 ? "is-warn" : "is-low");
+          const childPesoValor = Number(child.pontosMeta ?? child.peso ?? 0);
+          const childPesoLabel = childPesoValor ? escapeHTML(fmtINT.format(Math.round(childPesoValor))) : "—";
+          const childUpdateRaw = child.ultimaAtualizacao || "";
+          const childUpdateFormatted = /^\d{4}-\d{2}-\d{2}$/.test(childUpdateRaw) ? formatBRDate(childUpdateRaw) : childUpdateRaw;
+          const childUpdateLabel = childUpdateRaw ? escapeHTML(childUpdateFormatted) : "—";
+
+          return `
+            <tr class=\"resumo-legacy__child-row\" data-parent-id=\"${rowId}\" hidden>
+              <th scope=\"row\">
+                <div class=\"resumo-legacy__prod resumo-legacy__prod--child\">
+                  <span class=\"resumo-legacy__prod-name\" title=\"${escapeHTML(child.label || "")}\">${escapeHTML(child.label || "—")}</span>
+                </div>
+              </th>
+              <td class=\"resumo-legacy__col--peso\">${childPesoLabel}</td>
+              <td><span class=\"${childMetricClasses.join(" ")}\" title=\"${childMetricTitle}\">${childMetricLabel}</span></td>
+              <td class=\"resumo-legacy__col--meta\" title=\"${childMetaCell}\">${childMetaCell}</td>
+              <td class=\"resumo-legacy__col--real\" title=\"${childRealCell}\">${childRealCell}</td>
+              <td class=\"resumo-legacy__col--ating\">
+                <div class=\"resumo-legacy__ating\" title=\"Atingimento\">
+                  <div class=\"resumo-legacy__ating-meter ${childAtingMeterClass}\" style=\"--fill:${childAtingFill.toFixed(4)};\" role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"200\" aria-valuenow=\"${childAtingPct.toFixed(1)}\" aria-valuetext=\"${childAtingLabel}\">
+                    <span class=\"resumo-legacy__ating-value\">${childAtingLabel}</span>
+                  </div>
+                </div>
+              </td>
+              <td class=\"resumo-legacy__col--update\">${childUpdateLabel}</td>
+            </tr>
+          `;
+        }).join("");
+      }
 
       tbody.insertAdjacentHTML("beforeend", `
-        <tr>
+        <tr class="resumo-legacy__row${hasChildren ? " has-children" : ""}" data-row-id="${rowId}">
           <th scope="row">
-            <div class="resumo-legacy__prod">
-              <span class="resumo-legacy__prod-name" title="${escapeHTML(item.nome || "")}">${escapeHTML(item.nome || "—")}</span>
-              ${familiaHtml}
-            </div>
+            ${produtoCellHtml}
           </th>
           <td class="resumo-legacy__col--peso" title="Peso do indicador">${pesoLabel}</td>
           <td>
@@ -7048,7 +7141,34 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
           </td>
           <td class="resumo-legacy__col--update">${updateLabel}</td>
         </tr>
+        ${childRowsHtml}
       `);
+
+      if (hasChildren) {
+        const mainRow = tbody.querySelector(`tr[data-row-id="${rowId}"]`);
+        const toggleBtn = mainRow?.querySelector(".resumo-legacy__prod-toggle");
+        if (mainRow && toggleBtn) {
+          const toggleChildren = (expand) => {
+            const nextState = typeof expand === "boolean" ? expand : toggleBtn.getAttribute("aria-expanded") !== "true";
+            toggleBtn.setAttribute("aria-expanded", String(nextState));
+            mainRow.classList.toggle("is-expanded", nextState);
+            tbody.querySelectorAll(`tr[data-parent-id="${rowId}"]`).forEach(childRow => {
+              childRow.hidden = !nextState;
+            });
+          };
+
+          toggleBtn.addEventListener("click", ev => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            toggleChildren();
+          });
+
+          mainRow.addEventListener("click", ev => {
+            if (ev.target.closest(".resumo-legacy__prod-toggle")) return;
+            toggleChildren();
+          });
+        }
+      }
     });
 
     host.appendChild(sectionEl);
