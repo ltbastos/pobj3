@@ -6999,6 +6999,7 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
     const chipPointsTitle = `Pontos: ${formatPoints(pontosHit, { withUnit: true })} / ${formatPoints(pontosTotal, { withUnit: true })}`;
     const pontosHitLabel = escapeHTML(fmtINT.format(Math.round(pontosHit || 0)));
     const pontosTotalLabel = escapeHTML(fmtINT.format(Math.round(pontosTotal || 0)));
+    const sectionHasExpandableRows = items.some(item => Array.isArray(item.children) && item.children.length);
 
     const statsPieces = [
       `<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">Peso total</span><strong class=\"resumo-legacy__stat-value\">${escapeHTML(fmtINT.format(Math.round(pontosTotal || 0)))}</strong></div>`
@@ -7011,7 +7012,17 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
     sectionEl.innerHTML = `
       <header class="resumo-legacy__head">
         <div class="resumo-legacy__heading">
-          <span class="resumo-legacy__name">${safeLabel}</span>
+          <div class="resumo-legacy__title-row">
+            <span class="resumo-legacy__name">${safeLabel}</span>
+            ${sectionHasExpandableRows ? `
+              <div class=\"resumo-legacy__section-actions\">
+                <button type=\"button\" class=\"resumo-legacy__section-toggle\" data-expanded=\"false\">
+                  <i class=\"ti ti-filter\" aria-hidden=\"true\"></i>
+                  <span class=\"resumo-legacy__section-toggle-label\">Abrir todos os filtros</span>
+                </button>
+              </div>
+            ` : ""}
+          </div>
           <div class="resumo-legacy__chips">
             <span class="resumo-legacy__chip"><i class="ti ti-box-multiple" aria-hidden="true"></i>${escapeHTML(fmtINT.format(items.length))} indicadores</span>
             <span class="resumo-legacy__chip" title="${escapeHTML(chipPointsTitle)}">Pontos ${pontosHitLabel} / ${pontosTotalLabel}</span>
@@ -7043,6 +7054,28 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
     if (!tbody) return;
 
     let rowAutoId = 0;
+    const rowToggleHandlers = new Map();
+    const sectionToggle = sectionEl.querySelector(".resumo-legacy__section-toggle");
+    const sectionToggleLabel = sectionEl.querySelector(".resumo-legacy__section-toggle-label");
+
+    const syncSectionToggleState = () => {
+      if (!sectionToggle) return;
+      if (!rowToggleHandlers.size) {
+        sectionToggle.setAttribute("data-expanded", "false");
+        sectionToggle.classList.remove("is-expanded");
+        if (sectionToggleLabel) sectionToggleLabel.textContent = "Abrir todos os filtros";
+        return;
+      }
+      let expandedCount = 0;
+      rowToggleHandlers.forEach((_, rowId) => {
+        const rowEl = tbody.querySelector(`tr[data-row-id="${rowId}"]`);
+        if (rowEl?.classList.contains("is-expanded")) expandedCount += 1;
+      });
+      const allExpanded = expandedCount > 0 && expandedCount === rowToggleHandlers.size;
+      sectionToggle.setAttribute("data-expanded", String(allExpanded));
+      sectionToggle.classList.toggle("is-expanded", allExpanded);
+      if (sectionToggleLabel) sectionToggleLabel.textContent = allExpanded ? "Recolher filtros" : "Abrir todos os filtros";
+    };
 
     items.forEach(item => {
       const pesoValor = Number(item.pontosMeta ?? item.peso ?? 0);
@@ -7155,6 +7188,7 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
             tbody.querySelectorAll(`tr[data-parent-id="${rowId}"]`).forEach(childRow => {
               childRow.hidden = !nextState;
             });
+            syncSectionToggleState();
           };
 
           toggleBtn.addEventListener("click", ev => {
@@ -7167,9 +7201,26 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
             if (ev.target.closest(".resumo-legacy__prod-toggle")) return;
             toggleChildren();
           });
+
+          rowToggleHandlers.set(rowId, toggleChildren);
         }
       }
     });
+
+    if (sectionToggle) {
+      sectionToggle.addEventListener("click", ev => {
+        ev.preventDefault();
+        const targetState = sectionToggle.getAttribute("data-expanded") !== "true";
+        rowToggleHandlers.forEach(toggleFn => {
+          toggleFn(targetState);
+        });
+        sectionToggle.setAttribute("data-expanded", String(targetState));
+        sectionToggle.classList.toggle("is-expanded", targetState);
+        if (sectionToggleLabel) sectionToggleLabel.textContent = targetState ? "Recolher filtros" : "Abrir todos os filtros";
+      });
+    }
+
+    syncSectionToggleState();
 
     host.appendChild(sectionEl);
   });
