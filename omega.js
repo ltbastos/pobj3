@@ -83,6 +83,7 @@ const OMEGA_STATUS_TONE_LABELS = {
 const OMEGA_STRUCTURE_SOURCE = "Bases/dEstruturaChamados.csv";
 
 const OMEGA_TRANSFER_EMPRESAS_LABEL = "Transferência - Empresas para Empresas";
+const OMEGA_TRANSFER_EMPRESAS_DEPARTMENT = "POBJ";
 
 const OMEGA_QUEUE_FIELD_MAP = {
   Encarteiramento: "encarteiramento",
@@ -3547,7 +3548,9 @@ function renderFormFlowExtras(context){
   flow.departmentValue = departmentValue;
   flow.type = typeLabel;
   flow.typeValue = typeValue;
-  const shouldShow = typeValue ? isTransferEmpresasFlow({ type: typeValue }) : false;
+  const normalizedDepartment = normalizePlain(departmentLabel || departmentValue);
+  const shouldShow = normalizedDepartment === normalizePlain(OMEGA_TRANSFER_EMPRESAS_DEPARTMENT)
+    && (typeValue ? isTransferEmpresasFlow({ type: typeValue }) : false);
   container.hidden = !shouldShow;
   container.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
   if (!shouldShow) {
