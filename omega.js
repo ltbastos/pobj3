@@ -247,6 +247,8 @@ const omegaState = {
   pendingNewTicket: null,
   prefillDepartment: "",
   ticketModalOpen: false,
+  tablePage: 1,
+  ticketsPerPage: 15,
   formAttachments: [],
   ticketUpdate: {
     comment: "",
@@ -1194,12 +1196,14 @@ function setupOmegaModule(root){
   clearFiltersTop?.addEventListener('click', () => {
     resetAdvancedFilters();
     syncFilterFormState(root);
+    resetTablePage();
     renderOmega();
   });
 
   const searchInput = root.querySelector('#omega-search');
   searchInput?.addEventListener('input', (ev) => {
     omegaState.search = ev.target.value || "";
+    resetTablePage();
     renderOmega();
   });
 
@@ -1236,6 +1240,7 @@ function setupOmegaModule(root){
       clearSelection();
       omegaState.bulkPanelOpen = false;
       expandNavForView('team');
+      resetTablePage();
       renderOmega();
       return;
     }
@@ -1248,6 +1253,7 @@ function setupOmegaModule(root){
       clearSelection();
       omegaState.bulkPanelOpen = false;
       expandNavForView('team');
+      resetTablePage();
       renderOmega();
       return;
     }
@@ -1272,6 +1278,7 @@ function setupOmegaModule(root){
       omegaState.selectedTicketId = null;
       clearSelection();
       omegaState.bulkPanelOpen = false;
+      resetTablePage();
       expandNavForView(view);
       shouldRender = true;
     }
@@ -1300,6 +1307,18 @@ function setupOmegaModule(root){
     const ticketId = row.dataset.ticketId;
     if (!ticketId) return;
     openTicketDetail(ticketId);
+  });
+
+  const paginationNav = root.querySelector('#omega-pagination');
+  paginationNav?.addEventListener('click', (ev) => {
+    const button = ev.target.closest?.('.omega-pagination__button[data-omega-page]');
+    if (!button) return;
+    if (button.disabled) return;
+    const targetPage = Number.parseInt(button.dataset.omegaPage, 10);
+    if (!Number.isFinite(targetPage) || targetPage < 1) return;
+    if (goToTablePage(targetPage)) {
+      renderOmega();
+    }
   });
 
   const selectAll = root.querySelector('#omega-select-all');
@@ -1559,11 +1578,13 @@ function setupOmegaModule(root){
   });
   filterForm?.addEventListener('submit', (ev) => {
     ev.preventDefault();
+    resetTablePage();
     applyFiltersFromForm(root);
   });
   clearFiltersBtn?.addEventListener('click', () => {
     resetAdvancedFilters();
     syncFilterFormState(root);
+    resetTablePage();
     renderOmega();
   });
   const filterDepartmentSelect = root.querySelector('#omega-filter-department');
@@ -1586,6 +1607,7 @@ function setupOmegaModule(root){
     setFilterPanelOpen(false);
     clearSelection();
     omegaState.bulkPanelOpen = false;
+    resetTablePage();
     renderOmega();
     populateFormOptions(root);
   });
@@ -1658,6 +1680,43 @@ function handleOmegaDocumentClick(ev){
   toggleFilterPanel(false);
 }
 
+function getTicketsPerPage(){
+  const raw = parseInt(omegaState.ticketsPerPage, 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 15;
+}
+
+function resetTablePage(){
+  omegaState.tablePage = 1;
+}
+
+function goToTablePage(page){
+  const target = Number.parseInt(page, 10);
+  const next = Number.isFinite(target) && target > 0 ? target : 1;
+  if (next === omegaState.tablePage) return false;
+  omegaState.tablePage = next;
+  return true;
+}
+
+function buildPaginationSequence(current, total){
+  if (!Number.isFinite(total) || total <= 0) return [];
+  const safeTotal = Math.max(1, Math.floor(total));
+  const safeCurrent = Math.min(Math.max(1, Math.floor(current || 1)), safeTotal);
+  if (safeTotal <= 7) {
+    return Array.from({ length: safeTotal }, (_, index) => ({ type: 'page', value: index + 1 }));
+  }
+  const sequence = [];
+  sequence.push({ type: 'page', value: 1 });
+  const start = Math.max(2, safeCurrent - 1);
+  const end = Math.min(safeTotal - 1, safeCurrent + 1);
+  if (start > 2) sequence.push({ type: 'gap' });
+  for (let page = start; page <= end; page += 1) {
+    sequence.push({ type: 'page', value: page });
+  }
+  if (end < safeTotal - 1) sequence.push({ type: 'gap' });
+  sequence.push({ type: 'page', value: safeTotal });
+  return sequence;
+}
+
 function renderOmega(){
   const root = document.getElementById('omega-modal');
   if (!root || root.hidden) return;
@@ -1669,6 +1728,23 @@ function renderOmega(){
   const contextTickets = filterTicketsByContext();
   const viewTicketsBase = filterTicketsByView(contextTickets, user);
   const filteredTickets = applyStatusAndSearch(viewTicketsBase);
+  const pageSize = getTicketsPerPage();
+  let currentPage = Number.isFinite(omegaState.tablePage) && omegaState.tablePage > 0
+    ? Math.floor(omegaState.tablePage)
+    : 1;
+  if (filteredTickets.length) {
+    const selectedIndex = filteredTickets.findIndex((ticket) => ticket.id === omegaState.selectedTicketId);
+    if (selectedIndex >= 0) {
+      const targetPage = Math.floor(selectedIndex / pageSize) + 1;
+      currentPage = targetPage;
+    }
+  }
+  const totalPages = Math.max(1, Math.ceil(filteredTickets.length / pageSize));
+  if (currentPage > totalPages) currentPage = totalPages;
+  if (currentPage < 1) currentPage = 1;
+  omegaState.tablePage = currentPage;
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageTickets = filteredTickets.slice(pageStart, pageStart + pageSize);
   const selectionAllowed = shouldAllowSelection(user);
   if (!selectionAllowed && getSelection().size) {
     clearSelection();
@@ -1686,7 +1762,13 @@ function renderOmega(){
     syncFilterFormState(root);
   }
   renderSummary(root, contextTickets, filteredTickets, user);
-  renderTable(root, filteredTickets, user);
+  renderTable(root, pageTickets, user);
+  renderPagination(root, {
+    page: currentPage,
+    pageSize,
+    totalItems: filteredTickets.length,
+    totalPages,
+  });
   renderTicketModal(root, filteredTickets, viewTicketsBase, user);
   renderBulkControls(root, user, filteredTickets);
   updateEmptyState(root, filteredTickets);
@@ -2089,6 +2171,7 @@ function applyFiltersFromForm(root){
     openedFrom,
     openedTo,
   };
+  resetTablePage();
   toggleFilterPanel(false);
   renderOmega();
 }
@@ -2104,6 +2187,7 @@ function resetAdvancedFilters(){
     openedTo: '',
     priority: '',
   };
+  resetTablePage();
 }
 
 function reconcileFiltersForUser(user){
@@ -2193,6 +2277,71 @@ function renderTable(root, tickets, user){
     </tr>`;
   }).join('');
   body.innerHTML = rows;
+}
+
+function renderPagination(root, meta){
+  if (!root) return;
+  const footer = root.querySelector('.omega-table-footer');
+  const nav = root.querySelector('#omega-pagination');
+  const rangeLabel = root.querySelector('#omega-table-range');
+  if (!footer || !nav || !rangeLabel) return;
+  const totalItemsRaw = meta && typeof meta.totalItems === 'number' ? meta.totalItems : 0;
+  const pageSizeRaw = meta && typeof meta.pageSize === 'number' ? meta.pageSize : getTicketsPerPage();
+  const totalPagesRaw = meta && typeof meta.totalPages === 'number' ? meta.totalPages : Math.ceil(totalItemsRaw / pageSizeRaw);
+  const currentPageRaw = meta && typeof meta.page === 'number' ? meta.page : (omegaState.tablePage || 1);
+  const totalItems = Math.max(0, totalItemsRaw);
+  const pageSize = Math.max(1, pageSizeRaw);
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize), Math.floor(totalPagesRaw) || 1);
+  const currentPage = Math.min(Math.max(1, Math.floor(currentPageRaw)), totalPages);
+  if (!totalItems) {
+    footer.hidden = true;
+    nav.innerHTML = '';
+    rangeLabel.textContent = 'Nenhum chamado encontrado';
+    return;
+  }
+  footer.hidden = false;
+  const start = (currentPage - 1) * pageSize + 1;
+  const end = Math.min(totalItems, start + pageSize - 1);
+  rangeLabel.textContent = `${start} – ${end} de ${totalItems} chamados`;
+  const pieces = [];
+  const prevDisabled = currentPage <= 1;
+  pieces.push(paginationButtonMarkup({
+    label: 'Anterior',
+    page: currentPage - 1,
+    disabled: prevDisabled,
+    ariaLabel: 'Página anterior',
+  }));
+  const sequence = buildPaginationSequence(currentPage, totalPages);
+  sequence.forEach((entry) => {
+    if (entry.type === 'gap') {
+      pieces.push('<span class="omega-pagination__gap">…</span>');
+      return;
+    }
+    const isCurrent = entry.value === currentPage;
+    pieces.push(paginationButtonMarkup({
+      label: String(entry.value),
+      page: entry.value,
+      current: isCurrent,
+      ariaLabel: `Ir para a página ${entry.value}`,
+    }));
+  });
+  const nextDisabled = currentPage >= totalPages;
+  pieces.push(paginationButtonMarkup({
+    label: 'Próxima',
+    page: currentPage + 1,
+    disabled: nextDisabled,
+    ariaLabel: 'Próxima página',
+  }));
+  nav.innerHTML = pieces.join('');
+}
+
+function paginationButtonMarkup({ label, page, disabled = false, current = false, ariaLabel = '' }){
+  const attrs = ['class="omega-pagination__button"', 'type="button"'];
+  if (page != null) attrs.push(`data-omega-page="${page}"`);
+  if (ariaLabel) attrs.push(`aria-label="${escapeHTML(ariaLabel)}"`);
+  if (current) attrs.push('aria-current="page"');
+  if (disabled) attrs.push('disabled');
+  return `<button ${attrs.join(' ')}>${escapeHTML(label)}</button>`;
 }
 
 function renderTicketModal(root, tickets, baseTickets, user){
@@ -4361,6 +4510,7 @@ function handleNewTicketSubmit(form){
   omegaState.selectedTicketId = newTicket.id;
   omegaState.view = 'my';
   omegaState.search = '';
+  resetTablePage();
   setDrawerOpen(false);
   resetFormFlowState();
   renderFormFlowExtras(root);
