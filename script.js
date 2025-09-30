@@ -3136,6 +3136,11 @@ async function getData(){
 
 /* ===== Aqui eu monto a sidebar retrátil direto via JS, sem depender do CSS ===== */
 /* ===== Aqui eu guardo e manipulo o estado geral da aplicação ===== */
+const PRODUCT_RANK_LEVELS = ["gerente", "gerenteGestao", "agencia", "gerencia"];
+function normalizeProductRankLevel(level) {
+  return PRODUCT_RANK_LEVELS.includes(level) ? level : "gerente";
+}
+
 const state = {
   _dataset:null,
   _rankingRaw:[],
@@ -3158,6 +3163,7 @@ const state = {
     type:"pobj",
     product:"",
     productMode:"melhores",
+    productLevel:"gerente",
   },
 
   detailSort:{ id:null, direction:null },
@@ -5120,7 +5126,9 @@ function filterRowsExcept(rows, except = {}, opts = {}) {
     const okDR  = (except.diretoria) || selecaoPadrao(f.diretoria) || matchesSelection(f.diretoria, r.diretoria, r.diretoriaNome);
     const okGR  = (except.gerencia)  || selecaoPadrao(f.gerencia)  || matchesSelection(f.gerencia, r.gerenciaRegional, r.gerenciaNome, r.regional);
     const okAg  = (except.agencia)   || selecaoPadrao(f.agencia)   || matchesSelection(f.agencia, r.agencia, r.agenciaNome, r.agenciaCodigo);
-    const okGG  = selecaoPadrao(f.ggestao) || matchesSelection(f.ggestao, r.gerenteGestao, r.gerenteGestaoNome);
+    const okGG  = (except.gerenteGestao)
+      || selecaoPadrao(f.ggestao)
+      || matchesSelection(f.ggestao, r.gerenteGestao, r.gerenteGestaoNome);
     const okGer = (except.gerente)   || selecaoPadrao(f.gerente)   || matchesSelection(f.gerente, r.gerente, r.gerenteNome);
     const familiaMetaRow = r.produtoId ? PRODUTO_TO_FAMILIA.get(r.produtoId) : null;
     const rowSecaoId = r.secaoId
@@ -8485,6 +8493,15 @@ function createRankingView(){
             </select>
           </div>
           <div class="rk-product-controls" id="rk-product-wrapper" hidden>
+            <div class="rk-control">
+              <label for="rk-product-level" class="muted">Visão por</label>
+              <select id="rk-product-level" class="input input--sm">
+                <option value="gerente">Gerente</option>
+                <option value="gerenteGestao">Gerente de gestão</option>
+                <option value="agencia">Agência</option>
+                <option value="gerencia">Regional</option>
+              </select>
+            </div>
             <div class="segmented seg-mini" id="rk-product-mode" role="group" aria-label="Modo do ranking por produto">
               <button type="button" class="seg-btn" data-mode="melhores">Melhores</button>
               <button type="button" class="seg-btn" data-mode="piores">Piores</button>
@@ -8500,6 +8517,7 @@ function createRankingView(){
 
   const typeSelect = section.querySelector('#rk-type');
   const modeGroup = section.querySelector('#rk-product-mode');
+  const levelSelect = section.querySelector('#rk-product-level');
 
   typeSelect?.addEventListener('change', () => {
     state.rk.type = typeSelect.value;
@@ -8514,6 +8532,14 @@ function createRankingView(){
     state.rk.productMode = mode;
     renderRanking();
   });
+
+  levelSelect?.addEventListener('change', () => {
+    const value = levelSelect.value;
+    const normalized = normalizeProductRankLevel(value);
+    if (state.rk.productLevel === normalized) return;
+    state.rk.productLevel = normalized;
+    renderRanking();
+  });
 }
 function currentUnitForLevel(level){
   const f=getFilterValues();
@@ -8521,6 +8547,9 @@ function currentUnitForLevel(level){
     case "gerente":
       if (f.gerente && f.gerente!=="Todos") return f.gerente;
       return CURRENT_USER_CONTEXT.gerente || "";
+    case "gerenteGestao":
+      if (f.ggestao && f.ggestao!=="Todos") return f.ggestao;
+      return CURRENT_USER_CONTEXT.gerenteGestao || "";
     case "agencia":
       if (f.agencia && f.agencia!=="Todas") return f.agencia;
       return CURRENT_USER_CONTEXT.agencia || "";
@@ -8538,18 +8567,20 @@ function rkGroupCount(level){
   if(level==="diretoria") return 4;
   if(level==="gerencia")  return 8;
   if(level==="agencia")   return 15;
+  if(level==="gerenteGestao") return 12;
   return 12;
 }
 function deriveRankingLevelFromFilters(){
   const f = getFilterValues();
   if(f.gerente && f.gerente!=="Todos")   return "gerente";
+  if(f.ggestao && f.ggestao!=="Todos")   return "gerenteGestao";
   if(f.agencia && f.agencia!=="Todas")   return "agencia";
   if(f.gerencia && f.gerencia!=="Todas") return "gerencia";
   if(f.diretoria && f.diretoria!=="Todas") return "diretoria";
   return "agencia";
 }
-const RANKING_KEY_FIELDS = { diretoria:"diretoria", gerencia:"gerenciaRegional", agencia:"agencia", gerente:"gerente" };
-const RANKING_LABEL_FIELDS = { diretoria:"diretoriaNome", gerencia:"gerenciaNome", agencia:"agenciaNome", gerente:"gerenteNome" };
+const RANKING_KEY_FIELDS = { diretoria:"diretoria", gerencia:"gerenciaRegional", agencia:"agencia", gerente:"gerente", gerenteGestao:"gerenteGestao" };
+const RANKING_LABEL_FIELDS = { diretoria:"diretoriaNome", gerencia:"gerenciaNome", agencia:"agenciaNome", gerente:"gerenteNome", gerenteGestao:"gerenteGestaoNome" };
 
 function aggRanking(rows, level){
   const k = RANKING_KEY_FIELDS[level] || "agencia";
@@ -8606,13 +8637,25 @@ function renderRanking(){
   const typeSelect = document.getElementById("rk-type");
   const productWrapper = document.getElementById("rk-product-wrapper");
   const modeGroup = document.getElementById("rk-product-mode");
-
-  const level = deriveRankingLevelFromFilters();
-  state.rk.level = level;
+  const levelSelect = document.getElementById("rk-product-level");
 
   const type = state.rk.type || "pobj";
   if (typeSelect) typeSelect.value = type;
   if (productWrapper) productWrapper.hidden = (type !== "produto");
+
+  let level;
+  if (type === "produto") {
+    const normalized = normalizeProductRankLevel(state.rk.productLevel);
+    if (state.rk.productLevel !== normalized) state.rk.productLevel = normalized;
+    level = normalized;
+  } else {
+    level = deriveRankingLevelFromFilters();
+  }
+  state.rk.level = level;
+  if (levelSelect) {
+    const selectValue = (type === "produto") ? level : normalizeProductRankLevel(state.rk.productLevel);
+    levelSelect.value = normalizeProductRankLevel(selectValue);
+  }
 
   const except = { [level]: true };
   const rowsBase = filterRowsExcept(state._rankingRaw, except, { searchTerm: "" });
@@ -8623,7 +8666,8 @@ function renderRanking(){
     diretoria: "Diretoria",
     gerencia: "Regional",
     agencia: "Agência",
-    gerente: "Gerente"
+    gerente: "Gerente",
+    gerenteGestao: "Gerente de gestão"
   };
   const nivelNome = levelNames[level] || (level.charAt(0).toUpperCase() + level.slice(1));
 
@@ -8667,7 +8711,7 @@ function renderRanking(){
       const rowLevel = simplificarTexto(entry.nivel || "");
       if (rowLevel && rowLevel !== level) return false;
       if (!matchesHierarchy(filters.segmento, entry.segmento, entry.segmentoId)) return false;
-      if (!matchesHierarchy(filters.ggestao, entry.gerenteGestao, entry.gerenteGestaoNome)) return false;
+      if (!except.gerenteGestao && !matchesHierarchy(filters.ggestao, entry.gerenteGestao, entry.gerenteGestaoNome)) return false;
       if (!except.diretoria && !matchesHierarchy(filters.diretoria, entry.diretoria, entry.diretoriaNome)) return false;
       if (!except.gerencia && !matchesHierarchy(filters.gerencia, entry.gerenciaRegional, entry.gerenciaNome)) return false;
       if (!except.agencia && !matchesHierarchy(filters.agencia, entry.agencia, entry.agenciaCodigo, entry.agenciaNome)) return false;
@@ -8949,14 +8993,15 @@ function renderRanking(){
   `;
   const tb = tbl.querySelector("tbody");
 
+  const shouldMaskNames = (type !== "produto");
   visibleRows.forEach((r,idx)=>{
     const fullIndex = data.findIndex(d => d.unidade === r.unidade);
     const rankNumber = fullIndex >= 0 ? (fullIndex + 1) : (idx + 1);
     const isMine = (myUnit && r.unidade === myUnit);
     const rawName = r.label || r.unidade || "—";
-    const visibleName = isMine ? rawName : "*****";
+    const visibleName = (!shouldMaskNames || isMine) ? rawName : "*****";
     const nomeSafe = escapeHTML(visibleName);
-    const titleSafe = escapeHTML(isMine ? rawName : "Participante oculto");
+    const titleSafe = escapeHTML((!shouldMaskNames || isMine) ? rawName : "Participante oculto");
     const tr = document.createElement("tr");
     tr.className = `rk-row ${isMine? "rk-row--mine":""}`;
     tr.innerHTML = `

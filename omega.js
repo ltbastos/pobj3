@@ -205,6 +205,7 @@ const OMEGA_USER_METADATA = {
 };
 
 let OMEGA_USERS = [];
+const OMEGA_AVATAR_PLACEHOLDER = "img/omega-avatar-placeholder.svg";
 
 const OMEGA_EXTERNAL_CONTACTS = new Map();
 
@@ -250,6 +251,14 @@ const omegaState = {
   tablePage: 1,
   ticketsPerPage: 15,
   formAttachments: [],
+  formFlow: {
+    type: "",
+    typeValue: "",
+    targetManagerName: "",
+    targetManagerEmail: "",
+    requesterManagerName: "",
+    requesterManagerEmail: "",
+  },
   ticketUpdate: {
     comment: "",
     status: "",
@@ -262,16 +271,6 @@ const omegaState = {
   },
   ticketUpdateTicketId: null,
   cancelDialogOpen: false,
-  formFlow: {
-    department: "",
-    departmentValue: "",
-    type: "",
-    typeValue: "",
-    targetManagerName: "",
-    targetManagerEmail: "",
-    requesterManagerName: "",
-    requesterManagerEmail: "",
-  },
   filters: {
     id: "",
     departments: [],
@@ -1359,21 +1358,6 @@ function setupOmegaModule(root){
     renderFormFlowExtras(root);
   });
   typeSelect?.addEventListener('change', (ev) => {
-    const flow = getFormFlowState();
-    const selectedLabel = ev.target?.selectedOptions?.[0]?.textContent?.trim()
-      || ev.target.value
-      || '';
-    const selectedValue = ev.target?.value || '';
-    const previousLabel = flow.type;
-    const previousValue = flow.typeValue;
-    flow.type = selectedLabel;
-    flow.typeValue = selectedValue || selectedLabel;
-    if (flow.type !== previousLabel || flow.typeValue !== previousValue) {
-      flow.targetManagerName = '';
-      flow.targetManagerEmail = '';
-      flow.requesterManagerName = '';
-      flow.requesterManagerEmail = '';
-    }
     updateOmegaFormSubject(root);
     renderFormFlowExtras(root);
   });
@@ -1396,15 +1380,15 @@ function setupOmegaModule(root){
     removeFormAttachment(root, id);
   });
 
-  const flowNameInput = root.querySelector('#omega-flow-target-name');
-  const flowEmailInput = root.querySelector('#omega-flow-target-email');
+  const flowTargetNameInput = root.querySelector('#omega-flow-target-name');
+  const flowTargetEmailInput = root.querySelector('#omega-flow-target-email');
   const flowRequesterNameInput = root.querySelector('#omega-flow-requester-name');
   const flowRequesterEmailInput = root.querySelector('#omega-flow-requester-email');
-  flowNameInput?.addEventListener('input', (ev) => {
+  flowTargetNameInput?.addEventListener('input', (ev) => {
     const flow = getFormFlowState();
     flow.targetManagerName = ev.target.value || '';
   });
-  flowEmailInput?.addEventListener('input', (ev) => {
+  flowTargetEmailInput?.addEventListener('input', (ev) => {
     const flow = getFormFlowState();
     flow.targetManagerEmail = ev.target.value || '';
   });
@@ -1416,6 +1400,7 @@ function setupOmegaModule(root){
     const flow = getFormFlowState();
     flow.requesterManagerEmail = ev.target.value || '';
   });
+
   root.querySelectorAll('[data-omega-cancel-dismiss]')?.forEach((btn) => {
     btn.addEventListener('click', () => dismissTicketCancelDialog());
   });
@@ -1781,7 +1766,6 @@ function renderOmega(){
   renderTicketModal(root, filteredTickets, viewTicketsBase, user);
   renderBulkControls(root, user, filteredTickets);
   updateEmptyState(root, filteredTickets);
-  renderFormFlowExtras(root);
   renderCancelDialog(root);
   if (omegaState.manageAnalystOpen) populateManageAnalystModal(root, user);
   if (omegaState.manageStatusOpen) populateManageStatusModal(root, user);
@@ -1791,16 +1775,21 @@ function renderProfile(root, user){
   const avatar = root.querySelector('#omega-avatar');
   const nameLabel = root.querySelector('#omega-user-name');
   if (avatar) {
-    const hasAvatar = Boolean(user?.avatar);
-    if (hasAvatar) {
-      avatar.src = user.avatar;
-      avatar.alt = user?.name ? `Foto de ${user.name}` : '';
-      avatar.hidden = false;
-    } else {
-      avatar.removeAttribute('src');
-      avatar.alt = '';
-      avatar.hidden = true;
+    if (!avatar.dataset.omegaPlaceholderBound) {
+      avatar.addEventListener('error', () => {
+        if (avatar.src !== OMEGA_AVATAR_PLACEHOLDER) {
+          avatar.src = OMEGA_AVATAR_PLACEHOLDER;
+        }
+      });
+      avatar.dataset.omegaPlaceholderBound = 'true';
     }
+    const hasAvatar = Boolean(user?.avatar);
+    const source = hasAvatar ? user.avatar : OMEGA_AVATAR_PLACEHOLDER;
+    avatar.src = source;
+    avatar.alt = user?.name
+      ? (hasAvatar ? `Foto de ${user.name}` : `Avatar de ${user.name}`)
+      : 'Avatar padrão';
+    avatar.hidden = false;
   }
   if (nameLabel) nameLabel.textContent = user?.name || '—';
   const select = root.querySelector('#omega-user-select');
@@ -2242,6 +2231,18 @@ function renderSummary(root, contextTickets, viewTickets, user){
   host.innerHTML = parts.join('');
 }
 
+function getOpeningCommentText(ticket){
+  if (!ticket || !Array.isArray(ticket.history) || !ticket.history.length) return '';
+  const ordered = ticket.history.slice().sort((a, b) => {
+    const aTime = new Date(a?.date || 0).getTime();
+    const bTime = new Date(b?.date || 0).getTime();
+    return aTime - bTime;
+  });
+  const withComment = ordered.find((entry) => (entry?.comment || '').trim());
+  if (!withComment) return '';
+  return withComment.comment.trim().replace(/\s+/g, ' ');
+}
+
 function renderTable(root, tickets, user){
   const body = root.querySelector('#omega-ticket-rows');
   if (!body) return;
@@ -2266,6 +2267,9 @@ function renderTable(root, tickets, user){
     const priorityKey = OMEGA_PRIORITY_META[ticket.priority] ? ticket.priority : 'media';
     const priorityMeta = OMEGA_PRIORITY_META[priorityKey] || OMEGA_PRIORITY_META.media;
     const categoryLabel = ticket.category || 'Tipo não informado';
+    const openingComment = getOpeningCommentText(ticket);
+    const commentPreview = openingComment ? openingComment.slice(0, 10) : '—';
+    const departmentLabel = ticket.queue || '—';
     const activeClass = ticket.id === omegaState.selectedTicketId ? ' class="is-active"' : '';
     const isSelected = selectionAllowed && selection.has(ticket.id);
     const selectCell = `<td class="col-select">${selectionAllowed ? `<input type="checkbox" data-omega-select value="${ticket.id}"${isSelected ? ' checked' : ''}/>` : ''}</td>`;
@@ -2274,7 +2278,8 @@ function renderTable(root, tickets, user){
     return `<tr data-ticket-id="${ticket.id}"${activeClass}${selectedAttr}>
       ${selectCell}
       <td><span class="omega-ticket__id"><i class="ti ti-ticket"></i>${escapeHTML(ticket.id)}</span></td>
-      <td><div class="omega-ticket__title">${escapeHTML(ticket.subject)}</div></td>
+      <td><span class="omega-ticket__preview" title="${escapeHTML(openingComment || 'Sem comentário de abertura')}" aria-label="${escapeHTML(openingComment || 'Sem comentário de abertura')}">${escapeHTML(commentPreview)}</span></td>
+      <td><div class="omega-ticket__title">${escapeHTML(departmentLabel)}</div></td>
       <td>${escapeHTML(categoryLabel)}</td>
       <td><div class="omega-ticket__user" title="${escapeHTML(ownerTooltip)}">${escapeHTML(requesterDisplay)}</div></td>
       <td>${priorityBadge}</td>
@@ -3292,13 +3297,6 @@ function normalizePlain(value){
     .trim();
 }
 
-function normalizeFlowKey(value){
-  return normalizePlain(value).replace(/[^a-z0-9]+/g, ' ').trim();
-}
-
-const OMEGA_TRANSFER_DEPARTMENT_KEY = normalizeFlowKey('Encarteiramento');
-const OMEGA_TRANSFER_EMPRESAS_KEY = normalizeFlowKey(OMEGA_TRANSFER_EMPRESAS_LABEL);
-
 function normalizeToSlug(value){
   return normalizePlain(value).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
@@ -3488,10 +3486,92 @@ function formatFileSize(bytes){
 }
 
 function getTicketTypesForDepartment(department){
-  if (!department) return OMEGA_TICKET_TYPES_BY_DEPARTMENT.Outros || ['A construir'];
+  if (!department) return [];
   const list = OMEGA_TICKET_TYPES_BY_DEPARTMENT[department];
   if (Array.isArray(list) && list.length) return list;
   return OMEGA_TICKET_TYPES_BY_DEPARTMENT.Outros || ['A construir'];
+}
+
+function getFormFlowState(){
+  if (!omegaState.formFlow || typeof omegaState.formFlow !== 'object') {
+    omegaState.formFlow = {
+      type: '',
+      typeValue: '',
+      targetManagerName: '',
+      targetManagerEmail: '',
+      requesterManagerName: '',
+      requesterManagerEmail: '',
+    };
+  }
+  return omegaState.formFlow;
+}
+
+function resetFormFlowState({ type = '', typeValue = '' } = {}){
+  const flow = getFormFlowState();
+  flow.type = type;
+  flow.typeValue = typeValue || type;
+  flow.targetManagerName = '';
+  flow.targetManagerEmail = '';
+  flow.requesterManagerName = '';
+  flow.requesterManagerEmail = '';
+}
+
+function isTransferEmpresasFlow(flow){
+  if (!flow) return false;
+  const type = normalizePlain(flow.type || flow.typeValue);
+  return type === normalizePlain(OMEGA_TRANSFER_EMPRESAS_LABEL);
+}
+
+function renderFormFlowExtras(context){
+  const scope = context?.querySelector ? context : document;
+  const container = scope?.querySelector?.('#omega-form-flow') || document.getElementById('omega-form-flow');
+  if (!container) return;
+  const flow = getFormFlowState();
+  const typeSelect = scope?.querySelector?.('#omega-form-type') || document.getElementById('omega-form-type');
+  const currentTypeValue = typeSelect?.value || flow.typeValue || '';
+  const currentTypeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim()
+    || flow.type
+    || currentTypeValue;
+  const normalizedType = normalizePlain(currentTypeLabel || currentTypeValue);
+  const normalizedTransfer = normalizePlain(OMEGA_TRANSFER_EMPRESAS_LABEL);
+  const shouldShow = normalizedType === normalizedTransfer;
+  container.hidden = !shouldShow;
+  container.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+
+  const targetNameInput = container.querySelector('#omega-flow-target-name');
+  const targetEmailInput = container.querySelector('#omega-flow-target-email');
+  const requesterNameInput = container.querySelector('#omega-flow-requester-name');
+  const requesterEmailInput = container.querySelector('#omega-flow-requester-email');
+
+  if (!shouldShow) {
+    resetFormFlowState();
+    [targetNameInput, targetEmailInput, requesterNameInput, requesterEmailInput].forEach((input) => {
+      if (!input) return;
+      input.required = false;
+      input.value = '';
+    });
+    return;
+  }
+
+  flow.type = currentTypeLabel;
+  flow.typeValue = currentTypeValue;
+
+  if (targetNameInput) {
+    targetNameInput.required = true;
+    targetNameInput.value = flow.targetManagerName || '';
+  }
+  if (targetEmailInput) {
+    targetEmailInput.required = true;
+    targetEmailInput.value = flow.targetManagerEmail || '';
+  }
+  if (requesterNameInput) {
+    requesterNameInput.required = true;
+    requesterNameInput.value = flow.requesterManagerName || '';
+  }
+  if (requesterEmailInput) {
+    requesterEmailInput.required = true;
+    requesterEmailInput.value = flow.requesterManagerEmail || '';
+  }
 }
 
 function getAvailableDepartmentsForUser(user){
@@ -3509,159 +3589,32 @@ function getAvailableDepartmentsForUser(user){
   return base.filter((item) => item !== 'Matriz');
 }
 
-function syncTicketTypeOptions(container, department){
-  const departmentSelect = container?.querySelector?.('#omega-form-department');
+function syncTicketTypeOptions(container, department, { preserveSelection = false, selectedType = '' } = {}){
   const typeSelect = container?.querySelector?.('#omega-form-type');
   if (!typeSelect) return;
   const options = getTicketTypesForDepartment(department);
-  typeSelect.innerHTML = options
-    .map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`)
-    .join('');
-  typeSelect.disabled = !options.length;
+  const previousValue = preserveSelection
+    ? selectedType || typeSelect.value || ''
+    : selectedType;
   if (options.length) {
-    typeSelect.selectedIndex = 0;
+    const placeholder = '<option value="">Selecione o tipo de chamado</option>';
+    typeSelect.innerHTML = [
+      placeholder,
+      ...options.map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`),
+    ].join('');
+    const nextValue = previousValue && options.includes(previousValue) ? previousValue : '';
+    if (nextValue) {
+      typeSelect.value = nextValue;
+    } else {
+      typeSelect.value = '';
+      typeSelect.selectedIndex = 0;
+    }
+  } else {
+    typeSelect.innerHTML = '<option value="" disabled>Selecione um departamento primeiro</option>';
+    typeSelect.value = '';
   }
-  const flow = getFormFlowState();
-  const previousDepartment = flow.department;
-  const previousType = flow.type;
-  const previousDepartmentValue = flow.departmentValue;
-  const previousTypeValue = flow.typeValue;
-  const selectedDepartmentLabel = departmentSelect?.selectedOptions?.[0]?.textContent?.trim()
-    || departmentSelect?.value
-    || department
-    || '';
-  const selectedTypeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim()
-    || typeSelect?.value
-    || options[0]
-    || '';
-  const selectedDepartmentValue = departmentSelect?.value || department || '';
-  const selectedTypeValue = typeSelect?.value || options[0] || '';
-  flow.department = selectedDepartmentLabel;
-  flow.type = selectedTypeLabel;
-  flow.departmentValue = selectedDepartmentValue;
-  flow.typeValue = selectedTypeValue;
-  if (
-    previousDepartment !== flow.department
-    || previousType !== flow.type
-    || previousDepartmentValue !== flow.departmentValue
-    || previousTypeValue !== flow.typeValue
-  ) {
-    flow.targetManagerName = '';
-    flow.targetManagerEmail = '';
-    flow.requesterManagerName = '';
-    flow.requesterManagerEmail = '';
-  }
+  typeSelect.disabled = !options.length;
   renderFormFlowExtras(container);
-}
-
-function getFormFlowState(){
-  if (!omegaState.formFlow || typeof omegaState.formFlow !== 'object') {
-    omegaState.formFlow = {
-      department: '',
-      departmentValue: '',
-      type: '',
-      typeValue: '',
-      targetManagerName: '',
-      targetManagerEmail: '',
-      requesterManagerName: '',
-      requesterManagerEmail: '',
-    };
-  }
-  return omegaState.formFlow;
-}
-
-function resetFormFlowState({ department = '', type = '', departmentValue = '', typeValue = '' } = {}){
-  const flow = getFormFlowState();
-  flow.department = department;
-  flow.departmentValue = departmentValue || department;
-  flow.type = type;
-  flow.typeValue = typeValue || type;
-  flow.targetManagerName = '';
-  flow.targetManagerEmail = '';
-  flow.requesterManagerName = '';
-  flow.requesterManagerEmail = '';
-}
-
-function isTransferEmpresasFlow(flow){
-  if (!flow) return false;
-  const departmentKey = normalizeFlowKey(flow.department || flow.departmentValue);
-  const typeKey = normalizeFlowKey(flow.type || flow.typeValue);
-  return departmentKey === OMEGA_TRANSFER_DEPARTMENT_KEY && typeKey === OMEGA_TRANSFER_EMPRESAS_KEY;
-}
-
-function renderFormFlowExtras(context){
-  const scope = context?.querySelector ? context : document;
-  const container = scope?.querySelector?.('#omega-form-flow') || document.getElementById('omega-form-flow');
-  if (!container) return;
-  const flow = getFormFlowState();
-  const departmentSelect = scope?.querySelector?.('#omega-form-department') || document.getElementById('omega-form-department');
-  const typeSelect = scope?.querySelector?.('#omega-form-type') || document.getElementById('omega-form-type');
-  const departmentValue = departmentSelect?.value || flow.departmentValue || '';
-  const typeValue = typeSelect?.value || flow.typeValue || '';
-  const departmentLabel = departmentSelect?.selectedOptions?.[0]?.textContent?.trim()
-    || departmentValue
-    || flow.department
-    || '';
-  const typeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim()
-    || typeValue
-    || flow.type
-    || '';
-  if (departmentSelect) {
-    flow.department = departmentLabel;
-    flow.departmentValue = departmentValue;
-  }
-  if (typeSelect) {
-    flow.type = typeLabel;
-    flow.typeValue = typeValue;
-  }
-  const hasExplicitSelection = !!departmentValue && !!typeValue && !!departmentSelect && !!typeSelect;
-  const departmentKey = normalizeFlowKey(
-    departmentLabel
-    || departmentValue
-    || flow.department
-    || flow.departmentValue,
-  );
-  const typeKey = normalizeFlowKey(
-    typeLabel
-    || typeValue
-    || flow.type
-    || flow.typeValue,
-  );
-  const shouldShow = hasExplicitSelection
-    && departmentKey === OMEGA_TRANSFER_DEPARTMENT_KEY
-    && typeKey === OMEGA_TRANSFER_EMPRESAS_KEY;
-  container.hidden = !shouldShow;
-  container.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
-  if (!shouldShow) {
-    flow.targetManagerName = '';
-    flow.targetManagerEmail = '';
-    flow.requesterManagerName = '';
-    flow.requesterManagerEmail = '';
-  }
-  const nameInput = container.querySelector('#omega-flow-target-name');
-  const emailInput = container.querySelector('#omega-flow-target-email');
-  const requesterNameInput = container.querySelector('#omega-flow-requester-name');
-  const requesterEmailInput = container.querySelector('#omega-flow-requester-email');
-  if (nameInput) {
-    if (shouldShow) nameInput.value = flow.targetManagerName || '';
-    nameInput.required = shouldShow;
-    if (!shouldShow) nameInput.value = '';
-  }
-  if (emailInput) {
-    if (shouldShow) emailInput.value = flow.targetManagerEmail || '';
-    emailInput.required = shouldShow;
-    if (!shouldShow) emailInput.value = '';
-  }
-  if (requesterNameInput) {
-    if (shouldShow) requesterNameInput.value = flow.requesterManagerName || '';
-    requesterNameInput.required = shouldShow;
-    if (!shouldShow) requesterNameInput.value = '';
-  }
-  if (requesterEmailInput) {
-    if (shouldShow) requesterEmailInput.value = flow.requesterManagerEmail || '';
-    requesterEmailInput.required = shouldShow;
-    if (!shouldShow) requesterEmailInput.value = '';
-  }
 }
 
 function renderFormAttachments(root){
@@ -3867,6 +3820,8 @@ function setDrawerOpen(open){
     resetFormAttachments(root);
     clearFormFeedback(root);
     omegaState.prefillDepartment = '';
+    resetFormFlowState();
+    renderFormFlowExtras(root);
   }
 }
 
@@ -4241,13 +4196,17 @@ function populateFormOptions(root){
   if (departmentSelect) {
     const previous = departmentSelect.value;
     if (departments.length) {
-      departmentSelect.innerHTML = departments
-        .map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`)
-        .join('');
-      if (previous && departments.includes(previous)) {
-        departmentSelect.value = previous;
+      const placeholder = '<option value="">Selecione um departamento</option>';
+      departmentSelect.innerHTML = [
+        placeholder,
+        ...departments.map((item) => `<option value="${escapeHTML(item)}">${escapeHTML(item)}</option>`),
+      ].join('');
+      const nextValue = previous && departments.includes(previous) ? previous : '';
+      if (nextValue) {
+        departmentSelect.value = nextValue;
       } else {
-        departmentSelect.value = departments[0];
+        departmentSelect.value = '';
+        departmentSelect.selectedIndex = 0;
       }
     } else {
       departmentSelect.innerHTML = '<option value="" disabled>Nenhum departamento disponível</option>';
@@ -4255,19 +4214,8 @@ function populateFormOptions(root){
     }
     departmentSelect.disabled = !departments.length;
   }
-  const department = departmentSelect?.value || departments[0] || '';
-  syncTicketTypeOptions(form, department);
-  const typeSelect = form.querySelector('#omega-form-type');
-  const selectedType = typeSelect?.value || '';
-  const departmentLabel = departmentSelect?.selectedOptions?.[0]?.textContent?.trim() || department;
-  const typeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim() || selectedType;
-  resetFormFlowState({
-    department: departmentLabel,
-    type: typeLabel,
-    departmentValue: department,
-    typeValue: selectedType,
-  });
-  renderFormFlowExtras(form);
+  const department = departmentSelect?.value || '';
+  syncTicketTypeOptions(form, department, { preserveSelection: true });
   renderFormAttachments(root);
 }
 
@@ -4287,7 +4235,10 @@ function updateOmegaFormSubject(root){
   const typeSelect = form.querySelector('#omega-form-type');
   const productId = form.querySelector('#omega-form-product')?.value;
   const productMeta = OMEGA_PRODUCT_CATALOG.find((item) => item.id === productId) || null;
-  const typeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim() || '';
+  const typeValue = typeSelect?.value || '';
+  const typeLabel = typeValue
+    ? typeSelect?.selectedOptions?.[0]?.textContent?.trim() || ''
+    : '';
   const requester = getCurrentUser()?.name || '';
   subjectInput.value = buildOmegaSubject({
     typeLabel,
@@ -4346,12 +4297,14 @@ function prefillTicketForm(root){
   const typeSelect = form.querySelector('#omega-form-type');
   const currentDepartment = departmentSelect?.value || requestedDepartment || fallbackDepartment || '';
   const currentType = typeSelect?.value || '';
-  const currentDepartmentLabel = departmentSelect?.selectedOptions?.[0]?.textContent?.trim() || currentDepartment;
-  const currentTypeLabel = typeSelect?.selectedOptions?.[0]?.textContent?.trim() || currentType;
+  const currentDepartmentLabel = currentDepartment
+    ? departmentSelect?.selectedOptions?.[0]?.textContent?.trim() || currentDepartment
+    : '';
+  const currentTypeLabel = currentType
+    ? typeSelect?.selectedOptions?.[0]?.textContent?.trim() || currentType
+    : '';
   resetFormFlowState({
-    department: currentDepartmentLabel,
     type: currentTypeLabel,
-    departmentValue: currentDepartment,
     typeValue: currentType,
   });
   renderFormFlowExtras(form);
@@ -4488,7 +4441,7 @@ function handleNewTicketSubmit(form){
     showFormFeedback(root, 'Preencha todos os campos obrigatórios para registrar o chamado.', 'warning');
     return;
   }
-  const requiresTransferFlow = isTransferEmpresasFlow({ department: queue, type: category });
+  const requiresTransferFlow = isTransferEmpresasFlow({ type: category });
   let flowTargetName = '';
   let flowTargetEmail = '';
   let flowRequesterName = '';
@@ -4516,7 +4469,12 @@ function handleNewTicketSubmit(form){
       const emailInput = root.querySelector('#omega-flow-requester-email');
       if (emailInput) {
         requestAnimationFrame(() => {
-          try { emailInput.focus(); emailInput.select(); } catch (err) { /* noop */ }
+          try {
+            emailInput.focus();
+            emailInput.select();
+          } catch (err) {
+            /* noop */
+          }
         });
       }
       return;
@@ -4538,7 +4496,12 @@ function handleNewTicketSubmit(form){
       const emailInput = root.querySelector('#omega-flow-target-email');
       if (emailInput) {
         requestAnimationFrame(() => {
-          try { emailInput.focus(); emailInput.select(); } catch (err) { /* noop */ }
+          try {
+            emailInput.focus();
+            emailInput.select();
+          } catch (err) {
+            /* noop */
+          }
         });
       }
       return;
