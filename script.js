@@ -6203,10 +6203,17 @@ function renderResumoKPI(summary, context = {}) {
 
   let kpi = $("#kpi-summary");
   if (!kpi) {
+    const host = $("#resumo-summary") || $("#grid-familias");
+    if (!host) return;
     kpi = document.createElement("div");
     kpi.id = "kpi-summary";
     kpi.className = "kpi-summary";
-    $("#grid-familias").prepend(kpi);
+    host.prepend(kpi);
+  } else {
+    const summaryHost = $("#resumo-summary");
+    if (summaryHost && kpi.parentElement !== summaryHost) {
+      summaryHost.prepend(kpi);
+    }
   }
 
   const indicadoresAtingidos = toNumber(summary.indicadoresAtingidos ?? visibleItemsHitCount ?? 0);
@@ -6722,11 +6729,6 @@ function renderFamilias(sections, summary){
   let varRealVisiveis = 0;
   let hasVisibleVar = false;
 
-  const kpiHolder = document.createElement("div");
-  kpiHolder.id = "kpi-summary";
-  kpiHolder.className = "kpi-summary";
-  host.appendChild(kpiHolder);
-
   sections.forEach(sec=>{
     const familiaFilterIsSection = familiaFilterId !== "Todas" && SECTION_IDS.has(familiaFilterId);
     const applyFamiliaFilter = familiaFilterId !== "Todas" && !familiaFilterIsSection;
@@ -6991,7 +6993,7 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
     const normalizedMetric = typeof singleMetric === "string" ? singleMetric.toLowerCase() : "";
     const canAggregateMetric = normalizedMetric === "valor" || normalizedMetric === "qtd";
     const aggregatedLabel = normalizedMetric === "qtd" ? "Quantidade" : (normalizedMetric === "valor" ? "Realizado" : "");
-    const aggregatedValue = canAggregateMetric ? formatMetricFull(normalizedMetric, realizadoTotal) : "";
+    const aggregatedValue = canAggregateMetric ? formatByMetric(normalizedMetric, realizadoTotal) : "";
 
     const sectionEl = document.createElement("section");
     sectionEl.className = "resumo-legacy__section card card--legacy";
@@ -7000,6 +7002,8 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
     const pontosHitLabel = escapeHTML(fmtINT.format(Math.round(pontosHit || 0)));
     const pontosTotalLabel = escapeHTML(fmtINT.format(Math.round(pontosTotal || 0)));
     const sectionHasExpandableRows = items.some(item => Array.isArray(item.children) && item.children.length);
+    const sectionToggleClass = `resumo-legacy__section-toggle${sectionHasExpandableRows ? "" : " is-disabled"}`;
+    const sectionToggleAttrs = sectionHasExpandableRows ? "" : " disabled aria-disabled=\"true\"";
 
     const statsPieces = [
       `<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">Peso total</span><strong class=\"resumo-legacy__stat-value\">${escapeHTML(fmtINT.format(Math.round(pontosTotal || 0)))}</strong></div>`
@@ -7014,14 +7018,12 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
         <div class="resumo-legacy__heading">
           <div class="resumo-legacy__title-row">
             <span class="resumo-legacy__name">${safeLabel}</span>
-            ${sectionHasExpandableRows ? `
-              <div class=\"resumo-legacy__section-actions\">
-                <button type=\"button\" class=\"resumo-legacy__section-toggle\" data-expanded=\"false\">
-                  <i class=\"ti ti-filter\" aria-hidden=\"true\"></i>
-                  <span class=\"resumo-legacy__section-toggle-label\">Abrir todos os filtros</span>
-                </button>
-              </div>
-            ` : ""}
+            <div class="resumo-legacy__section-actions">
+              <button type="button" class="${sectionToggleClass}" data-expanded="false"${sectionToggleAttrs}>
+                <i class="ti ti-filter" aria-hidden="true"></i>
+                <span class="resumo-legacy__section-toggle-label">Abrir todos os filtros</span>
+              </button>
+            </div>
           </div>
           <div class="resumo-legacy__chips">
             <span class="resumo-legacy__chip"><i class="ti ti-box-multiple" aria-hidden="true"></i>${escapeHTML(fmtINT.format(items.length))} indicadores</span>
@@ -7063,9 +7065,17 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
       if (!rowToggleHandlers.size) {
         sectionToggle.setAttribute("data-expanded", "false");
         sectionToggle.classList.remove("is-expanded");
+        if (!sectionHasExpandableRows) {
+          sectionToggle.classList.add("is-disabled");
+          sectionToggle.setAttribute("aria-disabled", "true");
+          sectionToggle.setAttribute("disabled", "true");
+        }
         if (sectionToggleLabel) sectionToggleLabel.textContent = "Abrir todos os filtros";
         return;
       }
+      sectionToggle.classList.remove("is-disabled");
+      sectionToggle.removeAttribute("aria-disabled");
+      sectionToggle.removeAttribute("disabled");
       let expandedCount = 0;
       rowToggleHandlers.forEach((_, rowId) => {
         const rowEl = tbody.querySelector(`tr[data-row-id="${rowId}"]`);
@@ -7089,10 +7099,14 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
       const metricLabel = escapeHTML(metricMeta.label || "—");
       const metricTitle = escapeHTML(metricMeta.title || "Métrica do indicador");
 
+      const metaDisplay = formatByMetric(item.metric, item.meta);
+      const realizadoDisplay = formatByMetric(item.metric, item.realizado);
       const metaFull = formatMetricFull(item.metric, item.meta);
       const realizadoFull = formatMetricFull(item.metric, item.realizado);
-      const metaCell = escapeHTML(metaFull);
-      const realizadoCell = escapeHTML(realizadoFull);
+      const metaCell = escapeHTML(metaDisplay);
+      const metaTitleSafe = escapeHTML(metaFull);
+      const realizadoCell = escapeHTML(realizadoDisplay);
+      const realizadoTitleSafe = escapeHTML(realizadoFull);
 
       const atingPct = Math.max(0, Math.min(200, toNumber(item.ating) * 100));
       const atingFill = Math.max(0, Math.min(1, atingPct / 100));
@@ -7118,8 +7132,14 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
           }
           const childMetricLabel = escapeHTML(childMetricMeta.label || "—");
           const childMetricTitle = escapeHTML(childMetricMeta.title || "Métrica do indicador");
-          const childMetaCell = escapeHTML(formatMetricFull(childMetricKey, child.meta));
-          const childRealCell = escapeHTML(formatMetricFull(childMetricKey, child.realizado));
+          const childMetaDisplay = formatByMetric(childMetricKey, child.meta);
+          const childMetaFull = formatMetricFull(childMetricKey, child.meta);
+          const childRealDisplay = formatByMetric(childMetricKey, child.realizado);
+          const childRealFull = formatMetricFull(childMetricKey, child.realizado);
+          const childMetaCell = escapeHTML(childMetaDisplay);
+          const childMetaTitle = escapeHTML(childMetaFull);
+          const childRealCell = escapeHTML(childRealDisplay);
+          const childRealTitle = escapeHTML(childRealFull);
           const childAtingPct = Math.max(0, Math.min(200, Number(child.meta) ? (Number(child.realizado) / Number(child.meta)) * 100 : 0));
           const childAtingFill = Math.max(0, Math.min(1, childAtingPct / 100));
           const childAtingLabel = `${childAtingPct.toFixed(1)}%`;
@@ -7139,8 +7159,8 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
               </th>
               <td class=\"resumo-legacy__col--peso\">${childPesoLabel}</td>
               <td><span class=\"${childMetricClasses.join(" ")}\" title=\"${childMetricTitle}\">${childMetricLabel}</span></td>
-              <td class=\"resumo-legacy__col--meta\" title=\"${childMetaCell}\">${childMetaCell}</td>
-              <td class=\"resumo-legacy__col--real\" title=\"${childRealCell}\">${childRealCell}</td>
+              <td class=\"resumo-legacy__col--meta\" title=\"${childMetaTitle}\">${childMetaCell}</td>
+              <td class=\"resumo-legacy__col--real\" title=\"${childRealTitle}\">${childRealCell}</td>
               <td class=\"resumo-legacy__col--ating\">
                 <div class=\"resumo-legacy__ating\" title=\"Atingimento\">
                   <div class=\"resumo-legacy__ating-meter ${childAtingMeterClass}\" style=\"--fill:${childAtingFill.toFixed(4)};\" role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"200\" aria-valuenow=\"${childAtingPct.toFixed(1)}\" aria-valuetext=\"${childAtingLabel}\">
@@ -7163,8 +7183,8 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
           <td>
             <span class="${metricClasses.join(" ")}" title="${metricTitle}">${metricLabel}</span>
           </td>
-          <td class="resumo-legacy__col--meta" title="${metaCell}">${metaCell}</td>
-          <td class="resumo-legacy__col--real" title="${realizadoCell}">${realizadoCell}</td>
+          <td class="resumo-legacy__col--meta" title="${metaTitleSafe}">${metaCell}</td>
+          <td class="resumo-legacy__col--real" title="${realizadoTitleSafe}">${realizadoCell}</td>
           <td class="resumo-legacy__col--ating">
             <div class="resumo-legacy__ating" title="Atingimento">
               <div class="resumo-legacy__ating-meter ${atingMeterClass}" style="--fill:${atingFill.toFixed(4)};" role="progressbar" aria-valuemin="0" aria-valuemax="200" aria-valuenow="${atingPct.toFixed(1)}" aria-valuetext="${atingLabel}">
@@ -7208,16 +7228,22 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
     });
 
     if (sectionToggle) {
-      sectionToggle.addEventListener("click", ev => {
-        ev.preventDefault();
-        const targetState = sectionToggle.getAttribute("data-expanded") !== "true";
-        rowToggleHandlers.forEach(toggleFn => {
-          toggleFn(targetState);
+      if (sectionHasExpandableRows) {
+        sectionToggle.addEventListener("click", ev => {
+          ev.preventDefault();
+          const targetState = sectionToggle.getAttribute("data-expanded") !== "true";
+          rowToggleHandlers.forEach(toggleFn => {
+            toggleFn(targetState);
+          });
+          sectionToggle.setAttribute("data-expanded", String(targetState));
+          sectionToggle.classList.toggle("is-expanded", targetState);
+          if (sectionToggleLabel) sectionToggleLabel.textContent = targetState ? "Recolher filtros" : "Abrir todos os filtros";
         });
-        sectionToggle.setAttribute("data-expanded", String(targetState));
-        sectionToggle.classList.toggle("is-expanded", targetState);
-        if (sectionToggleLabel) sectionToggleLabel.textContent = targetState ? "Recolher filtros" : "Abrir todos os filtros";
-      });
+      } else {
+        sectionToggle.classList.add("is-disabled");
+        sectionToggle.setAttribute("aria-disabled", "true");
+        sectionToggle.setAttribute("disabled", "true");
+      }
     }
 
     syncSectionToggleState();

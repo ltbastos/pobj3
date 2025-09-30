@@ -561,11 +561,16 @@ select.input{
 /* =========================================================
    KPI Topo (Big Numbers)
    ========================================================= */
+.resumo-summary{
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+  margin:0 0 28px;
+}
 .kpi-summary{
   display:flex;
   flex-wrap:wrap;
   gap:18px;
-  margin:8px 0 12px;
 }
 .kpi-pill{
   background:#fff;
@@ -736,6 +741,10 @@ select.input{
 .resumo-legacy__name{ font-size:16px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:#111827; }
 .resumo-legacy__section-actions{ display:flex; align-items:center; }
 .resumo-legacy__section-toggle{ display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:999px; border:1px solid #dbeafe; background:#eff6ff; color:#1d4ed8; font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; cursor:pointer; transition:background .2s ease,color .2s ease,border-color .2s ease; }
+.resumo-legacy__section-toggle[disabled],
+.resumo-legacy__section-toggle.is-disabled{ opacity:.45; cursor:not-allowed; }
+.resumo-legacy__section-toggle[disabled]:hover,
+.resumo-legacy__section-toggle.is-disabled:hover{ background:#eff6ff; color:#1d4ed8; border-color:#dbeafe; }
 .resumo-legacy__section-toggle:hover,
 .resumo-legacy__section-toggle.is-expanded{ background:#1d4ed8; color:#fff; border-color:#1d4ed8; }
 .resumo-legacy__section-toggle:focus-visible{ outline:2px solid var(--primary, #2563eb); outline-offset:2px; }
@@ -774,6 +783,7 @@ select.input{
 .resumo-legacy__col--ating,
 .resumo-legacy__col--update{ text-align:center; font-variant-numeric:tabular-nums; }
 .resumo-legacy__metric{ display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:4px 12px; border-radius:999px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; min-width:84px; }
+.resumo-legacy__table tbody td > .resumo-legacy__metric{ margin-inline:auto; }
 .resumo-legacy__metric--valor{ background:#e0ecff; color:#1d4ed8; }
 .resumo-legacy__metric--qtd{ background:#ede9fe; color:#6d28d9; }
 .resumo-legacy__metric--perc{ background:#dcfce7; color:#15803d; }
