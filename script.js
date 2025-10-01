@@ -3160,6 +3160,8 @@ const state = {
   contractIndex:[],
   lastNonContractView:"diretoria",
 
+  exec:{ heatmapMode:"secoes", seriesColors:new Map() },
+
   // ranking
   rk:{
     level:"agencia",
@@ -6324,6 +6326,98 @@ function renderResumoKPI(summary, context = {}) {
   if (resumoAnim) resumoAnim.kpiKey = nextResumoKey;
 }
 
+function formatResumoAnnualSubtitle(period){
+  const startISO = period?.start || "";
+  const endISO = period?.end || "";
+  if (!startISO || !endISO) return "";
+  const startDate = dateUTCFromISO(startISO);
+  const endDate = dateUTCFromISO(endISO);
+  const invalidStart = !(startDate instanceof Date) || Number.isNaN(startDate.getTime());
+  const invalidEnd = !(endDate instanceof Date) || Number.isNaN(endDate.getTime());
+  if (invalidStart || invalidEnd) {
+    return `Período de ${formatBRDate(startISO)} a ${formatBRDate(endISO)}`;
+  }
+  const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "long" });
+  const capitalize = (txt) => txt ? txt.charAt(0).toUpperCase() + txt.slice(1) : "";
+  const startMonth = capitalize(monthFormatter.format(startDate));
+  const endMonth = capitalize(monthFormatter.format(endDate));
+  if (!startMonth || !endMonth) {
+    return `Período de ${formatBRDate(startISO)} a ${formatBRDate(endISO)}`;
+  }
+  const sameYear = startDate.getUTCFullYear() === endDate.getUTCFullYear();
+  if (sameYear) {
+    if (startMonth === endMonth) {
+      return `Acumulado em ${startMonth} de ${endDate.getUTCFullYear()}`;
+    }
+    return `Acumulado de ${startMonth} a ${endMonth} de ${endDate.getUTCFullYear()}`;
+  }
+  return `Acumulado de ${startMonth} de ${startDate.getUTCFullYear()} a ${endMonth} de ${endDate.getUTCFullYear()}`;
+}
+
+function renderResumoLegacyAnnualChart(host){
+  if (!host) return false;
+  const rows = Array.isArray(state._rankingRaw) ? filterRows(state._rankingRaw) : [];
+  const dataset = makeAnnualSectionSeries(rows);
+  const section = document.createElement("section");
+  section.className = "resumo-legacy__annual card card--legacy";
+
+  const header = document.createElement("header");
+  header.className = "resumo-legacy__annual-head";
+
+  const heading = document.createElement("div");
+  heading.className = "resumo-legacy__annual-heading";
+
+  const title = document.createElement("h3");
+  title.className = "resumo-legacy__annual-title";
+  title.textContent = "Atingimento anual por seção";
+
+  heading.appendChild(title);
+
+  const subtitleText = formatResumoAnnualSubtitle(state.period);
+  if (subtitleText) {
+    const subtitle = document.createElement("p");
+    subtitle.className = "resumo-legacy__annual-sub";
+    subtitle.textContent = subtitleText;
+    heading.appendChild(subtitle);
+  }
+
+  header.appendChild(heading);
+
+  const body = document.createElement("div");
+  body.className = "resumo-legacy__annual-body";
+
+  const chartWrap = document.createElement("div");
+  chartWrap.className = "resumo-legacy__annual-chart chart";
+
+  const legendEl = document.createElement("div");
+  legendEl.className = "chart-legend resumo-legacy__annual-legend";
+
+  body.appendChild(chartWrap);
+  body.appendChild(legendEl);
+
+  section.appendChild(header);
+  section.appendChild(body);
+
+  host.appendChild(section);
+
+  const seriesList = Array.isArray(dataset.series) ? dataset.series : [];
+  if (legendEl){
+    if (seriesList.length){
+      legendEl.innerHTML = seriesList.map(serie => `
+        <span class="legend-item">
+          <span class="legend-swatch legend-swatch--line" style="background:${serie.color};border-color:${serie.color};"></span>${escapeHTML(serie.label)}
+        </span>`).join("");
+    } else {
+      legendEl.innerHTML = `<span class="legend-item muted">Sem seções para exibir.</span>`;
+    }
+  }
+
+  const ariaLabel = "Linhas anuais de atingimento por seção";
+  buildExecMonthlyLines(chartWrap, dataset, { ariaLabel });
+
+  return true;
+}
+
 function applyResumoMode(mode = "cards") {
   const normalized = mode === "legacy" ? "legacy" : "cards";
   const cardsView = $("#resumo-cards");
@@ -6962,8 +7056,18 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
 
   host.innerHTML = "";
 
+  const showAnnualChart = (state.accumulatedView || "mensal") === "anual";
+  const annualRendered = showAnnualChart ? renderResumoLegacyAnnualChart(host) : false;
+
   if (!Array.isArray(sections) || !sections.length) {
-    host.innerHTML = `<div class="resumo-legacy__empty">Nenhum indicador encontrado para os filtros selecionados.</div>`;
+    if (annualRendered) {
+      const emptyMsg = document.createElement("div");
+      emptyMsg.className = "resumo-legacy__empty";
+      emptyMsg.textContent = "Nenhum indicador encontrado para os filtros selecionados.";
+      host.appendChild(emptyMsg);
+    } else {
+      host.innerHTML = `<div class="resumo-legacy__empty">Nenhum indicador encontrado para os filtros selecionados.</div>`;
+    }
     return;
   }
 
@@ -7306,13 +7410,12 @@ function createExecutiveView(){
   if (!host) return;
 
   if (!state.exec) {
-    state.exec = { heatmapMode: "secoes", seriesColors: new Map(), chartMode: "monthly" };
+    state.exec = { heatmapMode: "secoes", seriesColors: new Map() };
   }
   state.exec.heatmapMode = state.exec.heatmapMode || "secoes";
   if (!(state.exec.seriesColors instanceof Map)) {
     state.exec.seriesColors = new Map();
   }
-  state.exec.chartMode = state.exec.chartMode || "monthly";
 
   const syncSegmented = (containerSelector, dataAttr, stateKey, fallback) => {
     const container = host.querySelector(containerSelector);
@@ -7719,7 +7822,8 @@ function makeExecYTDPerformance(rows, period){
   return { months, latest };
 }
 
-function buildExecMonthlyLines(container, dataset){
+function buildExecMonthlyLines(container, dataset, options = {}){
+  const ariaLabel = options?.ariaLabel || "Linhas de atingimento mensal por seção";
   if (!dataset || !dataset.series?.length) {
     container.innerHTML = `<div class="muted">Sem dados para exibir.</div>`;
     return;
@@ -7782,8 +7886,9 @@ function buildExecMonthlyLines(container, dataset){
     `<text x="${x(idx)}" y="${H - 10}" font-size="10" text-anchor="middle" fill="#6b7280">${escapeHTML(lab)}</text>`
   ).join('');
 
+  const safeAria = escapeHTML(ariaLabel);
   container.innerHTML = `
-    <svg class="exec-chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Linhas de atingimento mensal por família">
+    <svg class="exec-chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${safeAria}">
       <rect x="0" y="0" width="${W}" height="${H}" fill="white"/>
       ${gridY}
       ${paths}
@@ -7883,7 +7988,6 @@ function renderExecutiveView(){
   const chartC = document.getElementById("exec-chart");
   const chartTitleEl = document.getElementById("exec-chart-title");
   const chartLegend = document.getElementById("exec-chart-legend");
-  const chartToggle = document.getElementById("exec-chart-toggle");
   const ytdChartEl = document.getElementById("exec-ytd-chart");
   const ytdTitleEl = document.getElementById("exec-ytd-title");
   const hm     = document.getElementById("exec-heatmap");
@@ -7999,57 +8103,26 @@ function renderExecutiveView(){
   // Gráfico
   if (chartC){
     const monthlySeries = makeMonthlySectionSeries(rowsMonthly, execMonthlyPeriod);
-    const annualSeries = makeAnnualSectionSeries(rowsBase);
-    const hasAnnual = Array.isArray(annualSeries.series) && annualSeries.series.length > 0;
+    const ariaLabel = "Linhas mensais de atingimento por seção";
+    chartC.setAttribute("aria-label", ariaLabel);
+    if (chartTitleEl) chartTitleEl.textContent = "Evolução mensal por seção";
 
-    const applyChartMode = (mode = state.exec.chartMode || "monthly") => {
-      const desired = mode === "annual" ? "annual" : "monthly";
-      const actual = desired === "annual" && hasAnnual ? "annual" : "monthly";
-      host.__execChartMode = actual;
-      state.exec.chartMode = actual;
-      host.__execChartDataset = actual === "annual" ? annualSeries : monthlySeries;
-
-      const chartTitle = actual === "annual" ? "Evolução anual por seção" : "Evolução mensal por seção";
-      const ariaLabel = actual === "annual"
-        ? "Linhas anuais de atingimento por seção"
-        : "Linhas mensais de atingimento por seção";
-      chartC.setAttribute("aria-label", ariaLabel);
-      if (chartTitleEl) chartTitleEl.textContent = chartTitle;
-
-      if (chartLegend){
-        const seriesList = host.__execChartDataset.series || [];
-        if (seriesList.length){
-          chartLegend.innerHTML = seriesList.map(serie => `
-            <span class="legend-item">
-              <span class="legend-swatch legend-swatch--line" style="background:${serie.color};border-color:${serie.color};"></span>${escapeHTML(serie.label)}
-            </span>`).join("");
-        } else {
-          chartLegend.innerHTML = `<span class="legend-item muted">Sem seções para exibir.</span>`;
-        }
-      }
-
-      const renderChart = () => buildExecMonthlyLines(chartC, host.__execChartDataset);
-      host.__execChartRender = renderChart;
-      renderChart();
-
-      if (chartToggle){
-        chartToggle.textContent = actual === "annual" ? "Visão mensal" : "Visão anual";
-        chartToggle.setAttribute("aria-pressed", actual === "annual" ? "true" : "false");
-      }
-    };
-
-    applyChartMode(state.exec.chartMode || "monthly");
-
-    if (chartToggle){
-      chartToggle.disabled = !hasAnnual;
-      if (!chartToggle.dataset.bound){
-        chartToggle.dataset.bound = "1";
-        chartToggle.addEventListener("click", () => {
-          const nextMode = host.__execChartMode === "annual" ? "monthly" : "annual";
-          applyChartMode(nextMode);
-        });
+    if (chartLegend){
+      const seriesList = monthlySeries.series || [];
+      if (seriesList.length){
+        chartLegend.innerHTML = seriesList.map(serie => `
+          <span class="legend-item">
+            <span class="legend-swatch legend-swatch--line" style="background:${serie.color};border-color:${serie.color};"></span>${escapeHTML(serie.label)}
+          </span>`).join("");
+      } else {
+        chartLegend.innerHTML = `<span class="legend-item muted">Sem seções para exibir.</span>`;
       }
     }
+
+    const renderChart = () => buildExecMonthlyLines(chartC, monthlySeries, { ariaLabel });
+    host.__execChartDataset = monthlySeries;
+    host.__execChartRender = renderChart;
+    renderChart();
 
     if (!host.__execResize){
       let raf = null;
