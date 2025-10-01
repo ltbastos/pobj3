@@ -8198,22 +8198,41 @@ function buildResumoLegacySections(sections = []) {
 
       let familyDisplayChildren = familyIndicators;
       if (secDef.id === "financeiro") {
-        const familiaKey = famDef.id || famDef.nome || "";
-        const familiaSlug = simplificarTexto(familiaKey);
+        const familiaKeyRaw = famDef.id || famDef.nome || "";
+        const familiaIdNormalized = limparTexto(familiaKeyRaw).toLowerCase();
+        const familiaSlug = simplificarTexto(familiaKeyRaw);
         const familiaNameSlug = simplificarTexto(famDef.nome || "");
+        const familiaAliases = new Set([
+          familiaIdNormalized,
+          familiaSlug,
+          familiaNameSlug
+        ].filter(Boolean));
+        const familiaMatches = (...candidates) => candidates.some(candidate => familiaAliases.has(candidate));
         if (familyIndicators.length === 1) {
           const indicatorChildren = Array.isArray(familyIndicators[0].children)
             ? familyIndicators[0].children
             : [];
           if (
-            familiaSlug === "financeiro_recuperacao_ate59" ||
-            familiaSlug === "financeiro_recuperacao_acima59" ||
-            familiaNameSlug === "recuperacao_de_vencidos_ate_59_dias" ||
-            familiaNameSlug === "recuperacao_de_vencidos_acima_de_59_dias"
+            familiaMatches(
+              "financeiro_recuperacao_ate59",
+              "financeiro recuperacao ate59",
+              "financeiro recuperacao ate 59",
+              "recuperacao de vencidos ate 59 dias"
+            ) ||
+            familiaMatches(
+              "financeiro_recuperacao_acima59",
+              "financeiro recuperacao acima59",
+              "financeiro recuperacao acima 59",
+              "recuperacao de vencidos acima de 59 dias"
+            )
           ) {
             familyDisplayChildren = [];
           } else if (
-            (familiaSlug === "financeiro_recuperacao_credito" || familiaNameSlug === "recuperacao_de_credito") &&
+            familiaMatches(
+              "financeiro_recuperacao_credito",
+              "financeiro recuperacao credito",
+              "recuperacao de credito"
+            ) &&
             indicatorChildren.length
           ) {
             familyDisplayChildren = indicatorChildren.map(child => {
