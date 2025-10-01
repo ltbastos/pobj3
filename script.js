@@ -2068,6 +2068,49 @@ const LEGACY_RESUMO_STRUCTURE = [
         ]
       }
     ]
+  },
+  {
+    id: "financeiro",
+    label: "FINANCEIRO",
+    familias: [
+      {
+        id: "financeiro_recuperacao_ate59",
+        nome: "Recuperação de Vencidos até 59 dias",
+        indicadores: [
+          {
+            id: "rec_vencidos_59",
+            cardId: "rec_vencidos_59",
+            nome: "Recuperação de Vencidos até 59 dias"
+          }
+        ]
+      },
+      {
+        id: "financeiro_recuperacao_acima59",
+        nome: "Recuperação de Vencidos acima de 59 dias",
+        indicadores: [
+          {
+            id: "rec_vencidos_50mais",
+            cardId: "rec_vencidos_50mais",
+            nome: "Recuperação de Vencidos acima de 59 dias"
+          }
+        ]
+      },
+      {
+        id: "financeiro_recuperacao_credito",
+        nome: "Recuperação de Crédito",
+        indicadores: [
+          {
+            id: "rec_credito",
+            cardId: "rec_credito",
+            nome: "Recuperação de Crédito",
+            subindicadores: [
+              { id: "recuperacao_de_credito_lp_total", nome: "Recuperação de Crédito LP Total" },
+              { id: "recuperacao_de_credito_lp_a_vista", nome: "Recuperação de Crédito LP à Vista" }
+            ]
+          }
+        ]
+      }
+    ]
   }
 ];
 
@@ -2120,8 +2163,8 @@ const INDICATOR_STRUCTURE_OVERRIDES = {
   },
   rec_credito: {
     subIndicators: [
-      { id: "rec_credito_vista", nome: "Recuperação à vista", peso: 0.5 },
-      { id: "rec_credito_parcelado", nome: "Recuperação parcelada", peso: 0.5 }
+      { id: "recuperacao_de_credito_lp_total", nome: "Recuperação de Crédito LP Total", peso: 0.5 },
+      { id: "recuperacao_de_credito_lp_a_vista", nome: "Recuperação de Crédito LP à Vista", peso: 0.5 }
     ]
   },
   captacao_bruta: {
@@ -2222,15 +2265,10 @@ const INDICATOR_STRUCTURE_OVERRIDES = {
     ]
   },
   rec_vencidos_59: {
-    subIndicators: [
-      { id: "rec_vencidos_59_relacionamento", nome: "Carteira relacionamento", peso: 0.55 },
-      { id: "rec_vencidos_59_ativa", nome: "Carteira ativa", peso: 0.45 }
-    ]
+    subIndicators: []
   },
   rec_vencidos_50mais: {
-    subIndicators: [
-      { id: "rec_vencidos_50mais_judicial", nome: "Carteira judicial", peso: 1 }
-    ]
+    subIndicators: []
   },
   prod_credito_pj: {
     subIndicators: [
@@ -2329,7 +2367,10 @@ function resolveIndicatorStructureMeta(indicatorId, indicatorNome = "", metric =
   const override = INDICATOR_STRUCTURE_OVERRIDES[indicatorId];
   const normalizedMetric = typeof metric === "string" && metric ? metric : "valor";
   const ensureArray = (source = []) => Array.isArray(source) ? source : [];
-  if (override && Array.isArray(override.subIndicators) && override.subIndicators.length) {
+  if (override && Array.isArray(override.subIndicators)) {
+    if (!override.subIndicators.length) {
+      return { subIndicators: [] };
+    }
     const entries = override.subIndicators.map((entry, idx) => {
       const rawId = limparTexto(entry?.id) || "";
       const fallbackId = `${indicatorId}_sub_${idx + 1}`;
