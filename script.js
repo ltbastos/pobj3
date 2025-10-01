@@ -7535,6 +7535,12 @@ function buildResumoLegacySections(sections = []) {
   const hierarchy = getResumoHierarchy();
   if (!hierarchy.length) return [];
 
+  const periodStart = state.period?.start || "";
+  const periodEnd = state.period?.end || "";
+  const diasTotais = businessDaysBetweenInclusive(periodStart, periodEnd);
+  const diasDecorridos = businessDaysElapsedUntilToday(periodStart, periodEnd);
+  const diasRestantes = Math.max(0, diasTotais - diasDecorridos);
+
   const normalizeNodeMetrics = (node = {}, fallbackMetric = "valor") => {
     const metric = typeof node.metric === "string" && node.metric ? node.metric.toLowerCase() : fallbackMetric;
     const metaVal = Number(node.meta) || 0;
@@ -7546,6 +7552,26 @@ function buildResumoLegacySections(sections = []) {
     const pontosBrutosVal = Number(node.pontos ?? Math.min(pesoVal, realVal)) || 0;
     const ultimaAtualizacao = node.ultimaAtualizacao || node.ultimaAtualizacaoTexto || "";
     const ating = metaVal ? realVal / metaVal : 0;
+    const metaDiariaValCandidate = toNumber(node.metaDiaria);
+    const metaDiariaVal = Number.isFinite(metaDiariaValCandidate)
+      ? metaDiariaValCandidate
+      : (diasTotais > 0 ? metaVal / diasTotais : 0);
+    const referenciaCandidate = toNumber(
+      node.referenciaHoje ?? node.referenciaDia ?? node.referencia ?? node.referenciaAtual
+    );
+    const referenciaHojeVal = Number.isFinite(referenciaCandidate)
+      ? referenciaCandidate
+      : (diasDecorridos > 0 ? Math.min(metaVal, metaDiariaVal * diasDecorridos) : 0);
+    const metaNecCandidate = toNumber(
+      node.metaDiariaNecessaria ?? node.metaNecessaria ?? node.metaDiaNecessaria ?? node.metaDiariaRestante
+    );
+    const metaDiariaNecessariaVal = Number.isFinite(metaNecCandidate)
+      ? metaNecCandidate
+      : (diasRestantes > 0 ? Math.max(0, (metaVal - realVal) / diasRestantes) : 0);
+    const projecaoCandidate = toNumber(node.projecao ?? node.forecast ?? node.previsao);
+    const projecaoVal = Number.isFinite(projecaoCandidate)
+      ? projecaoCandidate
+      : (diasDecorridos > 0 ? (realVal / Math.max(diasDecorridos, 1)) * diasTotais : realVal);
     return {
       ...node,
       metric,
@@ -7557,6 +7583,10 @@ function buildResumoLegacySections(sections = []) {
       pontosMeta: pontosMetaVal,
       pontosBrutos: pontosBrutosVal,
       pontos: Math.max(0, Math.min(pesoVal || pontosMetaVal, pontosBrutosVal)),
+      metaDiaria: metaDiariaVal,
+      referenciaHoje: referenciaHojeVal,
+      metaDiariaNecessaria: metaDiariaNecessariaVal,
+      projecao: projecaoVal,
       ating,
       atingido: metaVal ? realVal >= metaVal : false,
       ultimaAtualizacao
@@ -7586,6 +7616,10 @@ function buildResumoLegacySections(sections = []) {
         peso: Number(def.peso) || 0,
         pontosMeta: Number(def.peso) || 0,
         pontos: 0,
+        metaDiaria: 0,
+        referenciaHoje: 0,
+        metaDiariaNecessaria: 0,
+        projecao: 0,
         ultimaAtualizacao: ""
       }, def.metric || fallbackMetric);
       baseNode.id = baseNode.id || def.id || key || baseNode.nome;
@@ -7705,6 +7739,10 @@ function buildResumoLegacySections(sections = []) {
             pontosMeta: 0,
             pontosBrutos: 0,
             pontos: 0,
+            metaDiaria: 0,
+            referenciaHoje: 0,
+            metaDiariaNecessaria: 0,
+            projecao: 0,
             ating: 0,
             atingVariavel: 0,
             atingido: false,
@@ -7712,6 +7750,8 @@ function buildResumoLegacySections(sections = []) {
             aliases: Array.isArray(indDef.aliases) ? indDef.aliases.slice() : []
           };
         }
+
+        rowItem = normalizeNodeMetrics(rowItem, rowItem.metric || match?.metric || "valor");
 
         if (!rowItem.familiaId) rowItem.familiaId = famDef.id;
         rowItem.familiaNome = famDef.nome;
@@ -7766,6 +7806,10 @@ function buildResumoLegacySections(sections = []) {
       const primaryMetric = familyIndicators.every(child => child.metric === familyIndicators[0].metric)
         ? (familyIndicators[0].metric || "valor")
         : "mix";
+      const famMetaDiaria = diasTotais > 0 ? famMeta / diasTotais : 0;
+      const famReferenciaHoje = diasDecorridos > 0 ? Math.min(famMeta, famMetaDiaria * diasDecorridos) : 0;
+      const famMetaDiariaNecessaria = diasRestantes > 0 ? Math.max(0, (famMeta - famReal) / diasRestantes) : 0;
+      const famProjecao = diasDecorridos > 0 ? (famReal / Math.max(diasDecorridos, 1)) * diasTotais : famReal;
       const familiaRow = {
         id: famDef.id,
         nome: famDef.nome,
@@ -7778,6 +7822,10 @@ function buildResumoLegacySections(sections = []) {
         pontosBrutos: famPontos,
         pontos: famPontos,
         peso: famPontosMeta,
+        metaDiaria: famMetaDiaria,
+        referenciaHoje: famReferenciaHoje,
+        metaDiariaNecessaria: famMetaDiariaNecessaria,
+        projecao: famProjecao,
         ating: famMeta ? famReal / famMeta : 0,
         atingVariavel: famVariavelMeta ? famVariavelReal / famVariavelMeta : 0,
         atingido: famMeta ? famReal >= famMeta : false,
@@ -8661,6 +8709,10 @@ function renderResumoLegacyTable(sections = [], summary = {}, rawSections = null
               <th scope="col">Métrica</th>
               <th scope="col" class="resumo-legacy__col--meta">Meta</th>
               <th scope="col" class="resumo-legacy__col--real">Realizado</th>
+              <th scope="col" class="resumo-legacy__col--ref">Ref. do dia</th>
+              <th scope="col" class="resumo-legacy__col--forecast">Forecast</th>
+              <th scope="col" class="resumo-legacy__col--meta-dia">Meta diária nec.</th>
+              <th scope="col" class="resumo-legacy__col--pontos">Pontos</th>
               <th scope="col" class="resumo-legacy__col--ating">Ating.</th>
               <th scope="col" class="resumo-legacy__col--update">Atualização</th>
             </tr>
@@ -8729,17 +8781,33 @@ function renderResumoLegacyTable(sections = [], summary = {}, rawSections = null
       let metaTitleRaw = "Sem meta agregada";
       let realizadoCellRaw = "—";
       let realizadoTitleRaw = "Sem realizado agregado";
+      let referenciaCellRaw = "—";
+      let referenciaTitleRaw = "Sem referência do dia";
+      let forecastCellRaw = "—";
+      let forecastTitleRaw = "Sem forecast calculado";
+      let metaNecCellRaw = "—";
+      let metaNecTitleRaw = "Sem meta diária necessária";
       if (isKnownMetric) {
         metaCellRaw = formatByMetric(metricKeyRaw, item.meta);
         metaTitleRaw = formatMetricFull(metricKeyRaw, item.meta);
         realizadoCellRaw = formatByMetric(metricKeyRaw, item.realizado);
         realizadoTitleRaw = formatMetricFull(metricKeyRaw, item.realizado);
+        referenciaCellRaw = formatByMetric(metricKeyRaw, item.referenciaHoje);
+        referenciaTitleRaw = formatMetricFull(metricKeyRaw, item.referenciaHoje);
+        forecastCellRaw = formatByMetric(metricKeyRaw, item.projecao);
+        forecastTitleRaw = formatMetricFull(metricKeyRaw, item.projecao);
+        metaNecCellRaw = formatByMetric(metricKeyRaw, item.metaDiariaNecessaria);
+        metaNecTitleRaw = formatMetricFull(metricKeyRaw, item.metaDiariaNecessaria);
       }
 
       const atingPct = Math.max(0, Math.min(200, toNumber(item.ating) * 100));
       const atingFill = Math.max(0, Math.min(1, atingPct / 100));
       const atingLabelRaw = `${atingPct.toFixed(1)}%`;
       const atingMeterClass = atingPct >= 100 ? "is-ok" : (atingPct >= 50 ? "is-warn" : "is-low");
+
+      const pontosValor = Number(item.pontos ?? item.pontosBrutos ?? item.peso ?? 0) || 0;
+      const pontosLabelRaw = formatPoints(pontosValor, { withUnit: true });
+      const pontosTitleRaw = formatPoints(pontosValor, { withUnit: true });
 
       const updateRaw = item.ultimaAtualizacao || "";
       const updateLabelRaw = updateRaw
@@ -8776,6 +8844,10 @@ function renderResumoLegacyTable(sections = [], summary = {}, rawSections = null
           </td>
           <td class="resumo-legacy__col--meta" title="${escapeHTML(metaTitleRaw)}">${escapeHTML(metaCellRaw)}</td>
           <td class="resumo-legacy__col--real" title="${escapeHTML(realizadoTitleRaw)}">${escapeHTML(realizadoCellRaw)}</td>
+          <td class="resumo-legacy__col--ref" title="${escapeHTML(referenciaTitleRaw)}">${escapeHTML(referenciaCellRaw)}</td>
+          <td class="resumo-legacy__col--forecast" title="${escapeHTML(forecastTitleRaw)}">${escapeHTML(forecastCellRaw)}</td>
+          <td class="resumo-legacy__col--meta-dia" title="${escapeHTML(metaNecTitleRaw)}">${escapeHTML(metaNecCellRaw)}</td>
+          <td class="resumo-legacy__col--pontos" title="${escapeHTML(pontosTitleRaw)}">${escapeHTML(pontosLabelRaw)}</td>
           <td class="resumo-legacy__col--ating">
             <div class="resumo-legacy__ating" title="Atingimento">
               <div class="resumo-legacy__ating-meter ${atingMeterClass}" style="--fill:${atingFill.toFixed(4)};" role="progressbar" aria-valuemin="0" aria-valuemax="200" aria-valuenow="${atingPct.toFixed(1)}" aria-valuetext="${escapeHTML(atingLabelRaw)}">

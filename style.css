@@ -786,6 +786,10 @@ select.input{
 .resumo-legacy__col--peso,
 .resumo-legacy__col--meta,
 .resumo-legacy__col--real,
+.resumo-legacy__col--ref,
+.resumo-legacy__col--forecast,
+.resumo-legacy__col--meta-dia,
+.resumo-legacy__col--pontos,
 .resumo-legacy__col--ating,
 .resumo-legacy__col--update{ text-align:center; font-variant-numeric:tabular-nums; }
 .resumo-legacy__col--month-head{ text-align:center; font-size:11px; letter-spacing:.08em; }
