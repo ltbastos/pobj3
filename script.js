@@ -7306,12 +7306,13 @@ function createExecutiveView(){
   if (!host) return;
 
   if (!state.exec) {
-    state.exec = { heatmapMode: "secoes", seriesColors: new Map() };
+    state.exec = { heatmapMode: "secoes", seriesColors: new Map(), chartMode: "monthly" };
   }
   state.exec.heatmapMode = state.exec.heatmapMode || "secoes";
   if (!(state.exec.seriesColors instanceof Map)) {
     state.exec.seriesColors = new Map();
   }
+  state.exec.chartMode = state.exec.chartMode || "monthly";
 
   const syncSegmented = (containerSelector, dataAttr, stateKey, fallback) => {
     const container = host.querySelector(containerSelector);
@@ -7465,6 +7466,16 @@ function monthKeyLabel(key){
   return dt.toLocaleDateString("pt-BR", { month: "short", year: "numeric" }).replace(".", "");
 }
 
+function monthKeyShortLabel(key){
+  if (!key) return "";
+  const [y, m] = key.split('-');
+  const year = Number(y);
+  const month = Number(m);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return key;
+  const dt = new Date(Date.UTC(year, month - 1, 1));
+  return dt.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "").toUpperCase();
+}
+
 function monthKeyFromDate(dt){
   if (!(dt instanceof Date) || Number.isNaN(dt)) return "";
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}`;
@@ -7479,6 +7490,18 @@ function normalizeMonthKey(value){
     if (match) return `${match[1]}-${match[2]}`;
   }
   return "";
+}
+
+function extractYearFromValue(value){
+  if (!value) return "";
+  if (value instanceof Date && Number.isFinite(value.getUTCFullYear())) {
+    return String(value.getUTCFullYear());
+  }
+  const normalized = normalizeMonthKey(value);
+  if (normalized) return normalized.slice(0, 4);
+  const asString = String(value);
+  const match = asString.match(/(\d{4})/);
+  return match ? match[1] : "";
 }
 
 function buildMonthlyAxis(period){
@@ -7580,6 +7603,122 @@ function makeMonthlySectionSeries(rows, period){
   };
 }
 
+function makeAnnualSectionSeries(rows){
+  if (!Array.isArray(rows) || !rows.length) {
+    return { keys: [], labels: [], series: [] };
+  }
+
+  const sectionOrder = new Map(CARD_SECTIONS_DEF.map((sec, idx) => [sec.id, idx]));
+  const yearsSet = new Set();
+  rows.forEach(r => {
+    const rawDate = r?.competencia || r?.mes || r?.data || r?.dataReferencia || r?.dt;
+    const year = extractYearFromValue(rawDate);
+    if (year) yearsSet.add(year);
+  });
+
+  const years = Array.from(yearsSet).sort((a, b) => {
+    const na = Number(a);
+    const nb = Number(b);
+    if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+    return a.localeCompare(b);
+  });
+  if (!years.length) {
+    return { keys: [], labels: [], series: [] };
+  }
+
+  const yearIndex = new Map(years.map((year, idx) => [year, idx]));
+  const sections = new Map();
+
+  rows.forEach(r => {
+    const rawDate = r?.competencia || r?.mes || r?.data || r?.dataReferencia || r?.dt;
+    const year = extractYearFromValue(rawDate);
+    if (!yearIndex.has(year)) return;
+    const idx = yearIndex.get(year);
+    const section = resolveSectionMetaFromRow(r);
+    if (!section.id) return;
+
+    let entry = sections.get(section.id);
+    if (!entry) {
+      entry = {
+        id: section.id,
+        label: section.label || getSectionLabel(section.id) || section.id,
+        meta: Array(years.length).fill(0),
+        real: Array(years.length).fill(0)
+      };
+      sections.set(section.id, entry);
+    } else if (!entry.label && section.label) {
+      entry.label = section.label;
+    }
+
+    entry.meta[idx] += toNumber(r.meta_mens ?? r.meta ?? 0);
+    entry.real[idx] += toNumber(r.real_mens ?? r.realizado ?? 0);
+  });
+
+  const series = [...sections.values()].map(entry => {
+    const values = entry.meta.map((meta, idx) => {
+      if (!Number.isFinite(meta) || meta <= 0) return null;
+      const realVal = entry.real[idx] ?? 0;
+      return (realVal / meta) * 100;
+    });
+    if (!values.some(v => Number.isFinite(v))) return null;
+    return {
+      id: entry.id,
+      label: entry.label || getSectionLabel(entry.id) || entry.id,
+      values,
+      color: ensureExecSeriesColor(entry.id)
+    };
+  }).filter(Boolean).sort((a, b) => {
+    const ai = sectionOrder.has(a.id) ? sectionOrder.get(a.id) : Number.MAX_SAFE_INTEGER;
+    const bi = sectionOrder.has(b.id) ? sectionOrder.get(b.id) : Number.MAX_SAFE_INTEGER;
+    if (ai !== bi) return ai - bi;
+    return a.label.localeCompare(b.label, 'pt-BR', { sensitivity: 'base' });
+  });
+
+  return {
+    keys: years,
+    labels: years,
+    series
+  };
+}
+
+function makeExecYTDPerformance(rows, period){
+  const monthKeys = buildMonthlyAxis(period);
+  if (!monthKeys.length) {
+    return { months: [], latest: null };
+  }
+  const monthIndex = new Map(monthKeys.map((key, idx) => [key, idx]));
+  const months = monthKeys.map(key => ({
+    key,
+    label: monthKeyLabel(key),
+    short: monthKeyShortLabel(key),
+    meta: 0,
+    real: 0,
+    peso: 0,
+    atingimento: NaN,
+  }));
+
+  rows.forEach(r => {
+    const rawDate = r?.competencia || r?.mes || r?.data || r?.dataReferencia || r?.dt;
+    const key = normalizeMonthKey(rawDate);
+    if (!key || !monthIndex.has(key)) return;
+    const idx = monthIndex.get(key);
+    const entry = months[idx];
+    entry.meta += toNumber(r.meta_mens ?? r.meta ?? 0);
+    entry.real += toNumber(r.real_mens ?? r.realizado ?? 0);
+    entry.peso += toNumber(r.peso ?? r.pontosMeta ?? 0);
+  });
+
+  months.forEach(month => {
+    month.atingimento = month.meta > 0 ? (month.real / month.meta) * 100 : NaN;
+  });
+
+  const latest = [...months].reverse().find(month => {
+    return month.meta > 0 || month.real > 0 || Number.isFinite(month.atingimento);
+  }) || null;
+
+  return { months, latest };
+}
+
 function buildExecMonthlyLines(container, dataset){
   if (!dataset || !dataset.series?.length) {
     container.innerHTML = `<div class="muted">Sem dados para exibir.</div>`;
@@ -7654,6 +7793,86 @@ function buildExecMonthlyLines(container, dataset){
     </svg>`;
 }
 
+function buildExecYTDChart(container, dataset){
+  if (!container) return;
+  const months = dataset?.months || [];
+  if (!months.length) {
+    container.innerHTML = `<div class="muted">Sem dados para exibir.</div>`;
+    return;
+  }
+
+  const headerCells = months.map(month => `<th scope="col">${escapeHTML(month.short || month.label)}</th>`).join("");
+  const valueCells = months.map(month => {
+    const pctIsFinite = Number.isFinite(month.atingimento);
+    const pctText = pctIsFinite ? `${month.atingimento.toFixed(1)}%` : "—";
+    const classes = [pctIsFinite ? pctBadgeCls(month.atingimento) : "is-empty"];
+    const rawLabel = month.label || "Mês";
+    const safeLabel = escapeHTML(rawLabel);
+    const tooltip = pctIsFinite
+      ? `${rawLabel}: ${pctText}`
+      : `${rawLabel}: sem dados disponíveis`;
+    return `<td class="${classes.join(' ')}" data-month="${safeLabel}" title="${escapeHTML(tooltip)}"><span>${pctText}</span></td>`;
+  }).join("");
+
+  const latest = dataset?.latest || null;
+  let summaryHTML = "";
+  if (latest) {
+    const monthLabel = escapeHTML(latest.label);
+    const pesoDisplay = fmtINT.format(Math.round(latest.peso));
+    const metaDisplay = formatBRLReadable(latest.meta);
+    const realDisplay = formatBRLReadable(latest.real);
+    const metaFull = fmtBRL.format(Math.round(latest.meta));
+    const realFull = fmtBRL.format(Math.round(latest.real));
+    const pctText = Number.isFinite(latest.atingimento) ? `${latest.atingimento.toFixed(1)}%` : "—";
+    summaryHTML = `
+      <div class="exec-ytd-summary" aria-label="Resumo do mês ${monthLabel}">
+        <div class="summary-month">
+          <span class="summary-month__label">Mês atual</span>
+          <strong>${monthLabel}</strong>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-item">
+            <span>Peso</span>
+            <strong>${pesoDisplay}</strong>
+          </div>
+          <div class="summary-item" title="${escapeHTML(metaFull)}">
+            <span>Meta</span>
+            <strong>${escapeHTML(metaDisplay)}</strong>
+          </div>
+          <div class="summary-item" title="${escapeHTML(realFull)}">
+            <span>Realizado</span>
+            <strong>${escapeHTML(realDisplay)}</strong>
+          </div>
+          <div class="summary-item">
+            <span>Atingimento</span>
+            <strong>${pctText}</strong>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  container.innerHTML = `
+    <div class="exec-ytd-grid">
+      <div class="exec-ytd-table-wrapper">
+        <table class="exec-ytd-table">
+          <thead>
+            <tr>
+              <th scope="col">Indicador</th>
+              ${headerCells}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Atingimento</th>
+              ${valueCells}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      ${summaryHTML}
+    </div>`;
+}
+
 /* ===== Aqui eu orquestro o render principal da visão executiva ===== */
 function renderExecutiveView(){
   const host = document.getElementById("view-exec"); 
@@ -7664,6 +7883,9 @@ function renderExecutiveView(){
   const chartC = document.getElementById("exec-chart");
   const chartTitleEl = document.getElementById("exec-chart-title");
   const chartLegend = document.getElementById("exec-chart-legend");
+  const chartToggle = document.getElementById("exec-chart-toggle");
+  const ytdChartEl = document.getElementById("exec-ytd-chart");
+  const ytdTitleEl = document.getElementById("exec-ytd-title");
   const hm     = document.getElementById("exec-heatmap");
   const rankTopEl = document.getElementById("exec-rank-top");
   const rankBottomEl = document.getElementById("exec-rank-bottom");
@@ -7777,24 +7999,57 @@ function renderExecutiveView(){
   // Gráfico
   if (chartC){
     const monthlySeries = makeMonthlySectionSeries(rowsMonthly, execMonthlyPeriod);
-    chartC.setAttribute("aria-label", "Linhas mensais de atingimento por seção");
-    if (chartTitleEl) chartTitleEl.textContent = "Evolução mensal por seção";
-    if (chartLegend){
-      if (monthlySeries.series.length){
-        chartLegend.innerHTML = monthlySeries.series.map(serie => `
-          <span class="legend-item">
-            <span class="legend-swatch legend-swatch--line" style="--swatch:${serie.color}"></span>${escapeHTML(serie.label)}
-          </span>`).join("");
-      } else {
-        chartLegend.innerHTML = `<span class="legend-item muted">Sem seções para exibir.</span>`;
+    const annualSeries = makeAnnualSectionSeries(rowsBase);
+    const hasAnnual = Array.isArray(annualSeries.series) && annualSeries.series.length > 0;
+
+    const applyChartMode = (mode = state.exec.chartMode || "monthly") => {
+      const desired = mode === "annual" ? "annual" : "monthly";
+      const actual = desired === "annual" && hasAnnual ? "annual" : "monthly";
+      host.__execChartMode = actual;
+      state.exec.chartMode = actual;
+      host.__execChartDataset = actual === "annual" ? annualSeries : monthlySeries;
+
+      const chartTitle = actual === "annual" ? "Evolução anual por seção" : "Evolução mensal por seção";
+      const ariaLabel = actual === "annual"
+        ? "Linhas anuais de atingimento por seção"
+        : "Linhas mensais de atingimento por seção";
+      chartC.setAttribute("aria-label", ariaLabel);
+      if (chartTitleEl) chartTitleEl.textContent = chartTitle;
+
+      if (chartLegend){
+        const seriesList = host.__execChartDataset.series || [];
+        if (seriesList.length){
+          chartLegend.innerHTML = seriesList.map(serie => `
+            <span class="legend-item">
+              <span class="legend-swatch legend-swatch--line" style="background:${serie.color};border-color:${serie.color};"></span>${escapeHTML(serie.label)}
+            </span>`).join("");
+        } else {
+          chartLegend.innerHTML = `<span class="legend-item muted">Sem seções para exibir.</span>`;
+        }
+      }
+
+      const renderChart = () => buildExecMonthlyLines(chartC, host.__execChartDataset);
+      host.__execChartRender = renderChart;
+      renderChart();
+
+      if (chartToggle){
+        chartToggle.textContent = actual === "annual" ? "Visão mensal" : "Visão anual";
+        chartToggle.setAttribute("aria-pressed", actual === "annual" ? "true" : "false");
+      }
+    };
+
+    applyChartMode(state.exec.chartMode || "monthly");
+
+    if (chartToggle){
+      chartToggle.disabled = !hasAnnual;
+      if (!chartToggle.dataset.bound){
+        chartToggle.dataset.bound = "1";
+        chartToggle.addEventListener("click", () => {
+          const nextMode = host.__execChartMode === "annual" ? "monthly" : "annual";
+          applyChartMode(nextMode);
+        });
       }
     }
-
-    host.__execChartDataset = monthlySeries;
-    const renderChart = () => buildExecMonthlyLines(chartC, host.__execChartDataset);
-
-    renderChart();
-    host.__execChartRender = renderChart;
 
     if (!host.__execResize){
       let raf = null;
@@ -7806,6 +8061,19 @@ function renderExecutiveView(){
       };
       window.addEventListener('resize', host.__execResize);
     }
+  }
+
+  if (ytdChartEl){
+    const rowsYTD = filterRowsExcept(state._rankingRaw, {}, { searchTerm: state.tableSearchTerm, ignoreDate: true });
+    const ytdDataset = makeExecYTDPerformance(rowsYTD, execMonthlyPeriod);
+    if (ytdTitleEl){
+      const ytdYear = (execMonthlyPeriod.start || "").slice(0,4);
+      ytdTitleEl.textContent = ytdYear ? `Atingimento YTD — ${ytdYear}` : "Atingimento YTD por mês";
+    }
+    const periodLabelStart = formatBRDate(execMonthlyPeriod.start);
+    const periodLabelEnd = formatBRDate(execMonthlyPeriod.end);
+    ytdChartEl.setAttribute("aria-label", `Atingimento mensal Year to Date de ${periodLabelStart} a ${periodLabelEnd}`);
+    buildExecYTDChart(ytdChartEl, ytdDataset);
   }
 
   // Ranking Top/Bottom

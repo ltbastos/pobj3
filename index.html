@@ -196,7 +196,7 @@
       </button>
       <button class="tab" data-view="exec" aria-label="Visão executiva">
         <span class="tab-icon"><i class="ti ti-chart-line" aria-hidden="true"></i></span>
-        <span class="tab-label">V. Exec.</span>
+        <span class="tab-label">Visão executiva</span>
       </button>
       <button class="tab" data-view="campanhas" aria-label="Campanhas">
         <span class="tab-icon"><i class="ti ti-speakerphone" aria-hidden="true"></i></span>
@@ -264,11 +264,19 @@
         <div id="exec-kpis" class="exec-kpis"></div>
 
         <section class="exec-panel exec-chart">
-          <div class="exec-h">
+          <div class="exec-h exec-h--chart">
             <span id="exec-chart-title">Evolução mensal por seção</span>
+            <button id="exec-chart-toggle" class="btn btn--ghost btn--sm exec-chart__toggle" type="button" aria-pressed="false">Visão anual</button>
           </div>
           <div id="exec-chart" class="chart" role="img" aria-label="Linhas mensais de atingimento por seção"></div>
           <div id="exec-chart-legend" class="chart-legend"></div>
+        </section>
+
+        <section class="exec-panel exec-chart exec-chart--ytd">
+          <div class="exec-h exec-h--chart">
+            <span id="exec-ytd-title">Atingimento YTD por mês</span>
+          </div>
+          <div id="exec-ytd-chart" class="chart chart--ytd" role="img" aria-label="Resumo mensal Year to Date"></div>
         </section>
 
         <div class="exec-grid">
