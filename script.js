@@ -16,7 +16,6 @@ const CHAT_MODE = "iframe";  // "iframe" | "http"
 const CHAT_IFRAME_URL = "";  // cole aqui a URL do canal "Website" do seu agente (se usar iframe)
 const AGENT_ENDPOINT = "/api/agent"; // seu endpoint (se usar http)
 
-
 // Aqui eu criei atalhos para querySelector e querySelectorAll porque uso isso o tempo todo.
 const $  = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
@@ -123,6 +122,7 @@ let FAMILIA_BY_ID = new Map();
 let PRODUTO_TO_FAMILIA = new Map();
 let RESUMO_HIERARCHY = [];
 let SUBINDICADORES_BY_INDICADOR = new Map();
+let FORCED_EMPTY_SUBINDICADORES = new Set();
 
 // Aqui eu deixo caches das bases fact/dim para usar em várias telas.
 let fDados = [];
@@ -1186,10 +1186,15 @@ function montarDadosProdutos(rows){
   PRODUTOS_BY_FAMILIA = byFamilia;
   PRODUTOS_DATA = rows;
   SUBINDICADORES_BY_INDICADOR = new Map();
+  FORCED_EMPTY_SUBINDICADORES = new Set();
 
   CARD_SECTIONS_DEF.forEach(sec => {
     sec.items.forEach(item => {
       const structure = resolveIndicatorStructureMeta(item.id, item.nome, item.metric);
+      const override = INDICATOR_STRUCTURE_OVERRIDES[item.id];
+      if (override && Array.isArray(override.subIndicators) && !override.subIndicators.length) {
+        FORCED_EMPTY_SUBINDICADORES.add(item.id);
+      }
       const normalized = Array.isArray(structure?.subIndicators)
         ? structure.subIndicators.map(entry => ({
             id: entry.id,
@@ -1885,8 +1890,6 @@ async function loadBaseData(){
     hideLoader();
   }
 }
-
-
 
 /* ===== Aqui eu ajusto a altura da topbar para o CSS responsivo funcionar ===== */
 // Aqui eu calculo a altura real da topbar e jogo no CSS para o layout não quebrar ao abrir menus.
@@ -3732,8 +3735,13 @@ async function getData(){
           secaoNome: prod.sectionLabel
         };
 
-        const subDefs = SUBINDICADORES_BY_INDICADOR.get(prod.id) || resolveIndicatorStructureMeta(prod.id, prod.nome, prod.metric).subIndicators || [];
-        const subIndicators = subDefs.length ? subDefs : [{ id: `${prod.id}_sub`, nome: prod.nome, metric: prod.metric, peso: 1, children: [] }];
+        const structureMeta = resolveIndicatorStructureMeta(prod.id, prod.nome, prod.metric);
+        const mappedSubs = SUBINDICADORES_BY_INDICADOR.get(prod.id);
+        const subDefs = Array.isArray(mappedSubs) ? mappedSubs : (Array.isArray(structureMeta?.subIndicators) ? structureMeta.subIndicators : []);
+        const hasForcedEmpty = FORCED_EMPTY_SUBINDICADORES.has(prod.id);
+        const subIndicators = (subDefs.length || hasForcedEmpty)
+          ? subDefs
+          : [{ id: `${prod.id}_sub`, nome: prod.nome, metric: prod.metric, peso: 1, children: [] }];
         const subWeightSum = subIndicators.reduce((acc, sub) => acc + Math.max(0.01, Number(sub.peso) || 1), 0);
 
         let metaSubAssigned = 0;
@@ -3773,9 +3781,10 @@ async function getData(){
           varRealSubAssigned += varRealTarget;
           pesoSubAssigned += pesoTarget;
 
-          const childDefs = Array.isArray(sub.children) && sub.children.length
+          const hasChildren = Array.isArray(sub.children) && sub.children.length;
+          const childDefs = hasChildren
             ? sub.children
-            : [{ id: `${sub.id}_lp`, nome: sub.nome, metric: sub.metric, peso: 1, children: [] }];
+            : [{ id: `${sub.id}_lp`, nome: sub.nome, metric: sub.metric, peso: 1, children: [], __isSelf: true }];
           const childWeightSum = childDefs.reduce((acc, child) => acc + Math.max(0.01, Number(child.peso) || 1), 0);
 
           let metaChildAssigned = 0;
@@ -3827,6 +3836,7 @@ async function getData(){
             varRealChildAssigned += childVarReal;
             pesoChildAssigned += childPeso;
 
+            const isSelfChild = child.__isSelf === true;
             const childMetric = child.metric || sub.metric || prod.metric || "valor";
             const childAting = childMeta ? (childReal / childMeta) : 0;
             const childPontos = Math.round(Math.max(0, Math.min(childPeso, childPeso * childAting)));
@@ -3859,11 +3869,11 @@ async function getData(){
               subIndicadorId: sub.id,
               subIndicadorNome: sub.nome,
               subIndicador: sub.nome,
-              linhaProdutoId: child.id,
-              linhaProdutoNome: child.nome,
-              lpId: child.id,
-              lpNome: child.nome,
-              subproduto: child.nome,
+              linhaProdutoId: isSelfChild ? "" : (child.id || ""),
+              linhaProdutoNome: isSelfChild ? "" : (child.nome || ""),
+              lpId: isSelfChild ? "" : (child.id || ""),
+              lpNome: isSelfChild ? "" : (child.nome || ""),
+              subproduto: isSelfChild ? "" : (child.nome || ""),
               carteira: `${agency.agenciaNome || agency.agenciaId || "Carteira"} ${String.fromCharCode(65 + iter)}`,
               canalVenda: canaisVenda[(agencyIndex + prodIndex + iter) % canaisVenda.length],
               tipoVenda: tiposVenda[(agencyIndex + iter) % tiposVenda.length],
@@ -4437,7 +4447,7 @@ function wireClearFiltersButton() {
 async function clearFilters() {
   [
     "#f-segmento","#f-diretoria","#f-gerencia","#f-gerente",
-    "#f-agencia","#f-ggestao","#f-secao","#f-familia","#f-produto","#f-subindicador",
+    "#f-agencia","#f-ggestao","#f-secao","#f-familia","#f-produto",
     "#f-status-kpi","#f-visao"
   ].forEach(sel => {
     const el = $(sel);
@@ -4797,6 +4807,8 @@ function ensureStatusFilterInAdvanced() {
   if (gStart) gStart.remove();
 }
 
+
+
 /* ===== Aqui eu monto os chips da tabela e a toolbar com as ações rápidas ===== */
 function ensureChipBarAndToolbar() {
   if ($("#table-controls")) return;
@@ -4816,7 +4828,6 @@ function ensureChipBarAndToolbar() {
     </div>`;
   const header = card.querySelector(".card__header") || card;
   header.insertAdjacentElement("afterend", holder);
-
 
   const chipbar = $("#chipbar");
   TABLE_VIEWS.forEach(v => {
@@ -5427,11 +5438,6 @@ function renderAppliedFilters() {
       || vals.produtoId;
     push("Indicador", prodLabel, () => $("#f-produto").selectedIndex = 0);
   }
-  if (vals.subIndicadorId && vals.subIndicadorId !== "Todos" && vals.subIndicadorId !== "Todas") {
-    const subSelect = $("#f-subindicador");
-    const subLabel = subSelect?.selectedOptions?.[0]?.text || vals.subIndicadorId;
-    push("Subindicador", subLabel, () => $("#f-subindicador").selectedIndex = 0);
-  }
   if (vals.status && vals.status !== "todos") {
     const statusEntry = getStatusEntry(vals.status);
     const statusLabel = statusEntry?.nome
@@ -5906,7 +5912,6 @@ function getFilterValues() {
     secaoId:   val("#f-secao"),
     familiaId: val("#f-familia"),
     produtoId: val("#f-produto"),
-    subIndicadorId: val("#f-subindicador"),
     status:    statusKey || "todos",
     statusCodigo,
     statusId,
@@ -5952,18 +5957,6 @@ function filterRowsExcept(rows, except = {}, opts = {}) {
     const okSec = selecaoPadrao(f.secaoId) || matchesSelection(f.secaoId, rowSecaoId, r.secaoId, r.secaoNome, r.secao, getSectionLabel(rowSecaoId));
     const okFam = selecaoPadrao(f.familiaId) || matchesSelection(f.familiaId, r.familiaId, r.familia);
     const okProd= selecaoPadrao(f.produtoId) || matchesSelection(f.produtoId, r.produtoId, r.produtoNome, r.produto, r.prodOrSub, r.subproduto);
-    const okSub = selecaoPadrao(f.subIndicadorId)
-      || matchesSelection(
-        f.subIndicadorId,
-        r.subIndicadorId,
-        r.subIndicadorNome,
-        r.subIndicador,
-        r.linhaProdutoId,
-        r.linhaProdutoNome,
-        r.lpId,
-        r.lpNome,
-        r.subproduto
-      );
     let rowDate = r.data || r.competencia || "";
     if (rowDate && typeof rowDate !== "string") {
       if (rowDate instanceof Date) {
@@ -5985,7 +5978,7 @@ function filterRowsExcept(rows, except = {}, opts = {}) {
 
     const okSearch = rowMatchesSearch(r, searchTerm);
 
-    return okSeg && okDR && okGR && okAg && okGG && okGer && okSec && okFam && okProd && okSub && okDt && okStatus && okSearch;
+    return okSeg && okDR && okGR && okAg && okGG && okGer && okSec && okFam && okProd && okDt && okStatus && okSearch;
   });
 }
 function filterRows(rows) { return filterRowsExcept(rows, {}, { searchTerm: state.tableSearchTerm }); }
@@ -5994,8 +5987,7 @@ function autoSnapViewToFilters() {
   if (state.tableSearchTerm) return;
   const f = getFilterValues();
   let snap = null;
-  if (f.subIndicadorId && f.subIndicadorId !== "Todos" && f.subIndicadorId !== "Todas") snap = "subindicador";
-  else if (f.produtoId && f.produtoId !== "Todos" && f.produtoId !== "Todas") snap = "prodsub";
+  if (f.produtoId && f.produtoId !== "Todos" && f.produtoId !== "Todas") snap = "prodsub";
   else if (f.familiaId && f.familiaId !== "Todas") snap = "familia";
   else if (f.secaoId && f.secaoId !== "Todas") snap = "secao";
   else if (f.gerente && f.gerente !== "Todos") snap = "gerente";
@@ -6621,40 +6613,17 @@ function initCombos() {
     return options;
   };
 
-  const buildSubindicadorOptions = (produtoId) => {
-    const options = [{ value: "Todos", label: "Todos" }];
-    const list = SUBINDICADORES_BY_INDICADOR.get(produtoId) || [];
-    const added = new Set();
-    list.forEach(sub => {
-      if (!sub || !sub.id || added.has(sub.id)) return;
-      const aliases = new Set([sub.id, sub.nome]);
-      if (Array.isArray(sub.children)) {
-        sub.children.forEach(child => {
-          if (child?.nome) aliases.add(child.nome);
-        });
-      }
-      options.push({ value: sub.id, label: sub.nome || sub.id, aliases: Array.from(aliases) });
-      added.add(sub.id);
-    });
-    return options;
-  };
-
   const familiaSelect = $("#f-familia");
   const secaoSelect = $("#f-secao");
   const produtoSelect = $("#f-produto");
-  const subIndicadorSelect = $("#f-subindicador");
   const initialFamilia = familiaSelect ? familiaSelect.value : "Todas";
   const initialSecao = secaoSelect ? secaoSelect.value : "Todas";
   fill("#f-produto", buildProdutoOptions(initialFamilia, initialSecao));
-  const initialProduto = produtoSelect ? produtoSelect.value : "Todos";
-  fill("#f-subindicador", buildSubindicadorOptions(initialProduto));
 
   const updateProdutoSelect = () => {
     const famVal = familiaSelect ? familiaSelect.value : "Todas";
     const secVal = secaoSelect ? secaoSelect.value : "Todas";
     fill("#f-produto", buildProdutoOptions(famVal, secVal));
-    const prodVal = produtoSelect ? produtoSelect.value : "Todos";
-    fill("#f-subindicador", buildSubindicadorOptions(prodVal));
   };
 
   if (familiaSelect && !familiaSelect.dataset.bound) {
@@ -6668,14 +6637,6 @@ function initCombos() {
     secaoSelect.dataset.bound = "1";
     secaoSelect.addEventListener("change", () => {
       updateProdutoSelect();
-    });
-  }
-
-  if (produtoSelect && !produtoSelect.dataset.bound) {
-    produtoSelect.dataset.bound = "1";
-    produtoSelect.addEventListener("change", () => {
-      const prodVal = produtoSelect.value || "Todos";
-      fill("#f-subindicador", buildSubindicadorOptions(prodVal));
     });
   }
 
@@ -6737,7 +6698,7 @@ function bindEvents() {
     });
   });
 
-  ["#f-segmento","#f-diretoria","#f-gerencia","#f-agencia","#f-ggestao","#f-gerente","#f-secao","#f-familia","#f-produto","#f-subindicador","#f-status-kpi"].forEach(sel => {
+  ["#f-segmento","#f-diretoria","#f-gerencia","#f-agencia","#f-ggestao","#f-gerente","#f-secao","#f-familia","#f-produto","#f-status-kpi"].forEach(sel => {
     $(sel)?.addEventListener("change", async () => {
       await withSpinner(async () => {
         autoSnapViewToFilters();
@@ -6843,19 +6804,16 @@ function reorderFiltersUI() {
   const gSec = groupOf("#f-secao");
   const gFam = groupOf("#f-familia");
   const gProd= groupOf("#f-produto");
-  const gSub = groupOf("#f-subindicador");
   const gStatus = groupOf("#f-status-kpi");
   const gVisao = groupOf("#f-visao");
 
   const actions = area.querySelector(".filters__actions") || area.lastElementChild;
 
   [gSeg,gDR,gGR].filter(Boolean).forEach(el => area.insertBefore(el, actions));
-  [gAg,gGG,gGer,gSec,gFam,gProd,gSub,gStatus,gVisao].filter(Boolean).forEach(el => adv?.appendChild(el));
+  [gAg,gGG,gGer,gSec,gFam,gProd,gStatus,gVisao].filter(Boolean).forEach(el => adv?.appendChild(el));
 
   const gStart = $("#f-inicio")?.closest(".filters__group"); if (gStart) gStart.remove();
 }
-
-
 
 /* ===== Aqui eu controlo o overlay de carregamento para indicar processamento ===== */   // <- COLE AQUI O BLOCO INTEIRO
 function ensureLoader(){
@@ -7032,8 +6990,6 @@ function ensureChatWidget(){
   }
 }
 
-
-
 /* ===== Aqui eu gerencio a troca entre as abas principais mostrando um spinner decente ===== */
 async function switchView(next) {
   const label =
@@ -7051,7 +7007,6 @@ async function switchView(next) {
     if (next === "ranking" && !$("#view-ranking")) createRankingView();
     if (next === "exec") createExecutiveView();
     if (next === "campanhas") ensureCampanhasView();
-
 
     Object.values(views).forEach(sel => $(sel)?.classList.add("hidden"));
 
@@ -7073,8 +7028,6 @@ async function switchView(next) {
     state.activeView = next;
   }, label);
 }
-
-
 
 /* ===== Aqui eu monto o resumo com os indicadores e pontos principais ===== */
 function hitbarClass(p){ return p<50 ? "hitbar--low" : (p<100 ? "hitbar--warn" : "hitbar--ok"); }
@@ -11035,7 +10988,6 @@ function renderCampanhasView(){
   });
 }
 
-
 function createRankingView(){
   const main = document.querySelector(".container"); 
   if(!main) return;
@@ -12058,8 +12010,6 @@ async function refresh(){
   }
 }
 
-
-
 /* ===== Aqui eu escrevi um loader de CSV que aguenta diferentes codificações e separadores ===== */
 async function loadCSVAuto(url) {
   // Busca como binário para poder detectar a codificação.
@@ -12118,8 +12068,6 @@ async function loadCSVAuto(url) {
     return normalized;
   });
 }
-
-
 
 /* ===== Aqui eu disparo o boot do painel assim que a página carrega ===== */
 (async function(){
