@@ -244,7 +244,7 @@ function formatResumoSectionLabel(raw = "") {
   }
 }
 
-function buildResumoHierarchyFromProducts(rows = []) {
+function buildResumoHierarchyDefault(rows = []) {
   const sectionMap = new Map();
   const sectionOrder = [];
 
@@ -351,6 +351,75 @@ function buildResumoHierarchyFromProducts(rows = []) {
     if (!familias.length) return null;
     return { id: section.id, label: section.label, familias };
   }).filter(Boolean);
+}
+
+function buildResumoHierarchyFromSpec(spec = []) {
+  if (!Array.isArray(spec) || !spec.length) return [];
+
+  const ensureArray = (value) => (Array.isArray(value) ? value : []);
+  const normalizeChildren = (children = [], parentMetric = "valor", parentId = "", parentName = "") => {
+    return ensureArray(children).map((entry, idx) => {
+      const rawId = limparTexto(entry?.id) || "";
+      const fallbackId = parentId ? `${parentId}__${idx + 1}` : `child_${idx + 1}`;
+      const id = rawId || fallbackId;
+      const nome = limparTexto(entry?.nome || entry?.label || entry?.descricao) || `${parentName || "Indicador"} ${idx + 1}`;
+      const metric = limparTexto(entry?.metric) || parentMetric || "valor";
+      const peso = Number(entry?.peso) || 1;
+      const nested = normalizeChildren(entry?.children, metric, id, nome);
+      return { id, nome, metric, peso, children: nested };
+    });
+  };
+
+  return spec.map((sectionSpec, sectionIdx) => {
+    if (!sectionSpec) return null;
+    const rawLabel = sectionSpec.label || sectionSpec.nome || sectionSpec.id || `Seção ${sectionIdx + 1}`;
+    const sectionId = limparTexto(sectionSpec.id) || simplificarTexto(rawLabel) || `sec_${sectionIdx + 1}`;
+    const familias = ensureArray(sectionSpec.familias).map((familySpec, famIdx) => {
+      if (!familySpec) return null;
+      const familyLabel = familySpec.nome || familySpec.label || familySpec.id || `Família ${famIdx + 1}`;
+      const familyId = limparTexto(familySpec.id) || `${sectionId}__${simplificarTexto(familyLabel) || famIdx + 1}`;
+      const indicadores = ensureArray(familySpec.indicadores).map(indicatorSpec => {
+        if (!indicatorSpec) return null;
+        const indicatorLabel = indicatorSpec.nome || indicatorSpec.label || indicatorSpec.id;
+        if (!indicatorLabel) return null;
+        const indicatorSlug = simplificarTexto(indicatorSpec.slug || indicatorSpec.id || indicatorLabel);
+        const indicatorId = limparTexto(indicatorSpec.id) || indicatorSpec.cardId || indicatorSlug || `ind_${famIdx + 1}`;
+        const cardId = indicatorSpec.cardId
+          || resolverIndicadorPorAlias(indicatorId)
+          || resolverIndicadorPorAlias(indicatorLabel)
+          || indicatorId;
+        if (indicatorLabel) registrarAliasIndicador(cardId, indicatorLabel);
+        if (Array.isArray(indicatorSpec.aliases)) {
+          indicatorSpec.aliases.forEach(alias => registrarAliasIndicador(cardId, alias));
+        }
+        const subindicadores = normalizeChildren(indicatorSpec.subindicadores, indicatorSpec.metric || "valor", indicatorId, indicatorLabel);
+        return {
+          id: indicatorId,
+          slug: indicatorSlug || simplificarTexto(indicatorLabel) || indicatorId,
+          nome: indicatorLabel,
+          cardId,
+          aliases: Array.isArray(indicatorSpec.aliases) ? indicatorSpec.aliases.slice() : [],
+          subindicadores
+        };
+      }).filter(Boolean);
+      if (!indicadores.length) return null;
+      return { id: familyId, nome: familyLabel, indicadores };
+    }).filter(Boolean);
+    if (!familias.length) return null;
+    return { id: sectionId, label: rawLabel, familias };
+  }).filter(Boolean);
+}
+
+function buildResumoHierarchyFromProducts(rows = []) {
+  const fallback = buildResumoHierarchyDefault(rows);
+  if (!Array.isArray(LEGACY_RESUMO_STRUCTURE) || !LEGACY_RESUMO_STRUCTURE.length) {
+    return fallback;
+  }
+  const manual = buildResumoHierarchyFromSpec(LEGACY_RESUMO_STRUCTURE);
+  if (!manual.length) return fallback;
+  const manualIds = new Set(manual.map(sec => sec.id));
+  const extras = fallback.filter(sec => !manualIds.has(sec.id));
+  return manual.concat(extras);
 }
 
 function getResumoHierarchy() {
@@ -1846,9 +1915,166 @@ const TABLE_VIEWS = [
 
 /* === Seções e cards === */
 // Aqui eu defino os grupos de indicadores que viram cards no resumo.
+const LEGACY_RESUMO_STRUCTURE = [
+  {
+    id: "captacao",
+    label: "NEGÓCIOS CAPTAÇÃO",
+    familias: [
+      {
+        id: "captacao_cap_bruta",
+        nome: "Captação Bruta",
+        indicadores: [
+          {
+            id: "captacao_bruta",
+            cardId: "captacao_bruta",
+            nome: "Captação Bruta",
+            subindicadores: [
+              {
+                id: "captacao_bruta_deposito_prazo",
+                nome: "Depósito a Prazo",
+                children: [
+                  { id: "captacao_bruta_deposito_prazo_aplicacao", nome: "Depósito a Prazo - Aplicação" },
+                  { id: "captacao_bruta_deposito_prazo_resgate", nome: "Depósito a Prazo - Resgate" }
+                ]
+              },
+              {
+                id: "captacao_bruta_deposito_vista",
+                nome: "Depósito à Vista",
+                children: [
+                  { id: "captacao_bruta_deposito_vista_aplicacao", nome: "Depósito à Vista - Aplicação" },
+                  { id: "captacao_bruta_deposito_vista_resgate", nome: "Depósito à Vista - Resgate" }
+                ]
+              },
+              {
+                id: "captacao_bruta_poupanca",
+                nome: "Poupança",
+                children: [
+                  { id: "captacao_bruta_poupanca_aplicacao", nome: "Poupança - Aplicação" },
+                  { id: "captacao_bruta_poupanca_resgate", nome: "Poupança - Resgate" }
+                ]
+              },
+              {
+                id: "captacao_bruta_investfacil",
+                nome: "Investfácil",
+                children: [
+                  { id: "captacao_bruta_investfacil_aplicacao", nome: "InvestFacil - Aplicação" },
+                  { id: "captacao_bruta_investfacil_resgate", nome: "InvestFacil - Resgate" }
+                ]
+              },
+              {
+                id: "captacao_bruta_isentos",
+                nome: "Isentos",
+                children: [
+                  { id: "captacao_bruta_isentos_aplicacao", nome: "Isentos - Aplicação" },
+                  { id: "captacao_bruta_isentos_resgate", nome: "Isentos - Resgate" }
+                ]
+              },
+              {
+                id: "captacao_bruta_fundos",
+                nome: "Fundos",
+                children: [
+                  { id: "captacao_bruta_fundos_aplicacao", nome: "Fundos - Aplicação" },
+                  { id: "captacao_bruta_fundos_resgate", nome: "Fundos - Resgate" }
+                ]
+              },
+              {
+                id: "captacao_bruta_corretora",
+                nome: "Corretora",
+                children: [
+                  { id: "captacao_bruta_corretora_aplicacao", nome: "Corretora - Aplicação" },
+                  { id: "captacao_bruta_corretora_resgate", nome: "Corretora - Resgate" }
+                ]
+              },
+              {
+                id: "captacao_bruta_previdencia",
+                nome: "Previdência Privada",
+                children: [
+                  { id: "captacao_bruta_previdencia_aplicacao", nome: "Previdência Privada - Aplicação" },
+                  { id: "captacao_bruta_previdencia_resgate", nome: "Previdência Privada - Resgate" }
+                ]
+              },
+              {
+                id: "captacao_bruta_coe",
+                nome: "COE",
+                children: [
+                  { id: "captacao_bruta_coe_aplicacao", nome: "Coe - Aplicação" },
+                  { id: "captacao_bruta_coe_resgate", nome: "Coe - Resgate" }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        id: "captacao_cap_bruta_total",
+        nome: "Captação Bruta - Total",
+        indicadores: [
+          {
+            id: "captacao_bruta_total",
+            cardId: "captacao_bruta_total",
+            nome: "Captação Bruta - Total"
+          }
+        ]
+      },
+      {
+        id: "captacao_cap_liquida",
+        nome: "Captação Líquida",
+        indicadores: [
+          {
+            id: "captacao_liquida",
+            cardId: "captacao_liquida",
+            nome: "Captação Líquida",
+            subindicadores: [
+              { id: "captacao_liquida_grupo_a", nome: "Captação Líquida - Grupo A" },
+              { id: "captacao_liquida_grupo_b", nome: "Captação Líquida - Grupo B" }
+            ]
+          }
+        ]
+      },
+      {
+        id: "captacao_portab_prev",
+        nome: "Portabilidade de Previdência Privada",
+        indicadores: [
+          {
+            id: "portab_prev",
+            cardId: "portab_prev",
+            nome: "Portabilidade de Previdência Privada",
+            subindicadores: [
+              { id: "portab_prev_aplicacao", nome: "Portabilidade de Previdência Privada - Aplicação" },
+              { id: "portab_prev_resgate", nome: "Portabilidade de Previdência Privada - Resgate" }
+            ]
+          }
+        ]
+      },
+      {
+        id: "captacao_centralizacao",
+        nome: "Centralização de Caixa (Cash)",
+        indicadores: [
+          {
+            id: "centralizacao",
+            cardId: "centralizacao",
+            nome: "Centralização de Caixa (Cash)",
+            subindicadores: [
+              { id: "centralizacao_receber", nome: "Contas a Receber (vol)" },
+              {
+                id: "centralizacao_pagar",
+                nome: "Contas a pagar (vol)",
+                children: [
+                  { id: "centralizacao_pf_qtd", nome: "Centralização de Caixa PF (Qtd)", metric: "qtd" }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+];
+
 const CARD_SECTIONS_DEF = [
   { id:"captacao", label:"CAPTAÇÃO", items:[
     { id:"captacao_bruta",   nome:"Captação Bruta",                           icon:"ti ti-pig-money",       peso:4, metric:"valor" },
+    { id:"captacao_bruta_total", nome:"Captação Bruta - Total",                icon:"ti ti-pig-money",       peso:4, metric:"valor", hiddenInCards:true },
     { id:"captacao_liquida", nome:"Captação Líquida",                         icon:"ti ti-arrows-exchange", peso:4, metric:"valor" },
     { id:"portab_prev",      nome:"Portabilidade de Previdência Privada",     icon:"ti ti-shield-check",    peso:3, metric:"valor" },
     { id:"centralizacao",    nome:"Centralização de Caixa",                   icon:"ti ti-briefcase",       peso:3, metric:"valor" },
@@ -1881,11 +2107,11 @@ const CARD_SECTIONS_DEF = [
 const INDICATOR_STRUCTURE_OVERRIDES = {
   centralizacao: {
     subIndicators: [
-      { id: "centralizacao_receber", nome: "Contas a Receber (vol)", peso: 0.55 },
+      { id: "centralizacao_receber", nome: "Contas a Receber (vol)", peso: 0.5 },
       {
         id: "centralizacao_pagar",
         nome: "Contas a pagar (vol)",
-        peso: 0.45,
+        peso: 0.5,
         children: [
           { id: "centralizacao_pf_qtd", nome: "Centralização de Caixa PF (Qtd)", metric: "qtd", peso: 1 }
         ]
@@ -1900,20 +2126,99 @@ const INDICATOR_STRUCTURE_OVERRIDES = {
   },
   captacao_bruta: {
     subIndicators: [
-      { id: "captacao_bruta_aplicacao", nome: "Aplicações", peso: 0.6 },
-      { id: "captacao_bruta_resgate", nome: "Resgates", peso: 0.4 }
+      {
+        id: "captacao_bruta_deposito_prazo",
+        nome: "Depósito a Prazo",
+        peso: 1,
+        children: [
+          { id: "captacao_bruta_deposito_prazo_aplicacao", nome: "Depósito a Prazo - Aplicação", peso: 0.6 },
+          { id: "captacao_bruta_deposito_prazo_resgate", nome: "Depósito a Prazo - Resgate", peso: 0.4 }
+        ]
+      },
+      {
+        id: "captacao_bruta_deposito_vista",
+        nome: "Depósito à Vista",
+        peso: 1,
+        children: [
+          { id: "captacao_bruta_deposito_vista_aplicacao", nome: "Depósito à Vista - Aplicação", peso: 0.6 },
+          { id: "captacao_bruta_deposito_vista_resgate", nome: "Depósito à Vista - Resgate", peso: 0.4 }
+        ]
+      },
+      {
+        id: "captacao_bruta_poupanca",
+        nome: "Poupança",
+        peso: 1,
+        children: [
+          { id: "captacao_bruta_poupanca_aplicacao", nome: "Poupança - Aplicação", peso: 0.6 },
+          { id: "captacao_bruta_poupanca_resgate", nome: "Poupança - Resgate", peso: 0.4 }
+        ]
+      },
+      {
+        id: "captacao_bruta_investfacil",
+        nome: "Investfácil",
+        peso: 1,
+        children: [
+          { id: "captacao_bruta_investfacil_aplicacao", nome: "InvestFacil - Aplicação", peso: 0.6 },
+          { id: "captacao_bruta_investfacil_resgate", nome: "InvestFacil - Resgate", peso: 0.4 }
+        ]
+      },
+      {
+        id: "captacao_bruta_isentos",
+        nome: "Isentos",
+        peso: 1,
+        children: [
+          { id: "captacao_bruta_isentos_aplicacao", nome: "Isentos - Aplicação", peso: 0.6 },
+          { id: "captacao_bruta_isentos_resgate", nome: "Isentos - Resgate", peso: 0.4 }
+        ]
+      },
+      {
+        id: "captacao_bruta_fundos",
+        nome: "Fundos",
+        peso: 1,
+        children: [
+          { id: "captacao_bruta_fundos_aplicacao", nome: "Fundos - Aplicação", peso: 0.6 },
+          { id: "captacao_bruta_fundos_resgate", nome: "Fundos - Resgate", peso: 0.4 }
+        ]
+      },
+      {
+        id: "captacao_bruta_corretora",
+        nome: "Corretora",
+        peso: 1,
+        children: [
+          { id: "captacao_bruta_corretora_aplicacao", nome: "Corretora - Aplicação", peso: 0.6 },
+          { id: "captacao_bruta_corretora_resgate", nome: "Corretora - Resgate", peso: 0.4 }
+        ]
+      },
+      {
+        id: "captacao_bruta_previdencia",
+        nome: "Previdência Privada",
+        peso: 1,
+        children: [
+          { id: "captacao_bruta_previdencia_aplicacao", nome: "Previdência Privada - Aplicação", peso: 0.6 },
+          { id: "captacao_bruta_previdencia_resgate", nome: "Previdência Privada - Resgate", peso: 0.4 }
+        ]
+      },
+      {
+        id: "captacao_bruta_coe",
+        nome: "COE",
+        peso: 1,
+        children: [
+          { id: "captacao_bruta_coe_aplicacao", nome: "Coe - Aplicação", peso: 0.6 },
+          { id: "captacao_bruta_coe_resgate", nome: "Coe - Resgate", peso: 0.4 }
+        ]
+      }
     ]
   },
   captacao_liquida: {
     subIndicators: [
-      { id: "captacao_liquida_grupo_a", nome: "Grupo A", peso: 0.5 },
-      { id: "captacao_liquida_grupo_b", nome: "Grupo B", peso: 0.5 }
+      { id: "captacao_liquida_grupo_a", nome: "Captação Líquida - Grupo A", peso: 0.5 },
+      { id: "captacao_liquida_grupo_b", nome: "Captação Líquida - Grupo B", peso: 0.5 }
     ]
   },
   portab_prev: {
     subIndicators: [
-      { id: "portab_prev_aplicacao", nome: "Aplicação", peso: 0.5 },
-      { id: "portab_prev_resgate", nome: "Resgate", peso: 0.5 }
+      { id: "portab_prev_aplicacao", nome: "Portabilidade de Previdência Privada - Aplicação", peso: 0.5 },
+      { id: "portab_prev_resgate", nome: "Portabilidade de Previdência Privada - Resgate", peso: 0.5 }
     ]
   },
   rec_vencidos_59: {
@@ -8049,6 +8354,7 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
         icon: meta.icon || "ti ti-dots",
         metric: meta.metric || row.metric || "valor",
         peso: meta.peso || row.peso || 1,
+        hiddenInCards: !!meta.hiddenInCards,
         secaoId,
         secaoLabel,
         familiaId,
@@ -8402,15 +8708,17 @@ function renderFamilias(sections, summary){
     });
     if (!itemsFiltered.length) return;
 
-    const sectionTotalPoints = itemsFiltered.reduce((acc,i)=> acc + (i.pontosMeta ?? i.peso ?? 0), 0);
-    const sectionPointsHit   = itemsFiltered.reduce((acc,i)=> acc + Math.max(0, Number(i.pontos ?? 0)), 0);
+    const cardItems = itemsFiltered.filter(item => !item.hiddenInCards);
+
+    const sectionTotalPoints = cardItems.reduce((acc,i)=> acc + (i.pontosMeta ?? i.peso ?? 0), 0);
+    const sectionPointsHit   = cardItems.reduce((acc,i)=> acc + Math.max(0, Number(i.pontos ?? 0)), 0);
     const sectionPointsHitDisp = formatPoints(sectionPointsHit);
     const sectionPointsTotalDisp = formatPoints(sectionTotalPoints);
     const sectionPointsHitFull = formatPoints(sectionPointsHit, { withUnit: true });
     const sectionPointsTotalFull = formatPoints(sectionTotalPoints, { withUnit: true });
 
-    const sectionMetaTotal = itemsFiltered.reduce((acc, item) => acc + (Number(item.meta) || 0), 0);
-    const sectionRealizadoTotal = itemsFiltered.reduce((acc, item) => acc + (Number(item.realizado) || 0), 0);
+    const sectionMetaTotal = cardItems.reduce((acc, item) => acc + (Number(item.meta) || 0), 0);
+    const sectionRealizadoTotal = cardItems.reduce((acc, item) => acc + (Number(item.realizado) || 0), 0);
     const sectionAtingPct = sectionMetaTotal ? (sectionRealizadoTotal / sectionMetaTotal) * 100 : 0;
 
     visibleSections.push({
@@ -8441,7 +8749,7 @@ function renderFamilias(sections, summary){
       <div class="fam-section__grid"></div>`;
     const grid = sectionEl.querySelector(".fam-section__grid");
 
-    itemsFiltered.forEach(f=>{
+    cardItems.forEach(f=>{
       if (f.atingido){ atingidosVisiveis += 1; }
       const pontosMetaItem = Number(f.pontosMeta ?? f.peso) || 0;
       const pontosRealItem = Math.max(0, Number(f.pontos ?? 0));
