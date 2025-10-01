@@ -8196,6 +8196,45 @@ function buildResumoLegacySections(sections = []) {
 
       if (!familyIndicators.length) return;
 
+      let familyDisplayChildren = familyIndicators;
+      if (secDef.id === "financeiro") {
+        const familiaKey = famDef.id || famDef.nome || "";
+        const familiaSlug = simplificarTexto(familiaKey);
+        const familiaNameSlug = simplificarTexto(famDef.nome || "");
+        if (familyIndicators.length === 1) {
+          const indicatorChildren = Array.isArray(familyIndicators[0].children)
+            ? familyIndicators[0].children
+            : [];
+          if (
+            familiaSlug === "financeiro_recuperacao_ate59" ||
+            familiaSlug === "financeiro_recuperacao_acima59" ||
+            familiaNameSlug === "recuperacao_de_vencidos_ate_59_dias" ||
+            familiaNameSlug === "recuperacao_de_vencidos_acima_de_59_dias"
+          ) {
+            familyDisplayChildren = [];
+          } else if (
+            (familiaSlug === "financeiro_recuperacao_credito" || familiaNameSlug === "recuperacao_de_credito") &&
+            indicatorChildren.length
+          ) {
+            familyDisplayChildren = indicatorChildren.map(child => {
+              const promoted = {
+                ...child,
+                __legacyDepth: 2,
+                type: child.type || "lp"
+              };
+              if (Array.isArray(child.children) && child.children.length) {
+                promoted.children = child.children.map(grand => ({
+                  ...grand,
+                  __legacyDepth: 3,
+                  type: grand.type || "lp"
+                }));
+              }
+              return promoted;
+            });
+          }
+        }
+      }
+
       const primaryMetric = familyIndicators.every(child => child.metric === familyIndicators[0].metric)
         ? (familyIndicators[0].metric || "valor")
         : "mix";
@@ -8227,7 +8266,8 @@ function buildResumoLegacySections(sections = []) {
         familiaNome: famDef.nome,
         secaoId: secDef.id,
         secaoLabel: secDef.label,
-        children: familyIndicators,
+        children: familyDisplayChildren,
+        indicators: familyIndicators,
         type: "family"
       };
 
@@ -9160,6 +9200,7 @@ function renderResumoLegacyTable(sections = [], summary = {}, rawSections = null
 
       const rowId = `legacy-${section.id || "sec"}-${rowAutoId++}`;
       const hasChildren = Array.isArray(item.children) && item.children.length > 0;
+      const visualDepth = typeof item.__legacyDepth === "number" ? item.__legacyDepth : depth;
       const metricKeyRaw = typeof item.metric === "string" ? item.metric.toLowerCase() : "";
       const metricEntry = metricInfo[metricKeyRaw] || null;
       const isKnownMetric = metricKeyRaw === "valor" || metricKeyRaw === "qtd" || metricKeyRaw === "perc";
@@ -9211,16 +9252,16 @@ function renderResumoLegacyTable(sections = [], summary = {}, rawSections = null
         : "—";
 
       const prodClasses = ["resumo-legacy__prod"];
-      if (depth === 1) prodClasses.push("resumo-legacy__prod--child");
-      if (depth >= 2) prodClasses.push("resumo-legacy__prod--grandchild");
+      if (visualDepth === 1) prodClasses.push("resumo-legacy__prod--child");
+      if (visualDepth >= 2) prodClasses.push("resumo-legacy__prod--grandchild");
 
       const rowClasses = ["resumo-legacy__row"];
       if (hasChildren) rowClasses.push("has-children");
-      if (depth === 0) rowClasses.push("resumo-legacy__row--family");
-      if (depth === 1) rowClasses.push("resumo-legacy__row--indicator", "resumo-legacy__row--child");
-      if (depth >= 2) rowClasses.push("resumo-legacy__row--lp", "resumo-legacy__child-row", "resumo-legacy__row--grandchild");
+      if (visualDepth === 0) rowClasses.push("resumo-legacy__row--family");
+      if (visualDepth === 1) rowClasses.push("resumo-legacy__row--indicator", "resumo-legacy__row--child");
+      if (visualDepth >= 2) rowClasses.push("resumo-legacy__row--lp", "resumo-legacy__child-row", "resumo-legacy__row--grandchild");
 
-      const attrParts = [`class="${rowClasses.join(" ")}"`, `data-row-id="${rowId}"`, `data-depth="${depth}"`];
+      const attrParts = [`class="${rowClasses.join(" ")}"`, `data-row-id="${rowId}"`, `data-depth="${visualDepth}"`];
       if (parentId) attrParts.push(`data-parent-id="${parentId}"`);
       const hiddenAttr = parentId ? " hidden" : "";
 
