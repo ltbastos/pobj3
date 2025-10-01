@@ -6326,94 +6326,460 @@ function renderResumoKPI(summary, context = {}) {
   if (resumoAnim) resumoAnim.kpiKey = nextResumoKey;
 }
 
-function formatResumoAnnualSubtitle(period){
-  const startISO = period?.start || "";
-  const endISO = period?.end || "";
-  if (!startISO || !endISO) return "";
-  const startDate = dateUTCFromISO(startISO);
-  const endDate = dateUTCFromISO(endISO);
-  const invalidStart = !(startDate instanceof Date) || Number.isNaN(startDate.getTime());
-  const invalidEnd = !(endDate instanceof Date) || Number.isNaN(endDate.getTime());
-  if (invalidStart || invalidEnd) {
-    return `Período de ${formatBRDate(startISO)} a ${formatBRDate(endISO)}`;
+function buildResumoLegacyAnnualDataset(sections = []) {
+  const safeSections = Array.isArray(sections) ? sections : [];
+  const period = state.period || { start: todayISO(), end: todayISO() };
+  const monthKeys = buildMonthlyAxis(period);
+  if (!safeSections.length || !monthKeys.length) {
+    return { monthKeys: [], monthLabels: [], monthLongLabels: [], currentIdx: 0, sections: [] };
   }
-  const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "long" });
-  const capitalize = (txt) => txt ? txt.charAt(0).toUpperCase() + txt.slice(1) : "";
-  const startMonth = capitalize(monthFormatter.format(startDate));
-  const endMonth = capitalize(monthFormatter.format(endDate));
-  if (!startMonth || !endMonth) {
-    return `Período de ${formatBRDate(startISO)} a ${formatBRDate(endISO)}`;
-  }
-  const sameYear = startDate.getUTCFullYear() === endDate.getUTCFullYear();
-  if (sameYear) {
-    if (startMonth === endMonth) {
-      return `Acumulado em ${startMonth} de ${endDate.getUTCFullYear()}`;
+
+  const monthCount = monthKeys.length;
+  const monthLabels = monthKeys.map(monthKeyShortLabel);
+  const monthLongLabels = monthKeys.map(monthKeyLabel);
+  const monthIndex = new Map(monthKeys.map((key, idx) => [key, idx]));
+  const rowsSource = Array.isArray(state._rankingRaw)
+    ? filterRowsExcept(state._rankingRaw, {}, { searchTerm: state.tableSearchTerm, ignoreDate: true })
+    : [];
+
+  const productMonthly = new Map();
+  const childMonthly = new Map();
+  const hasDataByIndex = Array(monthCount).fill(false);
+
+  const ensureBuffer = (map, key, extra = {}) => {
+    if (!key) return null;
+    let entry = map.get(key);
+    if (!entry) {
+      entry = { meta: Array(monthCount).fill(0), real: Array(monthCount).fill(0) };
+      map.set(key, entry);
     }
-    return `Acumulado de ${startMonth} a ${endMonth} de ${endDate.getUTCFullYear()}`;
+    if (extra && typeof extra === "object") {
+      if (extra.id && !entry.id) entry.id = extra.id;
+      if (extra.label && !entry.label) entry.label = extra.label;
+    }
+    return entry;
+  };
+
+  rowsSource.forEach(row => {
+    const rawDate = row?.competencia || row?.mes || row?.data || row?.dataReferencia || row?.dt;
+    const key = normalizeMonthKey(rawDate);
+    if (!monthIndex.has(key)) return;
+    const idx = monthIndex.get(key);
+
+    const metaVal = toNumber(row?.meta_mens ?? row?.meta ?? 0);
+    const realVal = toNumber(row?.real_mens ?? row?.realizado ?? 0);
+    if (metaVal || realVal) {
+      hasDataByIndex[idx] = true;
+    }
+
+    const candidates = [
+      row?.id_indicador,
+      row?.indicadorId,
+      row?.produtoId,
+      row?.produto,
+      row?.produtoNome,
+      row?.prodOrSub,
+      row?.ds_indicador
+    ];
+    let productId = "";
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const resolved = resolverIndicadorPorAlias(candidate);
+      if (resolved) { productId = resolved; break; }
+      const cleaned = limparTexto(candidate);
+      if (cleaned) {
+        const alt = resolverIndicadorPorAlias(cleaned);
+        if (alt) { productId = alt; break; }
+      }
+    }
+    if (!productId) {
+      const fallback = limparTexto(row?.produtoId || row?.produto || row?.prodOrSub || row?.ds_indicador);
+      if (fallback) productId = resolverIndicadorPorAlias(fallback) || fallback;
+    }
+    if (!productId) return;
+
+    const prodEntry = ensureBuffer(productMonthly, productId);
+    if (prodEntry) {
+      prodEntry.meta[idx] += metaVal;
+      prodEntry.real[idx] += realVal;
+    }
+
+    const subOriginal = row?.subproduto || row?.subProduto || "";
+    if (subOriginal) {
+      const simplified = simplificarTexto(subOriginal);
+      const childId = simplified || subOriginal.toLowerCase();
+      const childKey = childId ? `${productId}||${childId}` : "";
+      if (childKey) {
+        const childEntry = ensureBuffer(childMonthly, childKey, {
+          id: childId || subOriginal,
+          label: limparTexto(subOriginal) || subOriginal || childId
+        });
+        if (childEntry) {
+          childEntry.meta[idx] += metaVal;
+          childEntry.real[idx] += realVal;
+        }
+      }
+    }
+  });
+
+  let currentIdx = monthCount ? monthCount - 1 : 0;
+  for (let idx = monthCount - 1; idx >= 0; idx--) {
+    if (hasDataByIndex[idx]) {
+      currentIdx = idx;
+      break;
+    }
   }
-  return `Acumulado de ${startMonth} de ${startDate.getUTCFullYear()} a ${endMonth} de ${endDate.getUTCFullYear()}`;
+
+  const datasetSections = safeSections.map(section => {
+    const items = (section.items || []).map(item => {
+      const entry = productMonthly.get(item.id) || null;
+      const months = monthKeys.map((key, idx) => {
+        const metaVal = entry ? entry.meta[idx] : 0;
+        const realVal = entry ? entry.real[idx] : 0;
+        const ating = metaVal > 0 ? (realVal / metaVal) * 100 : NaN;
+        return {
+          key,
+          label: monthLongLabels[idx],
+          short: monthLabels[idx],
+          meta: metaVal,
+          real: realVal,
+          atingimento: ating
+        };
+      });
+      const monthMeta = months[currentIdx]?.meta ?? 0;
+      const monthReal = months[currentIdx]?.real ?? 0;
+      const baseChildren = Array.isArray(item.children) ? item.children : [];
+      const children = baseChildren.map(child => {
+        const cKey = `${item.id}||${child.id}`;
+        const centry = childMonthly.get(cKey) || null;
+        const childMonths = monthKeys.map((key, idx) => {
+          const metaVal = centry ? centry.meta[idx] : 0;
+          const realVal = centry ? centry.real[idx] : 0;
+          const ating = metaVal > 0 ? (realVal / metaVal) * 100 : NaN;
+          return {
+            key,
+            label: monthLongLabels[idx],
+            short: monthLabels[idx],
+            meta: metaVal,
+            real: realVal,
+            atingimento: ating
+          };
+        });
+        const childMonthMeta = childMonths[currentIdx]?.meta ?? 0;
+        const childMonthReal = childMonths[currentIdx]?.real ?? 0;
+        return {
+          ...child,
+          months: childMonths,
+          monthMeta: childMonthMeta,
+          monthReal: childMonthReal
+        };
+      });
+
+      return {
+        ...item,
+        months,
+        monthMeta,
+        monthReal,
+        children
+      };
+    });
+
+    return {
+      ...section,
+      items
+    };
+  });
+
+  return { monthKeys, monthLabels, monthLongLabels, currentIdx, sections: datasetSections };
 }
 
-function renderResumoLegacyAnnualChart(host){
+function renderResumoLegacyAnnualMatrix(host, sections = [], summary = {}) {
   if (!host) return false;
-  const rows = Array.isArray(state._rankingRaw) ? filterRows(state._rankingRaw) : [];
-  const dataset = makeAnnualSectionSeries(rows);
-  const section = document.createElement("section");
-  section.className = "resumo-legacy__annual card card--legacy";
+  const dataset = buildResumoLegacyAnnualDataset(sections);
+  const { monthLabels, monthLongLabels, currentIdx, sections: sectionData } = dataset;
+  if (!sectionData.length) return false;
 
-  const header = document.createElement("header");
-  header.className = "resumo-legacy__annual-head";
+  const currentShort = monthLabels[currentIdx] || "";
+  const currentLong = monthLongLabels[currentIdx] || currentShort || "";
+  const metaHeader = currentShort ? `Meta ${currentShort}` : "Meta (Mês atual)";
+  const metaHeaderTitle = currentLong ? `Meta do mês ${currentLong}` : "Meta do mês atual";
+  const realHeader = currentShort ? `Realizado ${currentShort}` : "Realizado (Mês atual)";
+  const realHeaderTitle = currentLong ? `Realizado do mês ${currentLong}` : "Realizado do mês atual";
 
-  const heading = document.createElement("div");
-  heading.className = "resumo-legacy__annual-heading";
+  const metricInfo = {
+    valor: { label: "Valor", title: "Indicador financeiro" },
+    qtd:   { label: "Quantidade", title: "Indicador por quantidade" },
+    perc:  { label: "Percentual", title: "Indicador percentual" }
+  };
 
-  const title = document.createElement("h3");
-  title.className = "resumo-legacy__annual-title";
-  title.textContent = "Atingimento anual por seção";
+  sectionData.forEach(section => {
+    const items = Array.isArray(section.items) ? section.items : [];
+    const totals = section.totals || {};
+    const pontosTotal = Number(totals.pontosTotal) || items.reduce((acc, item) => acc + (Number(item.pontosMeta ?? item.peso) || 0), 0);
+    const pontosHit = Number(totals.pontosHit) || items.reduce((acc, item) => acc + Math.min(Number(item.pontos ?? 0) || 0, Number(item.pontosMeta ?? item.peso) || 0), 0);
+    const metaTotal = Number(totals.metaTotal) || items.reduce((acc, item) => acc + (Number(item.meta) || 0), 0);
+    const realizadoTotal = Number(totals.realizadoTotal) || items.reduce((acc, item) => acc + (Number(item.realizado) || 0), 0);
 
-  heading.appendChild(title);
+    const atingPctBase = Number.isFinite(totals.atingPct) ? totals.atingPct : (metaTotal ? (realizadoTotal / metaTotal) * 100 : 0);
+    const hasMeta = metaTotal > 0;
+    const atingSectionClamped = hasMeta ? Math.max(0, Math.min(200, atingPctBase)) : 0;
+    const atingSectionLabel = hasMeta ? `${atingSectionClamped.toFixed(1)}%` : "—";
 
-  const subtitleText = formatResumoAnnualSubtitle(state.period);
-  if (subtitleText) {
-    const subtitle = document.createElement("p");
-    subtitle.className = "resumo-legacy__annual-sub";
-    subtitle.textContent = subtitleText;
-    heading.appendChild(subtitle);
-  }
+    const uniqueMetrics = new Set(items.map(item => item.metric));
+    const singleMetric = uniqueMetrics.size === 1 ? (uniqueMetrics.values().next().value || "") : "";
+    const normalizedMetric = typeof singleMetric === "string" ? singleMetric.toLowerCase() : "";
+    const canAggregateMetric = normalizedMetric === "valor" || normalizedMetric === "qtd";
+    const aggregatedLabel = normalizedMetric === "qtd" ? "Quantidade" : (normalizedMetric === "valor" ? "Realizado" : "");
+    const aggregatedValue = canAggregateMetric ? formatByMetric(normalizedMetric, realizadoTotal) : "";
 
-  header.appendChild(heading);
+    const sectionEl = document.createElement("section");
+    sectionEl.className = "resumo-legacy__section resumo-legacy__section--annual card card--legacy";
+    const safeLabel = escapeHTML(section.label || "Indicadores");
+    const chipPointsTitle = `Pontos: ${formatPoints(pontosHit, { withUnit: true })} / ${formatPoints(pontosTotal, { withUnit: true })}`;
+    const pontosHitLabel = escapeHTML(fmtINT.format(Math.round(pontosHit || 0)));
+    const pontosTotalLabel = escapeHTML(fmtINT.format(Math.round(pontosTotal || 0)));
+    const sectionHasExpandableRows = items.some(item => Array.isArray(item.children) && item.children.length);
+    const sectionToggleClass = `resumo-legacy__section-toggle${sectionHasExpandableRows ? "" : " is-disabled"}`;
+    const sectionToggleAttrs = sectionHasExpandableRows ? "" : " disabled aria-disabled=\"true\"";
 
-  const body = document.createElement("div");
-  body.className = "resumo-legacy__annual-body";
-
-  const chartWrap = document.createElement("div");
-  chartWrap.className = "resumo-legacy__annual-chart chart";
-
-  const legendEl = document.createElement("div");
-  legendEl.className = "chart-legend resumo-legacy__annual-legend";
-
-  body.appendChild(chartWrap);
-  body.appendChild(legendEl);
-
-  section.appendChild(header);
-  section.appendChild(body);
-
-  host.appendChild(section);
-
-  const seriesList = Array.isArray(dataset.series) ? dataset.series : [];
-  if (legendEl){
-    if (seriesList.length){
-      legendEl.innerHTML = seriesList.map(serie => `
-        <span class="legend-item">
-          <span class="legend-swatch legend-swatch--line" style="background:${serie.color};border-color:${serie.color};"></span>${escapeHTML(serie.label)}
-        </span>`).join("");
-    } else {
-      legendEl.innerHTML = `<span class="legend-item muted">Sem seções para exibir.</span>`;
+    const statsPieces = [
+      `<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">Peso total</span><strong class=\"resumo-legacy__stat-value\">${escapeHTML(fmtINT.format(Math.round(pontosTotal || 0)))}</strong></div>`
+    ];
+    if (canAggregateMetric && aggregatedLabel) {
+      statsPieces.push(`<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">${aggregatedLabel}</span><strong class=\"resumo-legacy__stat-value\">${escapeHTML(aggregatedValue)}</strong></div>`);
     }
-  }
+    statsPieces.push(`<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">Atingimento</span><strong class=\"resumo-legacy__stat-value\">${atingSectionLabel}</strong></div>`);
 
-  const ariaLabel = "Linhas anuais de atingimento por seção";
-  buildExecMonthlyLines(chartWrap, dataset, { ariaLabel });
+    const monthHeadCells = monthLabels.map((label, idx) => {
+      const classes = ["resumo-legacy__col--month-head"];
+      if (idx === currentIdx) classes.push("is-current");
+      const headerLabel = label || `M${idx + 1}`;
+      const headerTitle = monthLongLabels[idx] || headerLabel;
+      return `<th scope=\"col\" class=\"${classes.join(" ")}\" title=\"${escapeHTML(headerTitle)}\">${escapeHTML(headerLabel)}</th>`;
+    }).join("");
+
+    sectionEl.innerHTML = `
+      <header class="resumo-legacy__head">
+        <div class="resumo-legacy__heading">
+          <div class="resumo-legacy__title-row">
+            <span class="resumo-legacy__name">${safeLabel}</span>
+            <div class="resumo-legacy__section-actions">
+              <button type="button" class="${sectionToggleClass}" data-expanded="false"${sectionToggleAttrs}>
+                <i class="ti ti-filter" aria-hidden="true"></i>
+                <span class="resumo-legacy__section-toggle-label">Abrir todos os filtros</span>
+              </button>
+            </div>
+          </div>
+          <div class="resumo-legacy__chips">
+            <span class="resumo-legacy__chip"><i class="ti ti-box-multiple" aria-hidden="true"></i>${escapeHTML(fmtINT.format(items.length || 0))} indicadores</span>
+            <span class="resumo-legacy__chip" title="${escapeHTML(chipPointsTitle)}">Pontos ${pontosHitLabel} / ${pontosTotalLabel}</span>
+          </div>
+        </div>
+        <div class="resumo-legacy__stats">
+          ${statsPieces.join("")}
+        </div>
+      </header>
+      <div class="resumo-legacy__table-wrapper">
+        <table class="resumo-legacy__table resumo-legacy__table--annual">
+          <thead>
+            <tr>
+              <th scope="col">Produto</th>
+              <th scope="col" class="resumo-legacy__col--peso">Peso</th>
+              <th scope="col" class="resumo-legacy__col--meta" title="${escapeHTML(metaHeaderTitle)}">${escapeHTML(metaHeader)}</th>
+              <th scope="col" class="resumo-legacy__col--real" title="${escapeHTML(realHeaderTitle)}">${escapeHTML(realHeader)}</th>
+              ${monthHeadCells}
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    `;
+
+    const tbody = sectionEl.querySelector("tbody");
+    if (!tbody) return;
+
+    let rowAutoId = 0;
+    const rowToggleHandlers = new Map();
+    const sectionToggle = sectionEl.querySelector(".resumo-legacy__section-toggle");
+    const sectionToggleLabel = sectionEl.querySelector(".resumo-legacy__section-toggle-label");
+
+    const syncSectionToggleState = () => {
+      if (!sectionToggle) return;
+      if (!rowToggleHandlers.size) {
+        sectionToggle.setAttribute("data-expanded", "false");
+        sectionToggle.classList.remove("is-expanded");
+        if (!sectionHasExpandableRows) {
+          sectionToggle.classList.add("is-disabled");
+          sectionToggle.setAttribute("aria-disabled", "true");
+          sectionToggle.setAttribute("disabled", "true");
+        }
+        if (sectionToggleLabel) sectionToggleLabel.textContent = "Abrir todos os filtros";
+        return;
+      }
+      sectionToggle.classList.remove("is-disabled");
+      sectionToggle.removeAttribute("aria-disabled");
+      sectionToggle.removeAttribute("disabled");
+      let expandedCount = 0;
+      rowToggleHandlers.forEach((_, rowId) => {
+        const rowEl = tbody.querySelector(`tr[data-row-id="${rowId}"]`);
+        if (rowEl?.classList.contains("is-expanded")) expandedCount += 1;
+      });
+      const allExpanded = expandedCount > 0 && expandedCount === rowToggleHandlers.size;
+      sectionToggle.setAttribute("data-expanded", String(allExpanded));
+      sectionToggle.classList.toggle("is-expanded", allExpanded);
+      if (sectionToggleLabel) sectionToggleLabel.textContent = allExpanded ? "Recolher filtros" : "Abrir todos os filtros";
+    };
+
+    items.forEach(item => {
+      const pesoValor = Number(item.pontosMeta ?? item.peso ?? 0);
+      const pesoLabel = escapeHTML(fmtINT.format(Math.round(pesoValor || 0)));
+      const metricKeyRaw = typeof item.metric === "string" ? item.metric.toLowerCase() : "";
+      const metricMeta = metricInfo[metricKeyRaw] || { label: item.metric || "—", title: "Métrica do indicador" };
+      const metricLabel = escapeHTML(metricMeta.label || "—");
+      const metricTitle = escapeHTML(metricMeta.title || "Métrica do indicador");
+
+      const currentMeta = item.monthMeta ?? 0;
+      const currentReal = item.monthReal ?? 0;
+      const metaDisplay = formatByMetric(item.metric, currentMeta);
+      const realizadoDisplay = formatByMetric(item.metric, currentReal);
+      const metaFull = formatMetricFull(item.metric, currentMeta);
+      const realizadoFull = formatMetricFull(item.metric, currentReal);
+      const metaCell = escapeHTML(metaDisplay);
+      const metaTitleSafe = escapeHTML(metaFull);
+      const realizadoCell = escapeHTML(realizadoDisplay);
+      const realizadoTitleSafe = escapeHTML(realizadoFull);
+
+      const monthCellsHtml = (item.months || monthLabels.map(() => ({}))).map((month, idx) => {
+        const pct = Number.isFinite(month?.atingimento) ? month.atingimento : NaN;
+        const classes = ["resumo-legacy__col--month"];
+        if (Number.isFinite(pct)) classes.push(pctBadgeCls(pct)); else classes.push("is-empty");
+        if (idx === currentIdx) classes.push("is-current");
+        const pctLabel = Number.isFinite(pct) ? `${pct.toFixed(1)}%` : "—";
+        const monthLabel = month?.label || month?.short || `Mês ${idx + 1}`;
+        const tooltip = Number.isFinite(pct)
+          ? `${monthLabel}: ${pctLabel}`
+          : `${monthLabel}: sem dados disponíveis`;
+        return `<td class="${classes.join(' ')}" title="${escapeHTML(tooltip)}"><span>${pctLabel}</span></td>`;
+      }).join("");
+
+      const hasChildren = Array.isArray(item.children) && item.children.length > 0;
+      const rowId = `legacy-annual-${section.id || "sec"}-${rowAutoId++}`;
+      const produtoCellHtml = hasChildren
+        ? `<div class="resumo-legacy__prod"><button type="button" class="resumo-legacy__prod-toggle" aria-expanded="false"><i class="ti ti-chevron-right resumo-legacy__prod-toggle-icon" aria-hidden="true"></i><span class="resumo-legacy__prod-name" title="${escapeHTML(item.nome || "")}">${escapeHTML(item.nome || "—")}</span><span class="resumo-legacy__prod-meta" title="${metricTitle}">${metricLabel}</span></button></div>`
+        : `<div class="resumo-legacy__prod"><span class="resumo-legacy__prod-name" title="${escapeHTML(item.nome || "")}">${escapeHTML(item.nome || "—")}</span><span class="resumo-legacy__prod-meta" title="${metricTitle}">${metricLabel}</span></div>`;
+
+      let childRowsHtml = "";
+      if (hasChildren) {
+        childRowsHtml = item.children.map(child => {
+          const childMetricKey = typeof child.metric === "string" ? child.metric.toLowerCase() : metricKeyRaw;
+          const childMetricMeta = metricInfo[childMetricKey] || { label: child.metric || "—", title: "Métrica do indicador" };
+          const childMetricLabel = escapeHTML(childMetricMeta.label || "—");
+          const childMetricTitle = escapeHTML(childMetricMeta.title || "Métrica do indicador");
+          const childMetaDisplay = formatByMetric(childMetricKey, child.monthMeta ?? 0);
+          const childMetaFull = formatMetricFull(childMetricKey, child.monthMeta ?? 0);
+          const childRealDisplay = formatByMetric(childMetricKey, child.monthReal ?? 0);
+          const childRealFull = formatMetricFull(childMetricKey, child.monthReal ?? 0);
+          const childMetaCell = escapeHTML(childMetaDisplay);
+          const childMetaTitle = escapeHTML(childMetaFull);
+          const childRealCell = escapeHTML(childRealDisplay);
+          const childRealTitle = escapeHTML(childRealFull);
+          const childPesoValor = Number(child.pontosMeta ?? child.peso ?? 0);
+          const childPesoLabel = childPesoValor ? escapeHTML(fmtINT.format(Math.round(childPesoValor))) : "—";
+          const childMonthsHtml = (child.months || monthLabels.map(() => ({}))).map((month, idx) => {
+            const pct = Number.isFinite(month?.atingimento) ? month.atingimento : NaN;
+            const classes = ["resumo-legacy__col--month"];
+            if (Number.isFinite(pct)) classes.push(pctBadgeCls(pct)); else classes.push("is-empty");
+            if (idx === currentIdx) classes.push("is-current");
+            const pctLabel = Number.isFinite(pct) ? `${pct.toFixed(1)}%` : "—";
+            const monthLabel = month?.label || month?.short || `Mês ${idx + 1}`;
+            const tooltip = Number.isFinite(pct)
+              ? `${monthLabel}: ${pctLabel}`
+              : `${monthLabel}: sem dados disponíveis`;
+            return `<td class="${classes.join(' ')}" title="${escapeHTML(tooltip)}"><span>${pctLabel}</span></td>`;
+          }).join("");
+
+          return `
+            <tr class=\"resumo-legacy__child-row\" data-parent-id=\"${rowId}\" hidden>
+              <th scope=\"row\">
+                <div class=\"resumo-legacy__prod resumo-legacy__prod--child\">
+                  <span class=\"resumo-legacy__prod-name\" title=\"${escapeHTML(child.label || "")}\">${escapeHTML(child.label || "—")}</span>
+                  <span class=\"resumo-legacy__prod-meta\" title=\"${childMetricTitle}\">${childMetricLabel}</span>
+                </div>
+              </th>
+              <td class=\"resumo-legacy__col--peso\">${childPesoLabel}</td>
+              <td class=\"resumo-legacy__col--meta\" title=\"${childMetaTitle}\">${childMetaCell}</td>
+              <td class=\"resumo-legacy__col--real\" title=\"${childRealTitle}\">${childRealCell}</td>
+              ${childMonthsHtml}
+            </tr>`;
+        }).join("");
+      }
+
+      tbody.insertAdjacentHTML("beforeend", `
+        <tr class="resumo-legacy__row resumo-legacy__row--annual${hasChildren ? " has-children" : ""}" data-row-id="${rowId}">
+          <th scope="row">
+            ${produtoCellHtml}
+          </th>
+          <td class="resumo-legacy__col--peso" title="Peso do indicador">${pesoLabel}</td>
+          <td class="resumo-legacy__col--meta" title="${metaTitleSafe}">${metaCell}</td>
+          <td class="resumo-legacy__col--real" title="${realizadoTitleSafe}">${realizadoCell}</td>
+          ${monthCellsHtml}
+        </tr>
+        ${childRowsHtml}
+      `);
+
+      if (hasChildren) {
+        const mainRow = tbody.querySelector(`tr[data-row-id="${rowId}"]`);
+        const toggleBtn = mainRow?.querySelector(".resumo-legacy__prod-toggle");
+        if (mainRow && toggleBtn) {
+          const toggleChildren = (expand) => {
+            const nextState = typeof expand === "boolean" ? expand : toggleBtn.getAttribute("aria-expanded") !== "true";
+            toggleBtn.setAttribute("aria-expanded", String(nextState));
+            mainRow.classList.toggle("is-expanded", nextState);
+            tbody.querySelectorAll(`tr[data-parent-id="${rowId}"]`).forEach(childRow => {
+              childRow.hidden = !nextState;
+            });
+            syncSectionToggleState();
+          };
+
+          toggleBtn.addEventListener("click", ev => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            toggleChildren();
+          });
+
+          mainRow.addEventListener("click", ev => {
+            if (ev.target.closest(".resumo-legacy__prod-toggle")) return;
+            toggleChildren();
+          });
+
+          rowToggleHandlers.set(rowId, toggleChildren);
+        }
+      }
+    });
+
+    if (sectionToggle) {
+      if (sectionHasExpandableRows) {
+        sectionToggle.addEventListener("click", ev => {
+          ev.preventDefault();
+          const targetState = sectionToggle.getAttribute("data-expanded") !== "true";
+          rowToggleHandlers.forEach(toggleFn => {
+            toggleFn(targetState);
+          });
+          sectionToggle.setAttribute("data-expanded", String(targetState));
+          sectionToggle.classList.toggle("is-expanded", targetState);
+          if (sectionToggleLabel) sectionToggleLabel.textContent = targetState ? "Recolher filtros" : "Abrir todos os filtros";
+        });
+      } else {
+        sectionToggle.classList.add("is-disabled");
+        sectionToggle.setAttribute("aria-disabled", "true");
+        sectionToggle.setAttribute("disabled", "true");
+      }
+    }
+
+    syncSectionToggleState();
+
+    host.appendChild(sectionEl);
+  });
 
   return true;
 }
@@ -7056,16 +7422,17 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
 
   host.innerHTML = "";
 
-  const showAnnualChart = (state.accumulatedView || "mensal") === "anual";
-  const annualRendered = showAnnualChart ? renderResumoLegacyAnnualChart(host) : false;
+  const showAnnualMatrix = (state.accumulatedView || "mensal") === "anual";
+  host.classList.toggle("resumo-legacy--annual", showAnnualMatrix);
 
   if (!Array.isArray(sections) || !sections.length) {
-    if (annualRendered) {
-      const emptyMsg = document.createElement("div");
-      emptyMsg.className = "resumo-legacy__empty";
-      emptyMsg.textContent = "Nenhum indicador encontrado para os filtros selecionados.";
-      host.appendChild(emptyMsg);
-    } else {
+    host.innerHTML = `<div class="resumo-legacy__empty">Nenhum indicador encontrado para os filtros selecionados.</div>`;
+    return;
+  }
+
+  if (showAnnualMatrix) {
+    const rendered = renderResumoLegacyAnnualMatrix(host, sections, summary);
+    if (!rendered) {
       host.innerHTML = `<div class="resumo-legacy__empty">Nenhum indicador encontrado para os filtros selecionados.</div>`;
     }
     return;
@@ -7784,44 +8151,6 @@ function makeAnnualSectionSeries(rows){
   };
 }
 
-function makeExecYTDPerformance(rows, period){
-  const monthKeys = buildMonthlyAxis(period);
-  if (!monthKeys.length) {
-    return { months: [], latest: null };
-  }
-  const monthIndex = new Map(monthKeys.map((key, idx) => [key, idx]));
-  const months = monthKeys.map(key => ({
-    key,
-    label: monthKeyLabel(key),
-    short: monthKeyShortLabel(key),
-    meta: 0,
-    real: 0,
-    peso: 0,
-    atingimento: NaN,
-  }));
-
-  rows.forEach(r => {
-    const rawDate = r?.competencia || r?.mes || r?.data || r?.dataReferencia || r?.dt;
-    const key = normalizeMonthKey(rawDate);
-    if (!key || !monthIndex.has(key)) return;
-    const idx = monthIndex.get(key);
-    const entry = months[idx];
-    entry.meta += toNumber(r.meta_mens ?? r.meta ?? 0);
-    entry.real += toNumber(r.real_mens ?? r.realizado ?? 0);
-    entry.peso += toNumber(r.peso ?? r.pontosMeta ?? 0);
-  });
-
-  months.forEach(month => {
-    month.atingimento = month.meta > 0 ? (month.real / month.meta) * 100 : NaN;
-  });
-
-  const latest = [...months].reverse().find(month => {
-    return month.meta > 0 || month.real > 0 || Number.isFinite(month.atingimento);
-  }) || null;
-
-  return { months, latest };
-}
-
 function buildExecMonthlyLines(container, dataset, options = {}){
   const ariaLabel = options?.ariaLabel || "Linhas de atingimento mensal por seção";
   if (!dataset || !dataset.series?.length) {
@@ -7898,86 +8227,6 @@ function buildExecMonthlyLines(container, dataset, options = {}){
     </svg>`;
 }
 
-function buildExecYTDChart(container, dataset){
-  if (!container) return;
-  const months = dataset?.months || [];
-  if (!months.length) {
-    container.innerHTML = `<div class="muted">Sem dados para exibir.</div>`;
-    return;
-  }
-
-  const headerCells = months.map(month => `<th scope="col">${escapeHTML(month.short || month.label)}</th>`).join("");
-  const valueCells = months.map(month => {
-    const pctIsFinite = Number.isFinite(month.atingimento);
-    const pctText = pctIsFinite ? `${month.atingimento.toFixed(1)}%` : "—";
-    const classes = [pctIsFinite ? pctBadgeCls(month.atingimento) : "is-empty"];
-    const rawLabel = month.label || "Mês";
-    const safeLabel = escapeHTML(rawLabel);
-    const tooltip = pctIsFinite
-      ? `${rawLabel}: ${pctText}`
-      : `${rawLabel}: sem dados disponíveis`;
-    return `<td class="${classes.join(' ')}" data-month="${safeLabel}" title="${escapeHTML(tooltip)}"><span>${pctText}</span></td>`;
-  }).join("");
-
-  const latest = dataset?.latest || null;
-  let summaryHTML = "";
-  if (latest) {
-    const monthLabel = escapeHTML(latest.label);
-    const pesoDisplay = fmtINT.format(Math.round(latest.peso));
-    const metaDisplay = formatBRLReadable(latest.meta);
-    const realDisplay = formatBRLReadable(latest.real);
-    const metaFull = fmtBRL.format(Math.round(latest.meta));
-    const realFull = fmtBRL.format(Math.round(latest.real));
-    const pctText = Number.isFinite(latest.atingimento) ? `${latest.atingimento.toFixed(1)}%` : "—";
-    summaryHTML = `
-      <div class="exec-ytd-summary" aria-label="Resumo do mês ${monthLabel}">
-        <div class="summary-month">
-          <span class="summary-month__label">Mês atual</span>
-          <strong>${monthLabel}</strong>
-        </div>
-        <div class="summary-grid">
-          <div class="summary-item">
-            <span>Peso</span>
-            <strong>${pesoDisplay}</strong>
-          </div>
-          <div class="summary-item" title="${escapeHTML(metaFull)}">
-            <span>Meta</span>
-            <strong>${escapeHTML(metaDisplay)}</strong>
-          </div>
-          <div class="summary-item" title="${escapeHTML(realFull)}">
-            <span>Realizado</span>
-            <strong>${escapeHTML(realDisplay)}</strong>
-          </div>
-          <div class="summary-item">
-            <span>Atingimento</span>
-            <strong>${pctText}</strong>
-          </div>
-        </div>
-      </div>`;
-  }
-
-  container.innerHTML = `
-    <div class="exec-ytd-grid">
-      <div class="exec-ytd-table-wrapper">
-        <table class="exec-ytd-table">
-          <thead>
-            <tr>
-              <th scope="col">Indicador</th>
-              ${headerCells}
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <th scope="row">Atingimento</th>
-              ${valueCells}
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      ${summaryHTML}
-    </div>`;
-}
-
 /* ===== Aqui eu orquestro o render principal da visão executiva ===== */
 function renderExecutiveView(){
   const host = document.getElementById("view-exec"); 
@@ -7988,8 +8237,6 @@ function renderExecutiveView(){
   const chartC = document.getElementById("exec-chart");
   const chartTitleEl = document.getElementById("exec-chart-title");
   const chartLegend = document.getElementById("exec-chart-legend");
-  const ytdChartEl = document.getElementById("exec-ytd-chart");
-  const ytdTitleEl = document.getElementById("exec-ytd-title");
   const hm     = document.getElementById("exec-heatmap");
   const rankTopEl = document.getElementById("exec-rank-top");
   const rankBottomEl = document.getElementById("exec-rank-bottom");
@@ -8134,19 +8381,6 @@ function renderExecutiveView(){
       };
       window.addEventListener('resize', host.__execResize);
     }
-  }
-
-  if (ytdChartEl){
-    const rowsYTD = filterRowsExcept(state._rankingRaw, {}, { searchTerm: state.tableSearchTerm, ignoreDate: true });
-    const ytdDataset = makeExecYTDPerformance(rowsYTD, execMonthlyPeriod);
-    if (ytdTitleEl){
-      const ytdYear = (execMonthlyPeriod.start || "").slice(0,4);
-      ytdTitleEl.textContent = ytdYear ? `Atingimento YTD — ${ytdYear}` : "Atingimento YTD por mês";
-    }
-    const periodLabelStart = formatBRDate(execMonthlyPeriod.start);
-    const periodLabelEnd = formatBRDate(execMonthlyPeriod.end);
-    ytdChartEl.setAttribute("aria-label", `Atingimento mensal Year to Date de ${periodLabelStart} a ${periodLabelEnd}`);
-    buildExecYTDChart(ytdChartEl, ytdDataset);
   }
 
   // Ranking Top/Bottom
