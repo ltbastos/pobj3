@@ -775,6 +775,10 @@ select.input{
 .resumo-legacy__row.is-expanded .resumo-legacy__prod-toggle-icon{ transform:rotate(90deg); }
 .resumo-legacy__row.has-children{ cursor:pointer; }
 .resumo-legacy__prod--child{ padding-left:32px; }
+.resumo-legacy__prod--grandchild{ padding-left:56px; }
+.resumo-legacy__row--family > th .resumo-legacy__prod-name{ font-size:14px; font-weight:800; letter-spacing:.02em; text-transform:uppercase; }
+.resumo-legacy__row--indicator .resumo-legacy__prod-name{ font-weight:700; }
+.resumo-legacy__row--lp .resumo-legacy__prod-name{ font-weight:600; }
 .resumo-legacy__child-row{ background:rgba(241,245,249,.8); }
 .resumo-legacy__child-row .resumo-legacy__prod-name{ font-weight:600; }
 .resumo-legacy__prod-name{ font-weight:700; color:#0f172a; line-height:1.3; }

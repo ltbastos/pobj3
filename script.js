@@ -121,6 +121,7 @@ let PRODUTOS_BY_FAMILIA = new Map();
 let FAMILIA_DATA = [];
 let FAMILIA_BY_ID = new Map();
 let PRODUTO_TO_FAMILIA = new Map();
+let RESUMO_HIERARCHY = [];
 
 // Aqui eu deixo caches das bases fact/dim para usar em várias telas.
 let fDados = [];
@@ -220,6 +221,101 @@ function matchesSelection(filterValue, ...candidates){
     if (valor === esperado) return true;
     return simplificarTexto(valor) === esperadoSimple;
   });
+}
+
+function formatResumoSectionLabel(raw = "") {
+  const slug = simplificarTexto(raw);
+  switch (slug) {
+    case "negocios captacao":
+      return "NEGÓCIOS CAPTAÇÃO";
+    case "negocios credito":
+      return "NEGÓCIOS CRÉDITO";
+    case "negocios ligadas":
+      return "NEGÓCIOS LIGADAS";
+    case "produtividade da equipe":
+      return "PRODUTIVIDADE DA EQUIPE";
+    case "clientes":
+      return "CLIENTES";
+    case "financeiro":
+      return "FINANCEIRO";
+    default:
+      return raw ? raw.toUpperCase() : "";
+  }
+}
+
+function buildResumoHierarchyFromProducts(rows = []) {
+  const sectionMap = new Map();
+  const sectionOrder = [];
+
+  rows.forEach(row => {
+    if (!row) return;
+    const secRaw = row.secaoId || row.secao || row.secaoNome || "";
+    const secSlug = simplificarTexto(secRaw) || simplificarTexto(row.secaoNome) || "secao";
+    if (!sectionMap.has(secSlug)) {
+      sectionMap.set(secSlug, {
+        id: secSlug,
+        label: formatResumoSectionLabel(row.secaoNome || row.secao || secRaw || secSlug),
+        familias: [],
+        familiaIndex: new Map()
+      });
+      sectionOrder.push(secSlug);
+    }
+    const section = sectionMap.get(secSlug);
+    const famRaw = row.familiaId || row.familiaNome || row.familia || "";
+    if (!famRaw) return;
+    const famSlugBase = simplificarTexto(famRaw) || limparTexto(famRaw) || `familia-${section.familias.length + 1}`;
+    const famSlug = `${secSlug}__${famSlugBase}`;
+    if (!section.familiaIndex.has(famSlug)) {
+      section.familiaIndex.set(famSlug, {
+        id: famSlug,
+        nome: row.familiaNome || row.familia || famRaw || famSlugBase,
+        indicadores: [],
+        indicadorSet: new Set()
+      });
+      section.familias.push(section.familiaIndex.get(famSlug));
+    }
+    const familia = section.familiaIndex.get(famSlug);
+    const indicadorRaw = row.produtoId || row.indicadorId || row.id_indicador || row.produto || row.ds_indicador || "";
+    const indicadorNome = row.produtoNome || row.ds_indicador || indicadorRaw;
+    const indicadorSlug = simplificarTexto(indicadorRaw) || simplificarTexto(indicadorNome);
+    const uniqueKey = indicadorSlug || simplificarTexto(`${indicadorRaw}`) || `ind-${familia.indicadores.length + 1}`;
+    if (familia.indicadorSet.has(uniqueKey)) return;
+    familia.indicadorSet.add(uniqueKey);
+
+    const aliasSet = new Set();
+    [indicadorRaw, indicadorNome, row.id_indicador, row.ds_indicador].forEach(val => {
+      const texto = limparTexto(val);
+      if (texto) aliasSet.add(texto);
+    });
+
+    familia.indicadores.push({
+      id: indicadorRaw || uniqueKey,
+      slug: uniqueKey,
+      nome: indicadorNome || indicadorRaw || uniqueKey,
+      aliases: Array.from(aliasSet)
+    });
+  });
+
+  return sectionOrder.map(secId => {
+    const section = sectionMap.get(secId);
+    if (!section) return null;
+    const familias = section.familias
+      .map(fam => ({
+        id: fam.id,
+        nome: fam.nome,
+        indicadores: fam.indicadores.slice()
+      }))
+      .filter(f => f.indicadores.length);
+    if (!familias.length) return null;
+    return { id: section.id, label: section.label, familias };
+  }).filter(Boolean);
+}
+
+function getResumoHierarchy() {
+  if (Array.isArray(RESUMO_HIERARCHY) && RESUMO_HIERARCHY.length) {
+    return RESUMO_HIERARCHY;
+  }
+  return [];
 }
 
 function optionMatchesValue(option, desired){
@@ -978,6 +1074,7 @@ function montarDadosProdutos(rows){
   FAMILIA_BY_ID = new Map(FAMILIA_DATA.map(f => [f.id, f]));
   PRODUTOS_BY_FAMILIA = byFamilia;
   PRODUTOS_DATA = rows;
+  RESUMO_HIERARCHY = buildResumoHierarchyFromProducts(rows);
 
   CAMPAIGN_UNIT_DATA.forEach(unit => {
     const prodMeta = unit.produtoId ? PRODUTO_TO_FAMILIA.get(unit.produtoId) : null;
@@ -6784,6 +6881,206 @@ function renderResumoLegacyAnnualMatrix(host, sections = [], summary = {}) {
   return true;
 }
 
+function buildResumoLegacySections(sections = []) {
+  const hierarchy = getResumoHierarchy();
+  if (!hierarchy.length) return [];
+
+  const lookup = new Map();
+  sections.forEach(sec => {
+    const items = Array.isArray(sec.items) ? sec.items : [];
+    items.forEach(item => {
+      if (!item) return;
+      const aliasSet = new Set([
+        item.id,
+        item.nome,
+        item.produtoId,
+        item.produtoNome,
+        item.indicadorId,
+        item.indicadorCodigo,
+      ]);
+      if (Array.isArray(item.aliases)) item.aliases.forEach(alias => aliasSet.add(alias));
+      if (Array.isArray(item.subProdutos)) item.subProdutos.forEach(alias => aliasSet.add(alias));
+      aliasSet.forEach(alias => {
+        const slug = simplificarTexto(alias);
+        if (slug && !lookup.has(slug)) {
+          lookup.set(slug, item);
+        }
+      });
+    });
+  });
+
+  const toISODate = (value = "") => {
+    const text = limparTexto(value);
+    if (!text) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+    const match = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (match) {
+      return `${match[3]}-${match[2]}-${match[1]}`;
+    }
+    return "";
+  };
+
+  const cloneItem = (item, fallbackNome) => {
+    const cloned = { ...item };
+    cloned.nome = fallbackNome || item.nome || item.id;
+    if (Array.isArray(item.aliases)) cloned.aliases = item.aliases.slice();
+    if (Array.isArray(item.subProdutos)) cloned.subProdutos = item.subProdutos.slice();
+    if (Array.isArray(item.children)) {
+      cloned.children = item.children.map(child => ({ ...child }));
+    }
+    return cloned;
+  };
+
+  const result = [];
+
+  hierarchy.forEach(secDef => {
+    if (!secDef || !Array.isArray(secDef.familias)) return;
+    const sectionItems = [];
+    let secMeta = 0;
+    let secReal = 0;
+    let secPontosMeta = 0;
+    let secPontos = 0;
+    let secVariavelMeta = 0;
+    let secVariavelReal = 0;
+
+    secDef.familias.forEach(famDef => {
+      if (!famDef || !Array.isArray(famDef.indicadores)) return;
+      let famMeta = 0;
+      let famReal = 0;
+      let famPontosMeta = 0;
+      let famPontos = 0;
+      let famVariavelMeta = 0;
+      let famVariavelReal = 0;
+      let famUltimaISO = "";
+      const familyIndicators = [];
+
+      famDef.indicadores.forEach(indDef => {
+        if (!indDef) return;
+        const candidates = [indDef.id, indDef.slug, indDef.nome, ...(Array.isArray(indDef.aliases) ? indDef.aliases : [])];
+        let match = null;
+        for (const candidate of candidates) {
+          const slug = simplificarTexto(candidate);
+          if (slug && lookup.has(slug)) {
+            match = lookup.get(slug);
+            break;
+          }
+        }
+
+        let rowItem;
+        if (match) {
+          rowItem = cloneItem(match, indDef.nome);
+        } else {
+          rowItem = {
+            id: indDef.id || indDef.slug,
+            nome: indDef.nome,
+            metric: "valor",
+            meta: 0,
+            realizado: 0,
+            variavelMeta: 0,
+            variavelReal: 0,
+            pontosMeta: 0,
+            pontosBrutos: 0,
+            pontos: 0,
+            ating: 0,
+            atingVariavel: 0,
+            atingido: false,
+            ultimaAtualizacao: "",
+            aliases: Array.isArray(indDef.aliases) ? indDef.aliases.slice() : []
+          };
+        }
+
+        if (!rowItem.familiaId) rowItem.familiaId = famDef.id;
+        rowItem.familiaNome = famDef.nome;
+        rowItem.familiaNodeId = famDef.id;
+        rowItem.familiaNodeNome = famDef.nome;
+        if (!rowItem.secaoId) rowItem.secaoId = secDef.id;
+        rowItem.secaoLabel = rowItem.secaoLabel || secDef.label;
+        rowItem.secaoNodeId = secDef.id;
+        rowItem.type = "indicator";
+
+        const pontosMeta = Number(rowItem.pontosMeta ?? rowItem.peso ?? 0) || 0;
+        const pontosBrutos = Number(rowItem.pontosBrutos ?? rowItem.pontos ?? 0) || 0;
+        const pontosReal = Math.max(0, Math.min(pontosMeta, pontosBrutos));
+        const metaVal = Number(rowItem.meta) || 0;
+        const realVal = Number(rowItem.realizado) || 0;
+        const variavelMetaVal = Number(rowItem.variavelMeta) || 0;
+        const variavelRealVal = Number(rowItem.variavelReal) || 0;
+
+        famMeta += metaVal;
+        famReal += realVal;
+        famPontosMeta += pontosMeta;
+        famPontos += pontosReal;
+        famVariavelMeta += variavelMetaVal;
+        famVariavelReal += variavelRealVal;
+
+        const currentISO = toISODate(rowItem.ultimaAtualizacao);
+        if (currentISO && (!famUltimaISO || currentISO > famUltimaISO)) {
+          famUltimaISO = currentISO;
+        }
+
+        familyIndicators.push(rowItem);
+      });
+
+      if (!familyIndicators.length) return;
+
+      const primaryMetric = familyIndicators.every(child => child.metric === familyIndicators[0].metric)
+        ? (familyIndicators[0].metric || "valor")
+        : "mix";
+      const familiaRow = {
+        id: famDef.id,
+        nome: famDef.nome,
+        metric: primaryMetric,
+        meta: famMeta,
+        realizado: famReal,
+        variavelMeta: famVariavelMeta,
+        variavelReal: famVariavelReal,
+        pontosMeta: famPontosMeta,
+        pontosBrutos: famPontos,
+        pontos: famPontos,
+        peso: famPontosMeta,
+        ating: famMeta ? famReal / famMeta : 0,
+        atingVariavel: famVariavelMeta ? famVariavelReal / famVariavelMeta : 0,
+        atingido: famMeta ? famReal >= famMeta : false,
+        ultimaAtualizacao: famUltimaISO ? formatBRDate(famUltimaISO) : "",
+        familiaId: famDef.id,
+        familiaNome: famDef.nome,
+        secaoId: secDef.id,
+        secaoLabel: secDef.label,
+        children: familyIndicators,
+        type: "family"
+      };
+
+      sectionItems.push(familiaRow);
+
+      secMeta += famMeta;
+      secReal += famReal;
+      secPontosMeta += famPontosMeta;
+      secPontos += famPontos;
+      secVariavelMeta += famVariavelMeta;
+      secVariavelReal += famVariavelReal;
+    });
+
+    if (!sectionItems.length) return;
+
+    result.push({
+      id: secDef.id,
+      label: secDef.label,
+      items: sectionItems,
+      totals: {
+        metaTotal: secMeta,
+        realizadoTotal: secReal,
+        pontosTotal: secPontosMeta,
+        pontosHit: secPontos,
+        variavelMeta: secVariavelMeta,
+        variavelReal: secVariavelReal,
+        atingPct: secMeta ? (secReal / secMeta) * 100 : 0
+      }
+    });
+  });
+
+  return result;
+}
+
 function applyResumoMode(mode = "cards") {
   const normalized = mode === "legacy" ? "legacy" : "cards";
   const cardsView = $("#resumo-cards");
@@ -7364,8 +7661,10 @@ function renderFamilias(sections, summary){
     visibleVarMeta: hasVisibleVar ? varMetaVisiveis : null
   });
 
-  state.dashboardVisibleSections = visibleSections;
-  renderResumoLegacyTable(visibleSections, summary);
+  const legacySections = buildResumoLegacySections(visibleSections);
+  const sectionsForLegacy = legacySections.length ? legacySections : visibleSections;
+  state.dashboardVisibleSections = sectionsForLegacy;
+  renderResumoLegacyTable(sectionsForLegacy, summary, visibleSections);
 
   applyResumoMode(state.resumoMode || "cards");
 
@@ -7416,7 +7715,7 @@ function renderFamilias(sections, summary){
   });
 }
 
-function renderResumoLegacyTable(sections = [], summary = {}) {
+function renderResumoLegacyTable(sections = [], summary = {}, rawSections = null) {
   const host = $("#resumo-legacy");
   if (!host) return;
 
@@ -7425,13 +7724,17 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
   const showAnnualMatrix = (state.accumulatedView || "mensal") === "anual";
   host.classList.toggle("resumo-legacy--annual", showAnnualMatrix);
 
-  if (!Array.isArray(sections) || !sections.length) {
+  const activeSections = showAnnualMatrix
+    ? (Array.isArray(rawSections) && rawSections.length ? rawSections : sections)
+    : sections;
+
+  if (!Array.isArray(activeSections) || !activeSections.length) {
     host.innerHTML = `<div class="resumo-legacy__empty">Nenhum indicador encontrado para os filtros selecionados.</div>`;
     return;
   }
 
   if (showAnnualMatrix) {
-    const rendered = renderResumoLegacyAnnualMatrix(host, sections, summary);
+    const rendered = renderResumoLegacyAnnualMatrix(host, activeSections, summary);
     if (!rendered) {
       host.innerHTML = `<div class="resumo-legacy__empty">Nenhum indicador encontrado para os filtros selecionados.</div>`;
     }
@@ -7558,144 +7861,155 @@ function renderResumoLegacyTable(sections = [], summary = {}) {
       if (sectionToggleLabel) sectionToggleLabel.textContent = allExpanded ? "Recolher filtros" : "Abrir todos os filtros";
     };
 
-    items.forEach(item => {
-      const pesoValor = Number(item.pontosMeta ?? item.peso ?? 0);
-      const pesoLabel = escapeHTML(fmtINT.format(Math.round(pesoValor || 0)));
+    const rows = [];
+
+    const buildRow = (item, depth = 0, parentId = "") => {
+      if (!item) return null;
+
+      const rowId = `legacy-${section.id || "sec"}-${rowAutoId++}`;
+      const hasChildren = Array.isArray(item.children) && item.children.length > 0;
       const metricKeyRaw = typeof item.metric === "string" ? item.metric.toLowerCase() : "";
-      const metricMeta = metricInfo[metricKeyRaw] || { label: item.metric || "—", title: "Métrica do indicador" };
+      const metricEntry = metricInfo[metricKeyRaw] || null;
+      const isKnownMetric = metricKeyRaw === "valor" || metricKeyRaw === "qtd" || metricKeyRaw === "perc";
+      const metricLabelRaw = metricEntry ? metricEntry.label : "—";
+      const metricTitleRaw = metricEntry ? metricEntry.title : "Métrica do indicador";
       const metricClasses = ["resumo-legacy__metric"];
-      if (metricKeyRaw === "valor" || metricKeyRaw === "qtd" || metricKeyRaw === "perc") {
+      if (isKnownMetric) {
         metricClasses.push(`resumo-legacy__metric--${metricKeyRaw}`);
       }
-      const metricLabel = escapeHTML(metricMeta.label || "—");
-      const metricTitle = escapeHTML(metricMeta.title || "Métrica do indicador");
 
-      const metaDisplay = formatByMetric(item.metric, item.meta);
-      const realizadoDisplay = formatByMetric(item.metric, item.realizado);
-      const metaFull = formatMetricFull(item.metric, item.meta);
-      const realizadoFull = formatMetricFull(item.metric, item.realizado);
-      const metaCell = escapeHTML(metaDisplay);
-      const metaTitleSafe = escapeHTML(metaFull);
-      const realizadoCell = escapeHTML(realizadoDisplay);
-      const realizadoTitleSafe = escapeHTML(realizadoFull);
+      const pesoValor = Number(item.pontosMeta ?? item.peso ?? 0) || 0;
+      const pesoLabelRaw = fmtINT.format(Math.round(pesoValor));
+
+      let metaCellRaw = "—";
+      let metaTitleRaw = "Sem meta agregada";
+      let realizadoCellRaw = "—";
+      let realizadoTitleRaw = "Sem realizado agregado";
+      if (isKnownMetric) {
+        metaCellRaw = formatByMetric(metricKeyRaw, item.meta);
+        metaTitleRaw = formatMetricFull(metricKeyRaw, item.meta);
+        realizadoCellRaw = formatByMetric(metricKeyRaw, item.realizado);
+        realizadoTitleRaw = formatMetricFull(metricKeyRaw, item.realizado);
+      }
 
       const atingPct = Math.max(0, Math.min(200, toNumber(item.ating) * 100));
       const atingFill = Math.max(0, Math.min(1, atingPct / 100));
-      const atingLabel = `${atingPct.toFixed(1)}%`;
+      const atingLabelRaw = `${atingPct.toFixed(1)}%`;
       const atingMeterClass = atingPct >= 100 ? "is-ok" : (atingPct >= 50 ? "is-warn" : "is-low");
 
-      const updateLabel = item.ultimaAtualizacao ? escapeHTML(item.ultimaAtualizacao) : "—";
-      const hasChildren = Array.isArray(item.children) && item.children.length > 0;
-      const rowId = `legacy-${section.id || "sec"}-${rowAutoId++}`;
+      const updateRaw = item.ultimaAtualizacao || "";
+      const updateLabelRaw = updateRaw
+        ? (/^\d{4}-\d{2}-\d{2}$/.test(updateRaw) ? formatBRDate(updateRaw) : updateRaw)
+        : "—";
 
+      const prodClasses = ["resumo-legacy__prod"];
+      if (depth === 1) prodClasses.push("resumo-legacy__prod--child");
+      if (depth >= 2) prodClasses.push("resumo-legacy__prod--grandchild");
+
+      const rowClasses = ["resumo-legacy__row"];
+      if (hasChildren) rowClasses.push("has-children");
+      if (depth === 0) rowClasses.push("resumo-legacy__row--family");
+      if (depth === 1) rowClasses.push("resumo-legacy__row--indicator", "resumo-legacy__row--child");
+      if (depth >= 2) rowClasses.push("resumo-legacy__row--lp", "resumo-legacy__child-row", "resumo-legacy__row--grandchild");
+
+      const attrParts = [`class="${rowClasses.join(" ")}"`, `data-row-id="${rowId}"`, `data-depth="${depth}"`];
+      if (parentId) attrParts.push(`data-parent-id="${parentId}"`);
+      const hiddenAttr = parentId ? " hidden" : "";
+
+      const nomeSafe = escapeHTML(item.nome || item.label || "—");
       const produtoCellHtml = hasChildren
-        ? `<div class="resumo-legacy__prod"><button type="button" class="resumo-legacy__prod-toggle" aria-expanded="false"><i class="ti ti-chevron-right resumo-legacy__prod-toggle-icon" aria-hidden="true"></i><span class="resumo-legacy__prod-name" title="${escapeHTML(item.nome || "")}">${escapeHTML(item.nome || "—")}</span></button></div>`
-        : `<div class="resumo-legacy__prod"><span class="resumo-legacy__prod-name" title="${escapeHTML(item.nome || "")}">${escapeHTML(item.nome || "—")}</span></div>`;
+        ? `<div class="${prodClasses.join(" ")}"><button type="button" class="resumo-legacy__prod-toggle" aria-expanded="false"><i class="ti ti-chevron-right resumo-legacy__prod-toggle-icon" aria-hidden="true"></i><span class="resumo-legacy__prod-name" title="${nomeSafe}">${nomeSafe}</span></button></div>`
+        : `<div class="${prodClasses.join(" ")}"><span class="resumo-legacy__prod-name" title="${nomeSafe}">${nomeSafe}</span></div>`;
 
-      let childRowsHtml = "";
-      if (hasChildren) {
-        childRowsHtml = item.children.map(child => {
-          const childMetricKey = typeof child.metric === "string" ? child.metric.toLowerCase() : metricKeyRaw;
-          const childMetricMeta = metricInfo[childMetricKey] || { label: child.metric || "—", title: "Métrica do indicador" };
-          const childMetricClasses = ["resumo-legacy__metric"];
-          if (childMetricKey === "valor" || childMetricKey === "qtd" || childMetricKey === "perc") {
-            childMetricClasses.push(`resumo-legacy__metric--${childMetricKey}`);
-          }
-          const childMetricLabel = escapeHTML(childMetricMeta.label || "—");
-          const childMetricTitle = escapeHTML(childMetricMeta.title || "Métrica do indicador");
-          const childMetaDisplay = formatByMetric(childMetricKey, child.meta);
-          const childMetaFull = formatMetricFull(childMetricKey, child.meta);
-          const childRealDisplay = formatByMetric(childMetricKey, child.realizado);
-          const childRealFull = formatMetricFull(childMetricKey, child.realizado);
-          const childMetaCell = escapeHTML(childMetaDisplay);
-          const childMetaTitle = escapeHTML(childMetaFull);
-          const childRealCell = escapeHTML(childRealDisplay);
-          const childRealTitle = escapeHTML(childRealFull);
-          const childAtingPct = Math.max(0, Math.min(200, Number(child.meta) ? (Number(child.realizado) / Number(child.meta)) * 100 : 0));
-          const childAtingFill = Math.max(0, Math.min(1, childAtingPct / 100));
-          const childAtingLabel = `${childAtingPct.toFixed(1)}%`;
-          const childAtingMeterClass = childAtingPct >= 100 ? "is-ok" : (childAtingPct >= 50 ? "is-warn" : "is-low");
-          const childPesoValor = Number(child.pontosMeta ?? child.peso ?? 0);
-          const childPesoLabel = childPesoValor ? escapeHTML(fmtINT.format(Math.round(childPesoValor))) : "—";
-          const childUpdateRaw = child.ultimaAtualizacao || "";
-          const childUpdateFormatted = /^\d{4}-\d{2}-\d{2}$/.test(childUpdateRaw) ? formatBRDate(childUpdateRaw) : childUpdateRaw;
-          const childUpdateLabel = childUpdateRaw ? escapeHTML(childUpdateFormatted) : "—";
-
-          return `
-            <tr class=\"resumo-legacy__child-row\" data-parent-id=\"${rowId}\" hidden>
-              <th scope=\"row\">
-                <div class=\"resumo-legacy__prod resumo-legacy__prod--child\">
-                  <span class=\"resumo-legacy__prod-name\" title=\"${escapeHTML(child.label || "")}\">${escapeHTML(child.label || "—")}</span>
-                </div>
-              </th>
-              <td class=\"resumo-legacy__col--peso\">${childPesoLabel}</td>
-              <td><span class=\"${childMetricClasses.join(" ")}\" title=\"${childMetricTitle}\">${childMetricLabel}</span></td>
-              <td class=\"resumo-legacy__col--meta\" title=\"${childMetaTitle}\">${childMetaCell}</td>
-              <td class=\"resumo-legacy__col--real\" title=\"${childRealTitle}\">${childRealCell}</td>
-              <td class=\"resumo-legacy__col--ating\">
-                <div class=\"resumo-legacy__ating\" title=\"Atingimento\">
-                  <div class=\"resumo-legacy__ating-meter ${childAtingMeterClass}\" style=\"--fill:${childAtingFill.toFixed(4)};\" role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"200\" aria-valuenow=\"${childAtingPct.toFixed(1)}\" aria-valuetext=\"${childAtingLabel}\">
-                    <span class=\"resumo-legacy__ating-value\">${childAtingLabel}</span>
-                  </div>
-                </div>
-              </td>
-              <td class=\"resumo-legacy__col--update\">${childUpdateLabel}</td>
-            </tr>
-          `;
-        }).join("");
-      }
-
-      tbody.insertAdjacentHTML("beforeend", `
-        <tr class="resumo-legacy__row${hasChildren ? " has-children" : ""}" data-row-id="${rowId}">
+      const rowHtml = `
+        <tr ${attrParts.join(" ")}${hiddenAttr}>
           <th scope="row">
             ${produtoCellHtml}
           </th>
-          <td class="resumo-legacy__col--peso" title="Peso do indicador">${pesoLabel}</td>
+          <td class="resumo-legacy__col--peso" title="Peso do indicador">${escapeHTML(pesoLabelRaw)}</td>
           <td>
-            <span class="${metricClasses.join(" ")}" title="${metricTitle}">${metricLabel}</span>
+            <span class="${metricClasses.join(" ")}" title="${escapeHTML(metricTitleRaw)}">${escapeHTML(metricLabelRaw || "—")}</span>
           </td>
-          <td class="resumo-legacy__col--meta" title="${metaTitleSafe}">${metaCell}</td>
-          <td class="resumo-legacy__col--real" title="${realizadoTitleSafe}">${realizadoCell}</td>
+          <td class="resumo-legacy__col--meta" title="${escapeHTML(metaTitleRaw)}">${escapeHTML(metaCellRaw)}</td>
+          <td class="resumo-legacy__col--real" title="${escapeHTML(realizadoTitleRaw)}">${escapeHTML(realizadoCellRaw)}</td>
           <td class="resumo-legacy__col--ating">
             <div class="resumo-legacy__ating" title="Atingimento">
-              <div class="resumo-legacy__ating-meter ${atingMeterClass}" style="--fill:${atingFill.toFixed(4)};" role="progressbar" aria-valuemin="0" aria-valuemax="200" aria-valuenow="${atingPct.toFixed(1)}" aria-valuetext="${atingLabel}">
-                <span class="resumo-legacy__ating-value">${atingLabel}</span>
+              <div class="resumo-legacy__ating-meter ${atingMeterClass}" style="--fill:${atingFill.toFixed(4)};" role="progressbar" aria-valuemin="0" aria-valuemax="200" aria-valuenow="${atingPct.toFixed(1)}" aria-valuetext="${escapeHTML(atingLabelRaw)}">
+                <span class="resumo-legacy__ating-value">${escapeHTML(atingLabelRaw)}</span>
               </div>
             </div>
           </td>
-          <td class="resumo-legacy__col--update">${updateLabel}</td>
+          <td class="resumo-legacy__col--update">${escapeHTML(updateLabelRaw)}</td>
         </tr>
-        ${childRowsHtml}
-      `);
+      `;
+
+      const rowConfig = { rowId, parentId, depth, hasChildren, childrenIds: [], html: rowHtml };
+      rows.push(rowConfig);
 
       if (hasChildren) {
-        const mainRow = tbody.querySelector(`tr[data-row-id="${rowId}"]`);
-        const toggleBtn = mainRow?.querySelector(".resumo-legacy__prod-toggle");
-        if (mainRow && toggleBtn) {
-          const toggleChildren = (expand) => {
-            const nextState = typeof expand === "boolean" ? expand : toggleBtn.getAttribute("aria-expanded") !== "true";
-            toggleBtn.setAttribute("aria-expanded", String(nextState));
-            mainRow.classList.toggle("is-expanded", nextState);
-            tbody.querySelectorAll(`tr[data-parent-id="${rowId}"]`).forEach(childRow => {
-              childRow.hidden = !nextState;
-            });
-            syncSectionToggleState();
-          };
-
-          toggleBtn.addEventListener("click", ev => {
-            ev.preventDefault();
-            ev.stopPropagation();
-            toggleChildren();
-          });
-
-          mainRow.addEventListener("click", ev => {
-            if (ev.target.closest(".resumo-legacy__prod-toggle")) return;
-            toggleChildren();
-          });
-
-          rowToggleHandlers.set(rowId, toggleChildren);
-        }
+        item.children.forEach(child => {
+          const childId = buildRow(child, depth + 1, rowId);
+          if (childId) rowConfig.childrenIds.push(childId);
+        });
       }
+
+      return rowId;
+    };
+
+    items.forEach(item => buildRow(item, 0, ""));
+
+    if (!rows.length) return;
+
+    tbody.innerHTML = rows.map(row => row.html).join("");
+
+    rows.forEach(row => {
+      const rowEl = tbody.querySelector(`tr[data-row-id="${row.rowId}"]`);
+      if (!rowEl) return;
+      row.element = rowEl;
+      if (row.parentId) {
+        rowEl.hidden = true;
+      }
+    });
+
+    rows.forEach(row => {
+      if (!row.hasChildren) return;
+      const rowEl = row.element;
+      if (!rowEl) return;
+      const toggleBtn = rowEl.querySelector(".resumo-legacy__prod-toggle");
+      if (!toggleBtn) return;
+      toggleBtn.setAttribute("aria-expanded", "false");
+
+      const toggleChildren = (expand) => {
+        const current = rowEl.classList.contains("is-expanded");
+        const nextState = typeof expand === "boolean" ? expand : !current;
+        rowEl.classList.toggle("is-expanded", nextState);
+        toggleBtn.setAttribute("aria-expanded", String(nextState));
+        row.childrenIds.forEach(childId => {
+          const childRow = tbody.querySelector(`tr[data-row-id="${childId}"]`);
+          if (!childRow) return;
+          childRow.hidden = !nextState;
+        });
+        if (!nextState) {
+          row.childrenIds.forEach(childId => {
+            const childToggle = rowToggleHandlers.get(childId);
+            if (childToggle) childToggle(false);
+          });
+        }
+        syncSectionToggleState();
+      };
+
+      toggleBtn.addEventListener("click", ev => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        toggleChildren();
+      });
+
+      rowEl.addEventListener("click", ev => {
+        if (ev.target.closest(".resumo-legacy__prod-toggle")) return;
+        toggleChildren();
+      });
+
+      rowToggleHandlers.set(row.rowId, toggleChildren);
     });
 
     if (sectionToggle) {
