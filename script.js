@@ -122,6 +122,7 @@ let FAMILIA_DATA = [];
 let FAMILIA_BY_ID = new Map();
 let PRODUTO_TO_FAMILIA = new Map();
 let RESUMO_HIERARCHY = [];
+let SUBINDICADORES_BY_INDICADOR = new Map();
 
 // Aqui eu deixo caches das bases fact/dim para usar em várias telas.
 let fDados = [];
@@ -288,11 +289,52 @@ function buildResumoHierarchyFromProducts(rows = []) {
       if (texto) aliasSet.add(texto);
     });
 
+    const indicatorCandidates = [
+      row.produtoId,
+      row.id_indicador,
+      indicadorRaw,
+      indicadorNome,
+      row.produto,
+      row.ds_indicador
+    ];
+    let indicatorCardId = "";
+    for (const candidate of indicatorCandidates) {
+      const resolved = resolverIndicadorPorAlias(candidate);
+      if (resolved) { indicatorCardId = resolved; break; }
+    }
+    if (!indicatorCardId) indicatorCardId = limparTexto(row.produtoId || indicadorRaw || uniqueKey) || uniqueKey;
+    const subDefs = SUBINDICADORES_BY_INDICADOR.get(indicatorCardId) || [];
+    const subindicadores = subDefs.map(sub => ({
+      id: sub.id,
+      nome: sub.nome,
+      metric: sub.metric,
+      peso: sub.peso,
+      children: Array.isArray(sub.children)
+        ? sub.children.map(child => ({
+            id: child.id,
+            nome: child.nome,
+            metric: child.metric,
+            peso: child.peso,
+            children: Array.isArray(child.children)
+              ? child.children.map(grand => ({
+                  id: grand.id,
+                  nome: grand.nome,
+                  metric: grand.metric,
+                  peso: grand.peso,
+                  children: []
+                }))
+              : []
+          }))
+        : []
+    }));
+
     familia.indicadores.push({
       id: indicadorRaw || uniqueKey,
       slug: uniqueKey,
       nome: indicadorNome || indicadorRaw || uniqueKey,
-      aliases: Array.from(aliasSet)
+      cardId: indicatorCardId,
+      aliases: Array.from(aliasSet),
+      subindicadores
     });
   });
 
@@ -1074,6 +1116,51 @@ function montarDadosProdutos(rows){
   FAMILIA_BY_ID = new Map(FAMILIA_DATA.map(f => [f.id, f]));
   PRODUTOS_BY_FAMILIA = byFamilia;
   PRODUTOS_DATA = rows;
+  SUBINDICADORES_BY_INDICADOR = new Map();
+
+  CARD_SECTIONS_DEF.forEach(sec => {
+    sec.items.forEach(item => {
+      const structure = resolveIndicatorStructureMeta(item.id, item.nome, item.metric);
+      const normalized = Array.isArray(structure?.subIndicators)
+        ? structure.subIndicators.map(entry => ({
+            id: entry.id,
+            nome: entry.nome,
+            metric: entry.metric || item.metric || "valor",
+            peso: Number(entry.peso) || 1,
+            children: Array.isArray(entry.children)
+              ? entry.children.map(child => ({
+                  id: child.id,
+                  nome: child.nome,
+                  metric: child.metric || entry.metric || item.metric || "valor",
+                  peso: Number(child.peso) || 1,
+                  children: Array.isArray(child.children)
+                    ? child.children.map(grand => ({
+                        id: grand.id,
+                        nome: grand.nome,
+                        metric: grand.metric || child.metric || entry.metric || item.metric || "valor",
+                        peso: Number(grand.peso) || 1,
+                        children: []
+                      }))
+                    : []
+                }))
+              : []
+          }))
+        : [];
+
+      normalized.forEach(entry => {
+        if (entry?.nome) registrarAliasIndicador(item.id, entry.nome);
+        entry.children.forEach(child => {
+          if (child?.nome) registrarAliasIndicador(item.id, child.nome);
+          child.children.forEach(grand => {
+            if (grand?.nome) registrarAliasIndicador(item.id, grand.nome);
+          });
+        });
+      });
+
+      SUBINDICADORES_BY_INDICADOR.set(item.id, normalized);
+    });
+  });
+
   RESUMO_HIERARCHY = buildResumoHierarchyFromProducts(rows);
 
   CAMPAIGN_UNIT_DATA.forEach(unit => {
@@ -1753,6 +1840,7 @@ const TABLE_VIEWS = [
   { id:"secao",    label:"Seção",             key:"secao" },
   { id:"familia",   label:"Família",            key:"familia" },
   { id:"prodsub",   label:"Indicador",          key:"prodOrSub" },
+  { id:"subindicador", label:"Subindicador",     key:"subIndicadorId" },
   { id:"contrato",  label:"Contratos",          key:"contrato" },
 ];
 
@@ -1790,12 +1878,173 @@ const CARD_SECTIONS_DEF = [
   ]},
 ];
 
+const INDICATOR_STRUCTURE_OVERRIDES = {
+  centralizacao: {
+    subIndicators: [
+      { id: "centralizacao_receber", nome: "Contas a Receber (vol)", peso: 0.55 },
+      {
+        id: "centralizacao_pagar",
+        nome: "Contas a pagar (vol)",
+        peso: 0.45,
+        children: [
+          { id: "centralizacao_pf_qtd", nome: "Centralização de Caixa PF (Qtd)", metric: "qtd", peso: 1 }
+        ]
+      }
+    ]
+  },
+  rec_credito: {
+    subIndicators: [
+      { id: "rec_credito_vista", nome: "Recuperação à vista", peso: 0.5 },
+      { id: "rec_credito_parcelado", nome: "Recuperação parcelada", peso: 0.5 }
+    ]
+  },
+  captacao_bruta: {
+    subIndicators: [
+      { id: "captacao_bruta_aplicacao", nome: "Aplicações", peso: 0.6 },
+      { id: "captacao_bruta_resgate", nome: "Resgates", peso: 0.4 }
+    ]
+  },
+  captacao_liquida: {
+    subIndicators: [
+      { id: "captacao_liquida_grupo_a", nome: "Grupo A", peso: 0.5 },
+      { id: "captacao_liquida_grupo_b", nome: "Grupo B", peso: 0.5 }
+    ]
+  },
+  portab_prev: {
+    subIndicators: [
+      { id: "portab_prev_aplicacao", nome: "Aplicação", peso: 0.5 },
+      { id: "portab_prev_resgate", nome: "Resgate", peso: 0.5 }
+    ]
+  },
+  rec_vencidos_59: {
+    subIndicators: [
+      { id: "rec_vencidos_59_relacionamento", nome: "Carteira relacionamento", peso: 0.55 },
+      { id: "rec_vencidos_59_ativa", nome: "Carteira ativa", peso: 0.45 }
+    ]
+  },
+  rec_vencidos_50mais: {
+    subIndicators: [
+      { id: "rec_vencidos_50mais_judicial", nome: "Carteira judicial", peso: 1 }
+    ]
+  },
+  prod_credito_pj: {
+    subIndicators: [
+      { id: "prod_credito_pj_linha", nome: "Linha PJ", peso: 0.7 },
+      { id: "prod_credito_pj_cartao", nome: "Cartão PJ", peso: 0.3 }
+    ]
+  },
+  rotativo_pj_vol: {
+    subIndicators: [
+      { id: "rotativo_pj_vol_carteira", nome: "Carteira ativa", peso: 1 }
+    ]
+  },
+  rotativo_pj_qtd: {
+    subIndicators: [
+      { id: "rotativo_pj_qtd_carteira", nome: "Carteira ativa", peso: 1 }
+    ]
+  },
+  cartoes: {
+    subIndicators: [
+      { id: "cartoes_pf", nome: "Cartões PF", peso: 0.6 },
+      { id: "cartoes_pj", nome: "Cartões PJ", peso: 0.4 }
+    ]
+  },
+  consorcios: {
+    subIndicators: [
+      { id: "consorcios_auto", nome: "Auto", peso: 0.55 },
+      { id: "consorcios_imobiliario", nome: "Imobiliário", peso: 0.45 }
+    ]
+  },
+  seguros: {
+    subIndicators: [
+      { id: "seguros_empresas", nome: "Empresas", peso: 0.5 },
+      { id: "seguros_pessoas", nome: "Pessoas", peso: 0.5 }
+    ]
+  },
+  conquista_qualif_pj: {
+    subIndicators: [
+      { id: "conquista_qualif_pj_ativacao", nome: "Ativação", peso: 0.6 },
+      { id: "conquista_qualif_pj_cross", nome: "Cross-sell", peso: 0.4 }
+    ]
+  },
+  conquista_folha: {
+    subIndicators: [
+      { id: "conquista_folha_publico", nome: "Público", peso: 0.5 },
+      { id: "conquista_folha_privado", nome: "Privado", peso: 0.5 }
+    ]
+  },
+  bradesco_expresso: {
+    subIndicators: [
+      { id: "bradesco_expresso_agencia", nome: "Agência", peso: 0.5 },
+      { id: "bradesco_expresso_digital", nome: "Digital", peso: 0.5 }
+    ]
+  },
+  sucesso_equipe_credito: {
+    subIndicators: [
+      { id: "sucesso_equipe_credito_base", nome: "Equipes", peso: 1 }
+    ]
+  }
+};
+
 CARD_SECTIONS_DEF.forEach(sec => {
   sec.items.forEach(item => {
     registrarAliasIndicador(item.id, item.id);
     registrarAliasIndicador(item.id, item.nome);
   });
 });
+
+const INDICATOR_CARD_INDEX = new Map();
+CARD_SECTIONS_DEF.forEach(sec => {
+  sec.items.forEach(item => {
+    INDICATOR_CARD_INDEX.set(item.id, { ...item, sectionId: sec.id, sectionLabel: sec.label });
+  });
+});
+
+function normalizeStructureChildren(parentId, parentName, parentMetric, list = []) {
+  if (!Array.isArray(list) || !list.length) return [];
+  return list.map((entry, idx) => {
+    const rawId = limparTexto(entry?.id) || "";
+    const fallbackId = `${parentId}_lp_${idx + 1}`;
+    const id = rawId || fallbackId;
+    const nome = limparTexto(entry?.nome || entry?.label || entry?.descricao || entry?.name) || `${parentName} ${idx + 1}`;
+    const metric = limparTexto(entry?.metric) || parentMetric || "valor";
+    const peso = Number(entry?.peso) || 1;
+    const nested = normalizeStructureChildren(id, nome, metric, entry?.children || []);
+    return {
+      id,
+      nome,
+      metric,
+      peso,
+      children: nested
+    };
+  });
+}
+
+function resolveIndicatorStructureMeta(indicatorId, indicatorNome = "", metric = "valor") {
+  const override = INDICATOR_STRUCTURE_OVERRIDES[indicatorId];
+  const normalizedMetric = typeof metric === "string" && metric ? metric : "valor";
+  const ensureArray = (source = []) => Array.isArray(source) ? source : [];
+  if (override && Array.isArray(override.subIndicators) && override.subIndicators.length) {
+    const entries = override.subIndicators.map((entry, idx) => {
+      const rawId = limparTexto(entry?.id) || "";
+      const fallbackId = `${indicatorId}_sub_${idx + 1}`;
+      const id = rawId || fallbackId;
+      const nome = limparTexto(entry?.nome || entry?.label || entry?.descricao || entry?.name) || `${indicatorNome || "Subindicador"} ${idx + 1}`;
+      const metricEntry = limparTexto(entry?.metric) || normalizedMetric;
+      const peso = Number(entry?.peso) || 1;
+      const children = normalizeStructureChildren(id, nome, metricEntry, ensureArray(entry?.children));
+      return { id, nome, metric: metricEntry, peso, children };
+    });
+    return { subIndicators: entries };
+  }
+
+  const baseName = indicatorNome || "Subindicador";
+  const fallback = [
+    { id: `${indicatorId}_sub_1`, nome: `${baseName} 1`, metric: normalizedMetric, peso: 0.6 },
+    { id: `${indicatorId}_sub_2`, nome: `${baseName} 2`, metric: normalizedMetric, peso: 0.4 }
+  ];
+  return { subIndicators: fallback };
+}
 
 const SECTION_IDS = new Set(CARD_SECTIONS_DEF.map(sec => sec.id));
 const SECTION_BY_ID = new Map(CARD_SECTIONS_DEF.map(sec => [sec.id, sec]));
@@ -3137,50 +3386,159 @@ async function getData(){
           secaoNome: prod.sectionLabel
         };
 
-        factRows.push({
-          segmento: agency.segmentoNome || agency.segmentoId || segs[agencyIndex % segs.length] || "Segmento",
-          diretoria: agency.diretoriaId || diretoriasBase[agencyIndex % diretoriasBase.length]?.id || `DR ${String(agencyIndex + 1).padStart(2, "0")}`,
-          diretoriaNome: agency.diretoriaNome || diretoriasBase[agencyIndex % diretoriasBase.length]?.nome || `Diretoria ${agencyIndex + 1}`,
-          gerenciaRegional: agency.regionalId || gerenciasBase[agencyIndex % gerenciasBase.length]?.id || `GR ${String(agencyIndex + 1).padStart(2, "0")}`,
-          gerenciaNome: agency.regionalNome || gerenciasBase[agencyIndex % gerenciasBase.length]?.nome || `Regional ${agencyIndex + 1}`,
-          regional: agency.regionalNome || gerenciasBase[agencyIndex % gerenciasBase.length]?.nome || `Regional ${agencyIndex + 1}`,
-          agencia: agency.agenciaId || agenciasBase[agencyIndex % agenciasBase.length]?.id || `Ag ${String(agencyIndex + 1).padStart(2, "0")}`,
-          agenciaNome: agency.agenciaNome || agenciasBase[agencyIndex % agenciasBase.length]?.nome || `Agência ${agencyIndex + 1}`,
-          agenciaCodigo: agency.agenciaId || agenciasBase[agencyIndex % agenciasBase.length]?.id || `Ag ${String(agencyIndex + 1).padStart(2, "0")}`,
-          gerenteGestao: agency.gerenteGestaoId || gerentesGestaoBase[agencyIndex % gerentesGestaoBase.length]?.id || `GG ${String(agencyIndex + 1).padStart(2, "0")}`,
-          gerenteGestaoNome: agency.gerenteGestaoNome || gerentesGestaoBase[agencyIndex % gerentesGestaoBase.length]?.nome || `Gerente geral ${agencyIndex + 1}`,
-          gerente: agency.gerenteId || gerentesBase[agencyIndex % gerentesBase.length]?.id || `Gerente ${agencyIndex + 1}`,
-          gerenteNome: agency.gerenteNome || gerentesBase[agencyIndex % gerentesBase.length]?.nome || `Gerente ${agencyIndex + 1}`,
-          segmentoNome: agency.segmentoNome || agency.segmentoId || segs[agencyIndex % segs.length] || "Segmento",
-          secaoId: familiaMeta.secaoId || prod.sectionId,
-          secao: familiaMeta.secaoNome || prod.sectionLabel,
-          secaoNome: familiaMeta.secaoNome || prod.sectionLabel,
-          familiaId: familiaMeta.id,
-          familia: familiaMeta.nome || familiaMeta.id,
-          familiaNome: familiaMeta.nome || familiaMeta.id,
-          produtoId: prod.id,
-          produto: prod.nome,
-          produtoNome: prod.nome,
-          prodOrSub: prod.nome,
-          subproduto: prod.nome,
-          carteira: `${agency.agenciaNome || agency.agenciaId || "Carteira"} ${String.fromCharCode(65 + iter)}`,
-          canalVenda: canaisVenda[(agencyIndex + prodIndex + iter) % canaisVenda.length],
-          tipoVenda: tiposVenda[(agencyIndex + iter) % tiposVenda.length],
-          modalidadePagamento: modalidadesVenda[(prodIndex + iter) % modalidadesVenda.length],
-          realizado: realMens,
-          meta: metaMens,
-          real_mens: realMens,
-          meta_mens: metaMens,
-          real_acum: realAcum,
-          meta_acum: metaAcum,
-          qtd,
-          data: dataISO,
-          competencia: competenciaMes,
-          peso,
-          pontos,
-          variavelMeta,
-          variavelReal,
-          ating
+        const subDefs = SUBINDICADORES_BY_INDICADOR.get(prod.id) || resolveIndicatorStructureMeta(prod.id, prod.nome, prod.metric).subIndicators || [];
+        const subIndicators = subDefs.length ? subDefs : [{ id: `${prod.id}_sub`, nome: prod.nome, metric: prod.metric, peso: 1, children: [] }];
+        const subWeightSum = subIndicators.reduce((acc, sub) => acc + Math.max(0.01, Number(sub.peso) || 1), 0);
+
+        let metaSubAssigned = 0;
+        let realSubAssigned = 0;
+        let varMetaSubAssigned = 0;
+        let varRealSubAssigned = 0;
+        let pesoSubAssigned = 0;
+
+        subIndicators.forEach((sub, subIdx) => {
+          const subWeight = Math.max(0.01, Number(sub.peso) || 1);
+          const remainingSubs = subIndicators.length - subIdx;
+          const baseShare = subWeight / (subWeightSum || subIndicators.length || 1);
+          const jitterMeta = 0.88 + Math.random() * 0.24;
+          const jitterReal = 0.85 + Math.random() * 0.3;
+          const jitterVar = 0.9 + Math.random() * 0.2;
+          const jitterPeso = 0.9 + Math.random() * 0.2;
+
+          const metaTarget = subIdx === subIndicators.length - 1
+            ? Math.max(0, metaMens - metaSubAssigned)
+            : Math.max(0, Math.round(metaMens * baseShare * jitterMeta));
+          const realTarget = subIdx === subIndicators.length - 1
+            ? Math.max(0, realMens - realSubAssigned)
+            : Math.max(0, Math.round(realMens * baseShare * jitterReal));
+          const varMetaTarget = subIdx === subIndicators.length - 1
+            ? Math.max(0, variavelMeta - varMetaSubAssigned)
+            : Math.max(0, Math.round(variavelMeta * baseShare * jitterVar));
+          const varRealTarget = subIdx === subIndicators.length - 1
+            ? Math.max(0, variavelReal - varRealSubAssigned)
+            : Math.max(0, Math.round(variavelReal * baseShare * jitterVar));
+          const pesoTarget = subIdx === subIndicators.length - 1
+            ? Math.max(0, peso - pesoSubAssigned)
+            : Math.max(0, Math.round(peso * baseShare * jitterPeso));
+
+          metaSubAssigned += metaTarget;
+          realSubAssigned += realTarget;
+          varMetaSubAssigned += varMetaTarget;
+          varRealSubAssigned += varRealTarget;
+          pesoSubAssigned += pesoTarget;
+
+          const childDefs = Array.isArray(sub.children) && sub.children.length
+            ? sub.children
+            : [{ id: `${sub.id}_lp`, nome: sub.nome, metric: sub.metric, peso: 1, children: [] }];
+          const childWeightSum = childDefs.reduce((acc, child) => acc + Math.max(0.01, Number(child.peso) || 1), 0);
+
+          let metaChildAssigned = 0;
+          let realChildAssigned = 0;
+          let varMetaChildAssigned = 0;
+          let varRealChildAssigned = 0;
+          let pesoChildAssigned = 0;
+
+          childDefs.forEach((child, childIdx) => {
+            const childWeight = Math.max(0.01, Number(child.peso) || 1);
+            const childShare = childWeight / (childWeightSum || childDefs.length || 1);
+            const childJitter = 0.9 + Math.random() * 0.2;
+
+            const childMeta = childIdx === childDefs.length - 1
+              ? Math.max(0, metaTarget - metaChildAssigned)
+              : Math.max(0, Math.round(metaTarget * childShare * childJitter));
+            const childReal = childIdx === childDefs.length - 1
+              ? Math.max(0, realTarget - realChildAssigned)
+              : Math.max(0, Math.round(realTarget * childShare * childJitter));
+            const childVarMeta = childIdx === childDefs.length - 1
+              ? Math.max(0, varMetaTarget - varMetaChildAssigned)
+              : Math.max(0, Math.round(varMetaTarget * childShare * childJitter));
+            const childVarReal = childIdx === childDefs.length - 1
+              ? Math.max(0, varRealTarget - varRealChildAssigned)
+              : Math.max(0, Math.round(varRealTarget * childShare * childJitter));
+            const childPeso = childIdx === childDefs.length - 1
+              ? Math.max(0, pesoTarget - pesoChildAssigned)
+              : Math.max(0, Math.round(pesoTarget * childShare * childJitter));
+
+            if (metaTarget > 0 && childMeta <= 0) {
+              childMeta = Math.max(1, Math.round(metaTarget / Math.max(1, childDefs.length)));
+            }
+            if (realTarget > 0 && childReal <= 0) {
+              childReal = Math.max(1, Math.round(realTarget / Math.max(1, childDefs.length)));
+            }
+            if (pesoTarget > 0 && childPeso <= 0) {
+              childPeso = Math.max(1, Math.round(pesoTarget / Math.max(1, childDefs.length)));
+            }
+            if (varMetaTarget > 0 && childVarMeta <= 0) {
+              childVarMeta = Math.max(1, Math.round(varMetaTarget / Math.max(1, childDefs.length)));
+            }
+            if (varRealTarget > 0 && childVarReal <= 0) {
+              childVarReal = Math.max(1, Math.round(varRealTarget / Math.max(1, childDefs.length)));
+            }
+
+            metaChildAssigned += childMeta;
+            realChildAssigned += childReal;
+            varMetaChildAssigned += childVarMeta;
+            varRealChildAssigned += childVarReal;
+            pesoChildAssigned += childPeso;
+
+            const childMetric = child.metric || sub.metric || prod.metric || "valor";
+            const childAting = childMeta ? (childReal / childMeta) : 0;
+            const childPontos = Math.round(Math.max(0, Math.min(childPeso, childPeso * childAting)));
+
+            factRows.push({
+              segmento: agency.segmentoNome || agency.segmentoId || segs[agencyIndex % segs.length] || "Segmento",
+              diretoria: agency.diretoriaId || diretoriasBase[agencyIndex % diretoriasBase.length]?.id || `DR ${String(agencyIndex + 1).padStart(2, "0")}`,
+              diretoriaNome: agency.diretoriaNome || diretoriasBase[agencyIndex % diretoriasBase.length]?.nome || `Diretoria ${agencyIndex + 1}`,
+              gerenciaRegional: agency.regionalId || gerenciasBase[agencyIndex % gerenciasBase.length]?.id || `GR ${String(agencyIndex + 1).padStart(2, "0")}`,
+              gerenciaNome: agency.regionalNome || gerenciasBase[agencyIndex % gerenciasBase.length]?.nome || `Regional ${agencyIndex + 1}`,
+              regional: agency.regionalNome || gerenciasBase[agencyIndex % gerenciasBase.length]?.nome || `Regional ${agencyIndex + 1}`,
+              agencia: agency.agenciaId || agenciasBase[agencyIndex % agenciasBase.length]?.id || `Ag ${String(agencyIndex + 1).padStart(2, "0")}`,
+              agenciaNome: agency.agenciaNome || agenciasBase[agencyIndex % agenciasBase.length]?.nome || `Agência ${agencyIndex + 1}`,
+              agenciaCodigo: agency.agenciaId || agenciasBase[agencyIndex % agenciasBase.length]?.id || `Ag ${String(agencyIndex + 1).padStart(2, "0")}`,
+              gerenteGestao: agency.gerenteGestaoId || gerentesGestaoBase[agencyIndex % gerentesGestaoBase.length]?.id || `GG ${String(agencyIndex + 1).padStart(2, "0")}`,
+              gerenteGestaoNome: agency.gerenteGestaoNome || gerentesGestaoBase[agencyIndex % gerentesGestaoBase.length]?.nome || `Gerente geral ${agencyIndex + 1}`,
+              gerente: agency.gerenteId || gerentesBase[agencyIndex % gerentesBase.length]?.id || `Gerente ${agencyIndex + 1}`,
+              gerenteNome: agency.gerenteNome || gerentesBase[agencyIndex % gerentesBase.length]?.nome || `Gerente ${agencyIndex + 1}`,
+              segmentoNome: agency.segmentoNome || agency.segmentoId || segs[agencyIndex % segs.length] || "Segmento",
+              secaoId: familiaMeta.secaoId || prod.sectionId,
+              secao: familiaMeta.secaoNome || prod.sectionLabel,
+              secaoNome: familiaMeta.secaoNome || prod.sectionLabel,
+              familiaId: familiaMeta.id,
+              familia: familiaMeta.nome || familiaMeta.id,
+              familiaNome: familiaMeta.nome || familiaMeta.id,
+              produtoId: prod.id,
+              produto: prod.nome,
+              produtoNome: prod.nome,
+              prodOrSub: prod.nome,
+              subIndicadorId: sub.id,
+              subIndicadorNome: sub.nome,
+              subIndicador: sub.nome,
+              linhaProdutoId: child.id,
+              linhaProdutoNome: child.nome,
+              lpId: child.id,
+              lpNome: child.nome,
+              subproduto: child.nome,
+              carteira: `${agency.agenciaNome || agency.agenciaId || "Carteira"} ${String.fromCharCode(65 + iter)}`,
+              canalVenda: canaisVenda[(agencyIndex + prodIndex + iter) % canaisVenda.length],
+              tipoVenda: tiposVenda[(agencyIndex + iter) % tiposVenda.length],
+              modalidadePagamento: modalidadesVenda[(prodIndex + iter) % modalidadesVenda.length],
+              realizado: childReal,
+              meta: childMeta,
+              real_mens: childReal,
+              meta_mens: childMeta,
+              real_acum: Math.round(childReal * (1.15 + Math.random() * 0.4)),
+              meta_acum: Math.round(childMeta * (1.2 + Math.random() * 0.45)),
+              qtd: childMetric === "qtd" ? Math.max(1, Math.round(childReal)) : qtd,
+              data: dataISO,
+              competencia: competenciaMes,
+              peso: childPeso,
+              pontos: childPontos,
+              variavelMeta: childVarMeta,
+              variavelReal: childVarReal,
+              ating: childAting,
+              metric: childMetric
+            });
+          });
         });
       }
     });
@@ -3733,7 +4091,7 @@ function wireClearFiltersButton() {
 async function clearFilters() {
   [
     "#f-segmento","#f-diretoria","#f-gerencia","#f-gerente",
-    "#f-agencia","#f-ggestao","#f-secao","#f-familia","#f-produto",
+    "#f-agencia","#f-ggestao","#f-secao","#f-familia","#f-produto","#f-subindicador",
     "#f-status-kpi","#f-visao"
   ].forEach(sel => {
     const el = $(sel);
@@ -3751,6 +4109,8 @@ async function clearFilters() {
   if (secaoSelect) secaoSelect.dispatchEvent(new Event("change"));
   const familiaSelect = $("#f-familia");
   if (familiaSelect) familiaSelect.dispatchEvent(new Event("change"));
+  const produtoSelect = $("#f-produto");
+  if (produtoSelect) produtoSelect.dispatchEvent(new Event("change"));
 
   refreshHierarchyCombos();
 
@@ -4721,6 +5081,11 @@ function renderAppliedFilters() {
       || vals.produtoId;
     push("Indicador", prodLabel, () => $("#f-produto").selectedIndex = 0);
   }
+  if (vals.subIndicadorId && vals.subIndicadorId !== "Todos" && vals.subIndicadorId !== "Todas") {
+    const subSelect = $("#f-subindicador");
+    const subLabel = subSelect?.selectedOptions?.[0]?.text || vals.subIndicadorId;
+    push("Subindicador", subLabel, () => $("#f-subindicador").selectedIndex = 0);
+  }
   if (vals.status && vals.status !== "todos") {
     const statusEntry = getStatusEntry(vals.status);
     const statusLabel = statusEntry?.nome
@@ -5195,6 +5560,7 @@ function getFilterValues() {
     secaoId:   val("#f-secao"),
     familiaId: val("#f-familia"),
     produtoId: val("#f-produto"),
+    subIndicadorId: val("#f-subindicador"),
     status:    statusKey || "todos",
     statusCodigo,
     statusId,
@@ -5240,6 +5606,18 @@ function filterRowsExcept(rows, except = {}, opts = {}) {
     const okSec = selecaoPadrao(f.secaoId) || matchesSelection(f.secaoId, rowSecaoId, r.secaoId, r.secaoNome, r.secao, getSectionLabel(rowSecaoId));
     const okFam = selecaoPadrao(f.familiaId) || matchesSelection(f.familiaId, r.familiaId, r.familia);
     const okProd= selecaoPadrao(f.produtoId) || matchesSelection(f.produtoId, r.produtoId, r.produtoNome, r.produto, r.prodOrSub, r.subproduto);
+    const okSub = selecaoPadrao(f.subIndicadorId)
+      || matchesSelection(
+        f.subIndicadorId,
+        r.subIndicadorId,
+        r.subIndicadorNome,
+        r.subIndicador,
+        r.linhaProdutoId,
+        r.linhaProdutoNome,
+        r.lpId,
+        r.lpNome,
+        r.subproduto
+      );
     let rowDate = r.data || r.competencia || "";
     if (rowDate && typeof rowDate !== "string") {
       if (rowDate instanceof Date) {
@@ -5261,7 +5639,7 @@ function filterRowsExcept(rows, except = {}, opts = {}) {
 
     const okSearch = rowMatchesSearch(r, searchTerm);
 
-    return okSeg && okDR && okGR && okAg && okGG && okGer && okSec && okFam && okProd && okDt && okStatus && okSearch;
+    return okSeg && okDR && okGR && okAg && okGG && okGer && okSec && okFam && okProd && okSub && okDt && okStatus && okSearch;
   });
 }
 function filterRows(rows) { return filterRowsExcept(rows, {}, { searchTerm: state.tableSearchTerm }); }
@@ -5270,7 +5648,8 @@ function autoSnapViewToFilters() {
   if (state.tableSearchTerm) return;
   const f = getFilterValues();
   let snap = null;
-  if (f.produtoId && f.produtoId !== "Todos" && f.produtoId !== "Todas") snap = "prodsub";
+  if (f.subIndicadorId && f.subIndicadorId !== "Todos" && f.subIndicadorId !== "Todas") snap = "subindicador";
+  else if (f.produtoId && f.produtoId !== "Todos" && f.produtoId !== "Todas") snap = "prodsub";
   else if (f.familiaId && f.familiaId !== "Todas") snap = "familia";
   else if (f.secaoId && f.secaoId !== "Todas") snap = "secao";
   else if (f.gerente && f.gerente !== "Todos") snap = "gerente";
@@ -5349,7 +5728,8 @@ const TREE_LEVEL_LABEL_RESOLVERS = {
   gerente:   (row) => row.gerenteNome || row.gerente || "—",
   secao:     (row) => row.secaoNome || row.secao || getSectionLabel(row.secaoId) || "—",
   familia:   (row) => row.familia || "—",
-  prodsub:   (row) => row.prodOrSub || row.produto || row.subproduto || "—"
+  prodsub:   (row) => row.prodOrSub || row.produto || row.subproduto || "—",
+  subindicador: (row) => row.subIndicadorNome || row.subIndicador || row.linhaProdutoNome || row.linhaProdutoId || row.subproduto || "—"
 };
 
 function resolveTreeLabel(levelKey, subset, fallback) {
@@ -5360,8 +5740,8 @@ function resolveTreeLabel(levelKey, subset, fallback) {
   return label != null && label !== "" ? label : fallback;
 }
 function buildTree(list, startKey) {
-  const keyMap = { diretoria:"diretoria", gerencia:"gerenciaRegional", agencia:"agencia", gGestao:"gerenteGestao", gerente:"gerente", secao:"secaoId", familia:"familia", prodsub:"prodOrSub", produto:"prodOrSub", contrato:"contrato" };
-  const NEXT   = { diretoria:"gerencia",  gerencia:"agencia",         agencia:"gGestao", gGestao:"gerente",       gerente:"secao", secao:"familia", familia:"contrato",   prodsub:"contrato", contrato:null };
+  const keyMap = { diretoria:"diretoria", gerencia:"gerenciaRegional", agencia:"agencia", gGestao:"gerenteGestao", gerente:"gerente", secao:"secaoId", familia:"familia", prodsub:"prodOrSub", subindicador:"subIndicadorId", produto:"prodOrSub", contrato:"contrato" };
+  const NEXT   = { diretoria:"gerencia",  gerencia:"agencia",         agencia:"gGestao", gGestao:"gerente",       gerente:"secao", secao:"familia", familia:"prodsub",   prodsub:"subindicador", subindicador:"contrato", contrato:null };
 
   const periodStart = state.period?.start || "";
   const periodEnd = state.period?.end || "";
@@ -5445,6 +5825,7 @@ function buildTree(list, startKey) {
   }
 
   function buildLevel(arr, levelKey, level, lineage = []){
+    if (!Array.isArray(arr) || !arr.length) return [];
     if (levelKey === "contrato") {
       return arr.flatMap(r => ensureContracts(r).map(c => {
         const detailGroups = buildDetailGroups([c]);
@@ -5484,10 +5865,12 @@ function buildTree(list, startKey) {
       }));
     }
     const mapKey = keyMap[levelKey] || levelKey;
-    return group(arr, mapKey).map(([k, subset]) => {
+    const entries = group(arr, mapKey);
+    const nodes = [];
+    const handleSubset = (labelKey, subset) => {
       const a = agg(subset), next = NEXT[levelKey];
-      const labelText = resolveTreeLabel(levelKey, subset, k);
-      const entryMeta = { levelKey, groupField: mapKey, value: k, label: labelText };
+      const labelText = resolveTreeLabel(levelKey, subset, labelKey);
+      const entryMeta = { levelKey, groupField: mapKey, value: labelKey, label: labelText };
       const nextLineage = [...lineage, entryMeta];
       const breadcrumb = nextLineage.map(item => item.label || item.value).filter(Boolean);
       return {
@@ -5498,11 +5881,35 @@ function buildTree(list, startKey) {
         detailGroups: [],
         levelKey,
         groupField: mapKey,
-        groupValue: k,
+        groupValue: labelKey,
         lineage: nextLineage.map(item => ({ ...item })),
         children: next ? buildLevel(subset, next, level+1, nextLineage) : []
       };
+    };
+    entries.forEach(([k, subset]) => {
+      if (levelKey === "subindicador") {
+        const hasLabel = subset.some(row => {
+          const id = row?.subIndicadorId || row?.subIndicador || row?.subIndicadorNome || row?.linhaProdutoId || row?.linhaProdutoNome || row?.subproduto;
+          return id != null && String(id).trim() !== "" && String(id).trim() !== "—";
+        });
+        if (!hasLabel) {
+          const skipKey = NEXT[levelKey];
+          if (skipKey) {
+            nodes.push(...buildLevel(subset, skipKey, level, lineage));
+          }
+          return;
+        }
+        if (k == null || String(k).trim() === "" || String(k).trim() === "—") {
+          const skipKey = NEXT[levelKey];
+          if (skipKey) {
+            nodes.push(...buildLevel(subset, skipKey, level, lineage));
+          }
+          return;
+        }
+      }
+      nodes.push(handleSubset(k, subset));
     });
+    return nodes;
   }
   return buildLevel(list, startKey, 0, []);
 }
@@ -5868,16 +6275,40 @@ function initCombos() {
     return options;
   };
 
+  const buildSubindicadorOptions = (produtoId) => {
+    const options = [{ value: "Todos", label: "Todos" }];
+    const list = SUBINDICADORES_BY_INDICADOR.get(produtoId) || [];
+    const added = new Set();
+    list.forEach(sub => {
+      if (!sub || !sub.id || added.has(sub.id)) return;
+      const aliases = new Set([sub.id, sub.nome]);
+      if (Array.isArray(sub.children)) {
+        sub.children.forEach(child => {
+          if (child?.nome) aliases.add(child.nome);
+        });
+      }
+      options.push({ value: sub.id, label: sub.nome || sub.id, aliases: Array.from(aliases) });
+      added.add(sub.id);
+    });
+    return options;
+  };
+
   const familiaSelect = $("#f-familia");
   const secaoSelect = $("#f-secao");
+  const produtoSelect = $("#f-produto");
+  const subIndicadorSelect = $("#f-subindicador");
   const initialFamilia = familiaSelect ? familiaSelect.value : "Todas";
   const initialSecao = secaoSelect ? secaoSelect.value : "Todas";
   fill("#f-produto", buildProdutoOptions(initialFamilia, initialSecao));
+  const initialProduto = produtoSelect ? produtoSelect.value : "Todos";
+  fill("#f-subindicador", buildSubindicadorOptions(initialProduto));
 
   const updateProdutoSelect = () => {
     const famVal = familiaSelect ? familiaSelect.value : "Todas";
     const secVal = secaoSelect ? secaoSelect.value : "Todas";
     fill("#f-produto", buildProdutoOptions(famVal, secVal));
+    const prodVal = produtoSelect ? produtoSelect.value : "Todos";
+    fill("#f-subindicador", buildSubindicadorOptions(prodVal));
   };
 
   if (familiaSelect && !familiaSelect.dataset.bound) {
@@ -5891,6 +6322,14 @@ function initCombos() {
     secaoSelect.dataset.bound = "1";
     secaoSelect.addEventListener("change", () => {
       updateProdutoSelect();
+    });
+  }
+
+  if (produtoSelect && !produtoSelect.dataset.bound) {
+    produtoSelect.dataset.bound = "1";
+    produtoSelect.addEventListener("change", () => {
+      const prodVal = produtoSelect.value || "Todos";
+      fill("#f-subindicador", buildSubindicadorOptions(prodVal));
     });
   }
 
@@ -5952,7 +6391,7 @@ function bindEvents() {
     });
   });
 
-  ["#f-segmento","#f-diretoria","#f-gerencia","#f-agencia","#f-ggestao","#f-gerente","#f-secao","#f-familia","#f-produto","#f-status-kpi"].forEach(sel => {
+  ["#f-segmento","#f-diretoria","#f-gerencia","#f-agencia","#f-ggestao","#f-gerente","#f-secao","#f-familia","#f-produto","#f-subindicador","#f-status-kpi"].forEach(sel => {
     $(sel)?.addEventListener("change", async () => {
       await withSpinner(async () => {
         autoSnapViewToFilters();
@@ -6058,13 +6497,14 @@ function reorderFiltersUI() {
   const gSec = groupOf("#f-secao");
   const gFam = groupOf("#f-familia");
   const gProd= groupOf("#f-produto");
+  const gSub = groupOf("#f-subindicador");
   const gStatus = groupOf("#f-status-kpi");
   const gVisao = groupOf("#f-visao");
 
   const actions = area.querySelector(".filters__actions") || area.lastElementChild;
 
   [gSeg,gDR,gGR].filter(Boolean).forEach(el => area.insertBefore(el, actions));
-  [gAg,gGG,gGer,gSec,gFam,gProd,gStatus,gVisao].filter(Boolean).forEach(el => adv?.appendChild(el));
+  [gAg,gGG,gGer,gSec,gFam,gProd,gSub,gStatus,gVisao].filter(Boolean).forEach(el => adv?.appendChild(el));
 
   const gStart = $("#f-inicio")?.closest(".filters__group"); if (gStart) gStart.remove();
 }
@@ -6439,21 +6879,87 @@ function buildResumoLegacyAnnualDataset(sections = []) {
     ? filterRowsExcept(state._rankingRaw, {}, { searchTerm: state.tableSearchTerm, ignoreDate: true })
     : [];
 
+  const normalizeKey = (value) => {
+    if (value == null) return "";
+    const slug = simplificarTexto(value);
+    if (slug) return slug;
+    const cleaned = limparTexto(value);
+    if (cleaned) {
+      const altSlug = simplificarTexto(cleaned);
+      if (altSlug) return altSlug;
+      return cleaned.toLowerCase();
+    }
+    const text = String(value).trim();
+    return text ? text.toLowerCase() : "";
+  };
+
+  const buildKeyCandidates = (...values) => {
+    const seen = new Set();
+    const list = [];
+    values.forEach(val => {
+      const key = normalizeKey(val);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      list.push(key);
+    });
+    return list;
+  };
+
   const productMonthly = new Map();
-  const childMonthly = new Map();
+  const subMonthly = new Map();
+  const lpMonthly = new Map();
   const hasDataByIndex = Array(monthCount).fill(false);
 
-  const ensureBuffer = (map, key, extra = {}) => {
-    if (!key) return null;
-    let entry = map.get(key);
+  const ensureProductEntry = (primaryKey, extra = {}, aliasKeys = []) => {
+    if (!primaryKey) return { entry: null, key: "" };
+    let entry = productMonthly.get(primaryKey);
     if (!entry) {
-      entry = { meta: Array(monthCount).fill(0), real: Array(monthCount).fill(0) };
-      map.set(key, entry);
-    }
-    if (extra && typeof extra === "object") {
+      entry = {
+        id: extra.id || primaryKey,
+        label: extra.label || extra.id || primaryKey,
+        meta: Array(monthCount).fill(0),
+        real: Array(monthCount).fill(0)
+      };
+      productMonthly.set(primaryKey, entry);
+    } else {
       if (extra.id && !entry.id) entry.id = extra.id;
       if (extra.label && !entry.label) entry.label = extra.label;
     }
+    aliasKeys.forEach(aliasKey => {
+      if (!aliasKey || aliasKey === primaryKey) return;
+      if (!productMonthly.has(aliasKey)) productMonthly.set(aliasKey, entry);
+    });
+    return { entry, key: primaryKey };
+  };
+
+  const ensureNestedEntry = (rootMap, productKey, nodeKey, extra = {}, nodeAliasKeys = [], productAliasKeys = []) => {
+    if (!productKey || !nodeKey) return null;
+    let childMap = rootMap.get(productKey);
+    if (!childMap) {
+      childMap = new Map();
+      rootMap.set(productKey, childMap);
+    }
+    productAliasKeys.forEach(aliasKey => {
+      if (!aliasKey || aliasKey === productKey) return;
+      if (!rootMap.has(aliasKey)) rootMap.set(aliasKey, childMap);
+    });
+    let entry = childMap.get(nodeKey);
+    if (!entry) {
+      entry = {
+        id: extra.id || nodeKey,
+        label: extra.label || extra.id || nodeKey,
+        meta: Array(monthCount).fill(0),
+        real: Array(monthCount).fill(0)
+      };
+      childMap.set(nodeKey, entry);
+    } else {
+      if (extra.id && !entry.id) entry.id = extra.id;
+      if (extra.label && !entry.label) entry.label = extra.label;
+    }
+    nodeAliasKeys.forEach(aliasKey => {
+      if (!aliasKey || aliasKey === nodeKey) return;
+      if (!childMap.has(aliasKey)) childMap.set(aliasKey, entry);
+    });
     return entry;
   };
 
@@ -6495,26 +7001,87 @@ function buildResumoLegacyAnnualDataset(sections = []) {
     }
     if (!productId) return;
 
-    const prodEntry = ensureBuffer(productMonthly, productId);
-    if (prodEntry) {
-      prodEntry.meta[idx] += metaVal;
-      prodEntry.real[idx] += realVal;
+    const productCandidates = buildKeyCandidates(
+      productId,
+      row?.id_indicador,
+      row?.indicadorId,
+      row?.produtoId,
+      row?.produto,
+      row?.produtoNome,
+      row?.prodOrSub,
+      row?.ds_indicador
+    );
+    if (!productCandidates.length) return;
+    const [productKey, ...productAliasList] = productCandidates;
+    const productLabelSource = row?.produtoNome || row?.produto || row?.prodOrSub || row?.ds_indicador || productId || productKey;
+    const { entry: prodEntry, key: canonicalProductKey } = ensureProductEntry(
+      productKey,
+      {
+        id: productId || productLabelSource || productKey,
+        label: limparTexto(productLabelSource) || productLabelSource || productKey
+      },
+      productAliasList
+    );
+    if (!canonicalProductKey || !prodEntry) return;
+
+    prodEntry.meta[idx] += metaVal;
+    prodEntry.real[idx] += realVal;
+
+    const productAliasRefs = buildKeyCandidates(canonicalProductKey, ...productAliasList);
+
+    const subRawValues = [
+      row?.subIndicadorId,
+      row?.subIndicador,
+      row?.subIndicadorNome,
+      row?.linhaProdutoPai,
+      row?.linhaProdutoParent
+    ];
+    const subCandidates = buildKeyCandidates(...subRawValues);
+    if (subCandidates.length) {
+      const [subKey, ...subAliasList] = subCandidates;
+      const subLabelSource = row?.subIndicadorNome || row?.subIndicador || row?.subIndicadorId || subKey;
+      const subEntry = ensureNestedEntry(
+        subMonthly,
+        canonicalProductKey,
+        subKey,
+        {
+          id: subRawValues.find(val => val) || subKey,
+          label: limparTexto(subLabelSource) || subLabelSource || subKey
+        },
+        subAliasList,
+        productAliasRefs
+      );
+      if (subEntry) {
+        subEntry.meta[idx] += metaVal;
+        subEntry.real[idx] += realVal;
+      }
     }
 
-    const subOriginal = row?.subproduto || row?.subProduto || "";
-    if (subOriginal) {
-      const simplified = simplificarTexto(subOriginal);
-      const childId = simplified || subOriginal.toLowerCase();
-      const childKey = childId ? `${productId}||${childId}` : "";
-      if (childKey) {
-        const childEntry = ensureBuffer(childMonthly, childKey, {
-          id: childId || subOriginal,
-          label: limparTexto(subOriginal) || subOriginal || childId
-        });
-        if (childEntry) {
-          childEntry.meta[idx] += metaVal;
-          childEntry.real[idx] += realVal;
-        }
+    const lpRawValues = [
+      row?.linhaProdutoId,
+      row?.lpId,
+      row?.subproduto,
+      row?.linhaProdutoNome,
+      row?.lpNome
+    ];
+    const lpCandidates = buildKeyCandidates(...lpRawValues);
+    if (lpCandidates.length) {
+      const [lpKey, ...lpAliasList] = lpCandidates;
+      const lpLabelSource = row?.linhaProdutoNome || row?.lpNome || row?.subproduto || row?.linhaProdutoId || row?.lpId || lpKey;
+      const lpEntry = ensureNestedEntry(
+        lpMonthly,
+        canonicalProductKey,
+        lpKey,
+        {
+          id: lpRawValues.find(val => val) || lpKey,
+          label: limparTexto(lpLabelSource) || lpLabelSource || lpKey
+        },
+        lpAliasList,
+        productAliasRefs
+      );
+      if (lpEntry) {
+        lpEntry.meta[idx] += metaVal;
+        lpEntry.real[idx] += realVal;
       }
     }
   });
@@ -6527,51 +7094,134 @@ function buildResumoLegacyAnnualDataset(sections = []) {
     }
   }
 
-  const datasetSections = safeSections.map(section => {
-    const items = (section.items || []).map(item => {
-      const entry = productMonthly.get(item.id) || null;
-      const months = monthKeys.map((key, idx) => {
-        const metaVal = entry ? entry.meta[idx] : 0;
-        const realVal = entry ? entry.real[idx] : 0;
-        const ating = metaVal > 0 ? (realVal / metaVal) * 100 : NaN;
-        return {
-          key,
-          label: monthLongLabels[idx],
-          short: monthLabels[idx],
-          meta: metaVal,
-          real: realVal,
-          atingimento: ating
-        };
+  const aggregateChildrenMonths = (children) => {
+    const totalsMeta = Array(monthCount).fill(0);
+    const totalsReal = Array(monthCount).fill(0);
+    let hasData = false;
+    children.forEach(child => {
+      const childMonths = Array.isArray(child?.months) ? child.months : [];
+      childMonths.forEach((month, idx) => {
+        const metaVal = Number(month?.meta) || 0;
+        const realVal = Number(month?.real) || 0;
+        if (metaVal || realVal) hasData = true;
+        if (idx < totalsMeta.length) {
+          totalsMeta[idx] += metaVal;
+          totalsReal[idx] += realVal;
+        }
       });
+    });
+    return { totalsMeta, totalsReal, hasData };
+  };
+
+  const buildNodeCandidateKeys = (node, extra = []) => {
+    const values = [];
+    if (node) {
+      values.push(
+        node.id,
+        node.nome,
+        node.label,
+        node.produtoId,
+        node.produtoNome,
+        node.indicadorId,
+        node.indicadorCodigo
+      );
+      if (Array.isArray(node.aliases)) values.push(...node.aliases);
+      if (Array.isArray(node.subProdutos)) values.push(...node.subProdutos);
+    }
+    if (Array.isArray(extra)) values.push(...extra);
+    return buildKeyCandidates(...values);
+  };
+
+  const resolveIndicatorKey = (item) => {
+    const candidates = buildNodeCandidateKeys(item);
+    for (const key of candidates) {
+      if (productMonthly.has(key) || subMonthly.has(key) || lpMonthly.has(key)) return key;
+    }
+    return candidates[0] || "";
+  };
+
+  const makeMonthsFromEntry = (entry) => monthKeys.map((monthKey, idx) => {
+    const metaVal = entry ? entry.meta[idx] : 0;
+    const realVal = entry ? entry.real[idx] : 0;
+    const ating = metaVal > 0 ? (realVal / metaVal) * 100 : NaN;
+    return {
+      key: monthKey,
+      label: monthLongLabels[idx],
+      short: monthLabels[idx],
+      meta: metaVal,
+      real: realVal,
+      atingimento: ating
+    };
+  });
+
+  const buildChildNodes = (children, indicatorKey) => {
+    const safeChildren = Array.isArray(children) ? children : [];
+    if (!safeChildren.length) return [];
+    return safeChildren.map(child => {
+      const candidates = buildNodeCandidateKeys(child);
+      const preferSub = Array.isArray(child.children) && child.children.length > 0;
+      let entry = null;
+      if (indicatorKey) {
+        const primaryMap = (preferSub ? subMonthly : lpMonthly).get(indicatorKey);
+        if (primaryMap) {
+          for (const key of candidates) {
+            if (primaryMap.has(key)) { entry = primaryMap.get(key); break; }
+          }
+        }
+        if (!entry) {
+          const fallbackMap = (preferSub ? lpMonthly : subMonthly).get(indicatorKey);
+          if (fallbackMap) {
+            for (const key of candidates) {
+              if (fallbackMap.has(key)) { entry = fallbackMap.get(key); break; }
+            }
+          }
+        }
+      }
+
+      const months = makeMonthsFromEntry(entry);
+      const nestedChildren = buildChildNodes(child.children, indicatorKey);
+      if (nestedChildren.length) {
+        const { totalsMeta, totalsReal, hasData } = aggregateChildrenMonths(nestedChildren);
+        if (hasData) {
+          months.forEach((month, idx) => {
+            const metaVal = totalsMeta[idx];
+            const realVal = totalsReal[idx];
+            month.meta = metaVal;
+            month.real = realVal;
+            month.atingimento = metaVal > 0 ? (realVal / metaVal) * 100 : NaN;
+          });
+        }
+      }
       const monthMeta = months[currentIdx]?.meta ?? 0;
       const monthReal = months[currentIdx]?.real ?? 0;
-      const baseChildren = Array.isArray(item.children) ? item.children : [];
-      const children = baseChildren.map(child => {
-        const cKey = `${item.id}||${child.id}`;
-        const centry = childMonthly.get(cKey) || null;
-        const childMonths = monthKeys.map((key, idx) => {
-          const metaVal = centry ? centry.meta[idx] : 0;
-          const realVal = centry ? centry.real[idx] : 0;
-          const ating = metaVal > 0 ? (realVal / metaVal) * 100 : NaN;
-          return {
-            key,
-            label: monthLongLabels[idx],
-            short: monthLabels[idx],
-            meta: metaVal,
-            real: realVal,
-            atingimento: ating
-          };
-        });
-        const childMonthMeta = childMonths[currentIdx]?.meta ?? 0;
-        const childMonthReal = childMonths[currentIdx]?.real ?? 0;
-        return {
-          ...child,
-          months: childMonths,
-          monthMeta: childMonthMeta,
-          monthReal: childMonthReal
-        };
-      });
+      return {
+        ...child,
+        months,
+        monthMeta,
+        monthReal,
+        children: nestedChildren
+      };
+    });
+  };
 
+  const datasetSections = safeSections.map(section => {
+    const items = (section.items || []).map(item => {
+      const indicatorKey = resolveIndicatorKey(item);
+      const entry = indicatorKey ? productMonthly.get(indicatorKey) || null : null;
+      const months = makeMonthsFromEntry(entry);
+      const children = buildChildNodes(item.children, indicatorKey);
+      const { totalsMeta, totalsReal, hasData } = aggregateChildrenMonths(children);
+      if (hasData) {
+        months.forEach((month, idx) => {
+          const metaVal = totalsMeta[idx];
+          const realVal = totalsReal[idx];
+          month.meta = metaVal;
+          month.real = realVal;
+          month.atingimento = metaVal > 0 ? (realVal / metaVal) * 100 : NaN;
+        });
+      }
+      const monthMeta = months[currentIdx]?.meta ?? 0;
+      const monthReal = months[currentIdx]?.real ?? 0;
       return {
         ...item,
         months,
@@ -6885,6 +7535,80 @@ function buildResumoLegacySections(sections = []) {
   const hierarchy = getResumoHierarchy();
   if (!hierarchy.length) return [];
 
+  const normalizeNodeMetrics = (node = {}, fallbackMetric = "valor") => {
+    const metric = typeof node.metric === "string" && node.metric ? node.metric.toLowerCase() : fallbackMetric;
+    const metaVal = Number(node.meta) || 0;
+    const realVal = Number(node.realizado) || 0;
+    const variavelMetaVal = Number(node.variavelMeta) || 0;
+    const variavelRealVal = Number(node.variavelReal) || 0;
+    const pesoVal = Number(node.peso ?? node.pontosMeta) || 0;
+    const pontosMetaVal = Number(node.pontosMeta ?? node.peso) || pesoVal;
+    const pontosBrutosVal = Number(node.pontos ?? Math.min(pesoVal, realVal)) || 0;
+    const ultimaAtualizacao = node.ultimaAtualizacao || node.ultimaAtualizacaoTexto || "";
+    const ating = metaVal ? realVal / metaVal : 0;
+    return {
+      ...node,
+      metric,
+      meta: metaVal,
+      realizado: realVal,
+      variavelMeta: variavelMetaVal,
+      variavelReal: variavelRealVal,
+      peso: pesoVal,
+      pontosMeta: pontosMetaVal,
+      pontosBrutos: pontosBrutosVal,
+      pontos: Math.max(0, Math.min(pesoVal || pontosMetaVal, pontosBrutosVal)),
+      ating,
+      atingido: metaVal ? realVal >= metaVal : false,
+      ultimaAtualizacao
+    };
+  };
+
+  const alignChildrenToDefinition = (defs = [], existing = [], fallbackMetric = "valor") => {
+    const normalizedDefs = Array.isArray(defs) ? defs : [];
+    const existingList = Array.isArray(existing) ? existing : [];
+    const map = new Map(existingList.map(child => {
+      const key = simplificarTexto(child.id || child.nome || child.label || "");
+      return [key, normalizeNodeMetrics(child, fallbackMetric)];
+    }));
+    const result = normalizedDefs.map(def => {
+      const key = simplificarTexto(def.id || def.nome);
+      const existingNode = key ? map.get(key) : null;
+      if (key) map.delete(key);
+      const baseNode = existingNode || normalizeNodeMetrics({
+        id: def.id,
+        nome: def.nome,
+        label: def.nome,
+        metric: def.metric || fallbackMetric,
+        meta: 0,
+        realizado: 0,
+        variavelMeta: 0,
+        variavelReal: 0,
+        peso: Number(def.peso) || 0,
+        pontosMeta: Number(def.peso) || 0,
+        pontos: 0,
+        ultimaAtualizacao: ""
+      }, def.metric || fallbackMetric);
+      baseNode.id = baseNode.id || def.id || key || baseNode.nome;
+      baseNode.nome = def.nome || baseNode.nome;
+      baseNode.label = baseNode.nome;
+      const childDefs = Array.isArray(def.children) ? def.children : [];
+      const existingChildren = existingNode?.children || [];
+      baseNode.children = alignChildrenToDefinition(childDefs, existingChildren, baseNode.metric);
+      return baseNode;
+    });
+    map.forEach(child => {
+      const fallback = normalizeNodeMetrics({
+        ...child,
+        nome: child.nome || child.label || child.id,
+        label: child.nome || child.label || child.id,
+        children: Array.isArray(child.children) ? child.children : []
+      }, child.metric || fallbackMetric);
+      fallback.children = alignChildrenToDefinition([], fallback.children, fallback.metric);
+      result.push(fallback);
+    });
+    return result;
+  };
+
   const lookup = new Map();
   sections.forEach(sec => {
     const items = Array.isArray(sec.items) ? sec.items : [];
@@ -6997,6 +7721,22 @@ function buildResumoLegacySections(sections = []) {
         rowItem.secaoLabel = rowItem.secaoLabel || secDef.label;
         rowItem.secaoNodeId = secDef.id;
         rowItem.type = "indicator";
+        rowItem.ating = rowItem.meta ? rowItem.realizado / rowItem.meta : 0;
+        rowItem.atingVariavel = rowItem.variavelMeta ? rowItem.variavelReal / rowItem.variavelMeta : 0;
+
+        const structureDefs = Array.isArray(indDef.subindicadores) ? indDef.subindicadores : [];
+        const hasStructure = structureDefs.length > 0;
+        const existingChildren = Array.isArray(rowItem.children) ? rowItem.children.map(child => normalizeNodeMetrics(child, rowItem.metric || match?.metric || "valor")) : [];
+        if (hasStructure) {
+          rowItem.children = alignChildrenToDefinition(structureDefs, existingChildren, rowItem.metric || match?.metric || "valor");
+        } else if (existingChildren.length) {
+          rowItem.children = existingChildren.map(child => ({
+            ...child,
+            children: Array.isArray(child.children) ? child.children.map(grand => normalizeNodeMetrics(grand, child.metric || rowItem.metric || "valor")) : []
+          }));
+        } else {
+          rowItem.children = alignChildrenToDefinition([], [], rowItem.metric || match?.metric || "valor");
+        }
 
         const pontosMeta = Number(rowItem.pontosMeta ?? rowItem.peso ?? 0) || 0;
         const pontosBrutos = Number(rowItem.pontosBrutos ?? rowItem.pontos ?? 0) || 0;
@@ -7322,20 +8062,20 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
       agg.aliases.add(texto);
       registrarAliasIndicador(agg.id, texto);
     });
-    const subprodutoOriginal = row.subproduto || row.subProduto || "";
-    const subprodutoTexto = limparTexto(subprodutoOriginal);
-    if (subprodutoTexto) {
-      if (!agg.subProdutos) agg.subProdutos = new Set();
-      agg.subProdutos.add(subprodutoTexto);
-      registrarAliasIndicador(agg.id, subprodutoTexto);
-      SUBPRODUTO_TO_INDICADOR.set(simplificarTexto(subprodutoTexto), agg.id);
-      if (!agg.children) agg.children = new Map();
-      const childKey = simplificarTexto(subprodutoTexto) || subprodutoTexto.toLowerCase();
-      let child = agg.children.get(childKey);
-      if (!child) {
-        child = {
-          id: childKey || subprodutoTexto,
-          label: limparTexto(subprodutoOriginal) || subprodutoTexto,
+    const subIndicadorOriginal = row.subIndicadorId || row.subIndicador || row.subindicadorId || row.subindicador || "";
+    const subIndicadorNome = row.subIndicadorNome || row.subIndicador || row.subindicadorNome || subIndicadorOriginal;
+    const subIndicadorSlug = simplificarTexto(subIndicadorOriginal || subIndicadorNome);
+    const lpOriginal = row.linhaProdutoId || row.linhaProduto || row.lpId || row.subproduto || "";
+    const lpNome = row.linhaProdutoNome || row.lpNome || row.subproduto || lpOriginal;
+    const lpSlug = simplificarTexto(lpOriginal || lpNome);
+
+    if (subIndicadorSlug) {
+      if (!agg.subIndicators) agg.subIndicators = new Map();
+      let subEntry = agg.subIndicators.get(subIndicadorSlug);
+      if (!subEntry) {
+        subEntry = {
+          id: limparTexto(subIndicadorOriginal) || subIndicadorSlug,
+          label: limparTexto(subIndicadorNome) || subIndicadorSlug,
           metric: typeof row.metric === "string" ? row.metric.toLowerCase() : (typeof agg.metric === "string" ? agg.metric.toLowerCase() : "valor"),
           meta: 0,
           realizado: 0,
@@ -7343,19 +8083,88 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
           variavelReal: 0,
           peso: 0,
           pontos: 0,
-          ultimaAtualizacao: ""
+          ultimaAtualizacao: "",
+          children: new Map()
         };
-        agg.children.set(childKey, child);
+        agg.subIndicators.set(subIndicadorSlug, subEntry);
       }
-      if (!child.metric && row.metric) child.metric = String(row.metric).toLowerCase();
-      child.meta += metaValor;
-      child.realizado += realizadoValor;
-      child.variavelMeta += Number(row.variavelMeta) || 0;
-      child.variavelReal += Number(row.variavelReal) || 0;
-      child.peso += pesoLinha;
-      child.pontos += Number(row.pontos) || 0;
-      if (row.data && row.data > child.ultimaAtualizacao) {
-        child.ultimaAtualizacao = row.data;
+      if (!subEntry.metric && row.metric) subEntry.metric = String(row.metric).toLowerCase();
+      subEntry.meta += metaValor;
+      subEntry.realizado += realizadoValor;
+      subEntry.variavelMeta += Number(row.variavelMeta) || 0;
+      subEntry.variavelReal += Number(row.variavelReal) || 0;
+      subEntry.peso += pesoLinha;
+      subEntry.pontos += Number(row.pontos) || 0;
+      if (row.data && row.data > subEntry.ultimaAtualizacao) {
+        subEntry.ultimaAtualizacao = row.data;
+      }
+
+      if (lpSlug) {
+        const childMap = subEntry.children instanceof Map ? subEntry.children : new Map();
+        if (!(subEntry.children instanceof Map)) subEntry.children = childMap;
+        let childEntry = childMap.get(lpSlug);
+        if (!childEntry) {
+          childEntry = {
+            id: limparTexto(lpOriginal) || lpSlug,
+            label: limparTexto(lpNome) || lpSlug,
+            metric: typeof row.metric === "string" ? row.metric.toLowerCase() : (subEntry.metric || agg.metric || "valor"),
+            meta: 0,
+            realizado: 0,
+            variavelMeta: 0,
+            variavelReal: 0,
+            peso: 0,
+            pontos: 0,
+            ultimaAtualizacao: ""
+          };
+          childMap.set(lpSlug, childEntry);
+        }
+        if (!childEntry.metric && row.metric) childEntry.metric = String(row.metric).toLowerCase();
+        childEntry.meta += metaValor;
+        childEntry.realizado += realizadoValor;
+        childEntry.variavelMeta += Number(row.variavelMeta) || 0;
+        childEntry.variavelReal += Number(row.variavelReal) || 0;
+        childEntry.peso += pesoLinha;
+        childEntry.pontos += Number(row.pontos) || 0;
+        if (row.data && row.data > childEntry.ultimaAtualizacao) {
+          childEntry.ultimaAtualizacao = row.data;
+        }
+      }
+    } else {
+      const subprodutoOriginal = row.subproduto || row.subProduto || "";
+      const subprodutoTexto = limparTexto(subprodutoOriginal);
+      if (subprodutoTexto) {
+        if (!agg.subProdutos) agg.subProdutos = new Set();
+        agg.subProdutos.add(subprodutoTexto);
+        registrarAliasIndicador(agg.id, subprodutoTexto);
+        SUBPRODUTO_TO_INDICADOR.set(simplificarTexto(subprodutoTexto), agg.id);
+        if (!agg.children) agg.children = new Map();
+        const childKey = simplificarTexto(subprodutoTexto) || subprodutoTexto.toLowerCase();
+        let child = agg.children.get(childKey);
+        if (!child) {
+          child = {
+            id: childKey || subprodutoTexto,
+            label: limparTexto(subprodutoOriginal) || subprodutoTexto,
+            metric: typeof row.metric === "string" ? row.metric.toLowerCase() : (typeof agg.metric === "string" ? agg.metric.toLowerCase() : "valor"),
+            meta: 0,
+            realizado: 0,
+            variavelMeta: 0,
+            variavelReal: 0,
+            peso: 0,
+            pontos: 0,
+            ultimaAtualizacao: ""
+          };
+          agg.children.set(childKey, child);
+        }
+        if (!child.metric && row.metric) child.metric = String(row.metric).toLowerCase();
+        child.meta += metaValor;
+        child.realizado += realizadoValor;
+        child.variavelMeta += Number(row.variavelMeta) || 0;
+        child.variavelReal += Number(row.variavelReal) || 0;
+        child.peso += pesoLinha;
+        child.pontos += Number(row.pontos) || 0;
+        if (row.data && row.data > child.ultimaAtualizacao) {
+          child.ultimaAtualizacao = row.data;
+        }
       }
     }
   });
@@ -7398,9 +8207,43 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
       cardBase.prodOrSub = agg.produtoNome || agg.nome || agg.id;
       if (agg.aliases) cardBase.aliases = Array.from(agg.aliases);
       if (agg.subProdutos) cardBase.subProdutos = Array.from(agg.subProdutos);
-      if (agg.children && agg.children.size) {
+      if (agg.subIndicators && agg.subIndicators.size) {
+        cardBase.children = Array.from(agg.subIndicators.values()).map(sub => {
+          const childList = sub.children instanceof Map
+            ? Array.from(sub.children.values())
+            : Array.isArray(sub.children) ? sub.children : [];
+          return {
+            id: sub.id,
+            nome: sub.label,
+            label: sub.label,
+            metric: sub.metric || agg.metric,
+            meta: sub.meta,
+            realizado: sub.realizado,
+            variavelMeta: sub.variavelMeta,
+            variavelReal: sub.variavelReal,
+            peso: sub.peso,
+            pontos: sub.pontos,
+            ultimaAtualizacao: sub.ultimaAtualizacao,
+            children: childList.map(child => ({
+              id: child.id,
+              nome: child.label,
+              label: child.label,
+              metric: child.metric || sub.metric || agg.metric,
+              meta: child.meta,
+              realizado: child.realizado,
+              variavelMeta: child.variavelMeta,
+              variavelReal: child.variavelReal,
+              peso: child.peso,
+              pontos: child.pontos,
+              ultimaAtualizacao: child.ultimaAtualizacao,
+              children: []
+            }))
+          };
+        });
+      } else if (agg.children && agg.children.size) {
         cardBase.children = Array.from(agg.children.values()).map(child => ({
           id: child.id,
+          nome: child.label,
           label: child.label,
           metric: child.metric || agg.metric,
           meta: child.meta,
@@ -7409,7 +8252,8 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
           variavelReal: child.variavelReal,
           peso: child.peso,
           pontos: child.pontos,
-          ultimaAtualizacao: child.ultimaAtualizacao
+          ultimaAtualizacao: child.ultimaAtualizacao,
+          children: []
         }));
       }
       return cardBase;
