@@ -1194,6 +1194,10 @@ function montarDadosProdutos(rows){
       const override = INDICATOR_STRUCTURE_OVERRIDES[item.id];
       if (override && Array.isArray(override.subIndicators) && !override.subIndicators.length) {
         FORCED_EMPTY_SUBINDICADORES.add(item.id);
+        const forcedSlug = simplificarTexto(item.id);
+        if (forcedSlug && forcedSlug !== item.id) {
+          FORCED_EMPTY_SUBINDICADORES.add(forcedSlug);
+        }
       }
       const normalized = Array.isArray(structure?.subIndicators)
         ? structure.subIndicators.map(entry => ({
@@ -2151,6 +2155,12 @@ const CARD_SECTIONS_DEF = [
 ];
 
 const INDICATOR_STRUCTURE_OVERRIDES = {
+  rec_vencidos_59: {
+    subIndicators: []
+  },
+  rec_vencidos_50mais: {
+    subIndicators: []
+  },
   centralizacao: {
     subIndicators: [
       { id: "centralizacao_receber", nome: "Contas a Receber (vol)", peso: 0.5 },
@@ -7892,14 +7902,15 @@ function buildResumoLegacySections(sections = []) {
     };
   };
 
-  const alignChildrenToDefinition = (defs = [], existing = [], fallbackMetric = "valor") => {
+  const alignChildrenToDefinition = (defs = [], existing = [], fallbackMetric = "valor", options = {}) => {
     const normalizedDefs = Array.isArray(defs) ? defs : [];
+    const allowOrphans = options.allowOrphans ?? (normalizedDefs.length === 0);
     const existingList = Array.isArray(existing) ? existing : [];
     const map = new Map(existingList.map(child => {
       const key = simplificarTexto(child.id || child.nome || child.label || "");
       return [key, normalizeNodeMetrics(child, fallbackMetric)];
     }));
-    const result = normalizedDefs.map(def => {
+    let result = normalizedDefs.map(def => {
       const key = simplificarTexto(def.id || def.nome);
       const existingNode = key ? map.get(key) : null;
       if (key) map.delete(key);
@@ -7929,16 +7940,81 @@ function buildResumoLegacySections(sections = []) {
       baseNode.children = alignChildrenToDefinition(childDefs, existingChildren, baseNode.metric);
       return baseNode;
     });
-    map.forEach(child => {
-      const fallback = normalizeNodeMetrics({
-        ...child,
-        nome: child.nome || child.label || child.id,
-        label: child.nome || child.label || child.id,
-        children: Array.isArray(child.children) ? child.children : []
-      }, child.metric || fallbackMetric);
-      fallback.children = alignChildrenToDefinition([], fallback.children, fallback.metric);
-      result.push(fallback);
-    });
+    const leftover = Array.from(map.values());
+    if (normalizedDefs.length && leftover.length) {
+      const totals = leftover.reduce((acc, child) => {
+        acc.meta += Number(child.meta) || 0;
+        acc.realizado += Number(child.realizado) || 0;
+        acc.variavelMeta += Number(child.variavelMeta) || 0;
+        acc.variavelReal += Number(child.variavelReal) || 0;
+        acc.peso += Number(child.peso) || 0;
+        acc.pontos += Number(child.pontos) || 0;
+        acc.pontosMeta += Number(child.pontosMeta) || 0;
+        acc.pontosBrutos += Number(child.pontosBrutos) || 0;
+        acc.metaDiaria += Number(child.metaDiaria) || 0;
+        acc.referenciaHoje += Number(child.referenciaHoje) || 0;
+        acc.metaDiariaNecessaria += Number(child.metaDiariaNecessaria) || 0;
+        acc.projecao += Number(child.projecao) || 0;
+        const ultima = child.ultimaAtualizacao || "";
+        if (ultima && (!acc.ultimaAtualizacao || ultima > acc.ultimaAtualizacao)) {
+          acc.ultimaAtualizacao = ultima;
+        }
+        return acc;
+      }, {
+        meta: 0,
+        realizado: 0,
+        variavelMeta: 0,
+        variavelReal: 0,
+        peso: 0,
+        pontos: 0,
+        pontosMeta: 0,
+        pontosBrutos: 0,
+        metaDiaria: 0,
+        referenciaHoje: 0,
+        metaDiariaNecessaria: 0,
+        projecao: 0,
+        ultimaAtualizacao: ""
+      });
+      const weightSum = normalizedDefs.reduce((acc, def) => acc + Math.max(0.01, Number(def.peso) || 1), 0);
+      result = result.map((node, idx) => {
+        const weight = Math.max(0.01, Number(normalizedDefs[idx]?.peso) || 1);
+        const share = weightSum ? weight / weightSum : (1 / Math.max(1, normalizedDefs.length));
+        const augmented = { ...node };
+        augmented.meta += totals.meta * share;
+        augmented.realizado += totals.realizado * share;
+        augmented.variavelMeta += totals.variavelMeta * share;
+        augmented.variavelReal += totals.variavelReal * share;
+        augmented.peso += totals.peso * share;
+        augmented.pontos += totals.pontos * share;
+        augmented.pontosMeta += totals.pontosMeta * share;
+        augmented.pontosBrutos += totals.pontosBrutos * share;
+        augmented.metaDiaria += totals.metaDiaria * share;
+        augmented.referenciaHoje += totals.referenciaHoje * share;
+        augmented.metaDiariaNecessaria += totals.metaDiariaNecessaria * share;
+        augmented.projecao += totals.projecao * share;
+        if (totals.ultimaAtualizacao) {
+          const currentUltima = augmented.ultimaAtualizacao || "";
+          if (!currentUltima || totals.ultimaAtualizacao > currentUltima) {
+            augmented.ultimaAtualizacao = totals.ultimaAtualizacao;
+          }
+        }
+        return normalizeNodeMetrics(augmented, augmented.metric || fallbackMetric);
+      });
+    } else {
+      result = result.map(node => normalizeNodeMetrics(node, node.metric || fallbackMetric));
+    }
+    if (allowOrphans) {
+      leftover.forEach(child => {
+        const fallback = normalizeNodeMetrics({
+          ...child,
+          nome: child.nome || child.label || child.id,
+          label: child.nome || child.label || child.id,
+          children: Array.isArray(child.children) ? child.children : []
+        }, child.metric || fallbackMetric);
+        fallback.children = alignChildrenToDefinition([], fallback.children, fallback.metric);
+        result.push(fallback);
+      });
+    }
     return result;
   };
 
@@ -8065,13 +8141,31 @@ function buildResumoLegacySections(sections = []) {
 
         const structureDefs = Array.isArray(indDef.subindicadores) ? indDef.subindicadores : [];
         const hasStructure = structureDefs.length > 0;
-        const existingChildren = Array.isArray(rowItem.children) ? rowItem.children.map(child => normalizeNodeMetrics(child, rowItem.metric || match?.metric || "valor")) : [];
-        if (hasStructure) {
-          rowItem.children = alignChildrenToDefinition(structureDefs, existingChildren, rowItem.metric || match?.metric || "valor");
+        const existingChildren = Array.isArray(rowItem.children)
+          ? rowItem.children.map(child => normalizeNodeMetrics(child, rowItem.metric || match?.metric || "valor"))
+          : [];
+        const indicatorKeyRaw = rowItem.cardId || rowItem.id || indDef.id;
+        const indicatorKey = limparTexto(indicatorKeyRaw);
+        const indicatorSlug = simplificarTexto(indicatorKeyRaw);
+        const forcedEmpty = !!(
+          (indicatorKey && FORCED_EMPTY_SUBINDICADORES.has(indicatorKey)) ||
+          (indicatorSlug && FORCED_EMPTY_SUBINDICADORES.has(indicatorSlug))
+        );
+        if (forcedEmpty) {
+          rowItem.children = [];
+        } else if (hasStructure) {
+          rowItem.children = alignChildrenToDefinition(
+            structureDefs,
+            existingChildren,
+            rowItem.metric || match?.metric || "valor",
+            { allowOrphans: false }
+          );
         } else if (existingChildren.length) {
           rowItem.children = existingChildren.map(child => ({
             ...child,
-            children: Array.isArray(child.children) ? child.children.map(grand => normalizeNodeMetrics(grand, child.metric || rowItem.metric || "valor")) : []
+            children: Array.isArray(child.children)
+              ? child.children.map(grand => normalizeNodeMetrics(grand, child.metric || rowItem.metric || "valor"))
+              : []
           }));
         } else {
           rowItem.children = alignChildrenToDefinition([], [], rowItem.metric || match?.metric || "valor");
