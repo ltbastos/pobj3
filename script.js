@@ -16,7 +16,6 @@ const CHAT_MODE = "iframe";  // "iframe" | "http"
 const CHAT_IFRAME_URL = "";  // cole aqui a URL do canal "Website" do seu agente (se usar iframe)
 const AGENT_ENDPOINT = "/api/agent"; // seu endpoint (se usar http)
 
-
 // Aqui eu criei atalhos para querySelector e querySelectorAll porque uso isso o tempo todo.
 const $  = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
@@ -53,6 +52,7 @@ const SUFFIX_RULES = [
   { value: 1_000_000,         singular: "milhão",  plural: "milhões" },
   { value: 1_000,             singular: "mil",     plural: "mil" }
 ];
+const RESUMO_MODE_STORAGE_KEY = "pobj.resumoMode";
 // Aqui eu deixo uma lista padrão de motivos para simulação de cancelamento quando a base não traz o detalhe.
 const MOTIVOS_CANCELAMENTO = [
   "Solicitação do cliente",
@@ -120,6 +120,9 @@ let PRODUTOS_BY_FAMILIA = new Map();
 let FAMILIA_DATA = [];
 let FAMILIA_BY_ID = new Map();
 let PRODUTO_TO_FAMILIA = new Map();
+let RESUMO_HIERARCHY = [];
+let SUBINDICADORES_BY_INDICADOR = new Map();
+let FORCED_EMPTY_SUBINDICADORES = new Set();
 
 // Aqui eu deixo caches das bases fact/dim para usar em várias telas.
 let fDados = [];
@@ -219,6 +222,211 @@ function matchesSelection(filterValue, ...candidates){
     if (valor === esperado) return true;
     return simplificarTexto(valor) === esperadoSimple;
   });
+}
+
+function formatResumoSectionLabel(raw = "") {
+  const slug = simplificarTexto(raw);
+  switch (slug) {
+    case "negocios captacao":
+      return "NEGÓCIOS CAPTAÇÃO";
+    case "negocios credito":
+      return "NEGÓCIOS CRÉDITO";
+    case "negocios ligadas":
+      return "NEGÓCIOS LIGADAS";
+    case "produtividade da equipe":
+      return "PRODUTIVIDADE DA EQUIPE";
+    case "clientes":
+      return "CLIENTES";
+    case "financeiro":
+      return "FINANCEIRO";
+    default:
+      return raw ? raw.toUpperCase() : "";
+  }
+}
+
+function buildResumoHierarchyDefault(rows = []) {
+  const sectionMap = new Map();
+  const sectionOrder = [];
+
+  rows.forEach(row => {
+    if (!row) return;
+    const secRaw = row.secaoId || row.secao || row.secaoNome || "";
+    const secSlug = simplificarTexto(secRaw) || simplificarTexto(row.secaoNome) || "secao";
+    if (!sectionMap.has(secSlug)) {
+      sectionMap.set(secSlug, {
+        id: secSlug,
+        label: formatResumoSectionLabel(row.secaoNome || row.secao || secRaw || secSlug),
+        familias: [],
+        familiaIndex: new Map()
+      });
+      sectionOrder.push(secSlug);
+    }
+    const section = sectionMap.get(secSlug);
+    const famRaw = row.familiaId || row.familiaNome || row.familia || "";
+    if (!famRaw) return;
+    const famSlugBase = simplificarTexto(famRaw) || limparTexto(famRaw) || `familia-${section.familias.length + 1}`;
+    const famSlug = `${secSlug}__${famSlugBase}`;
+    if (!section.familiaIndex.has(famSlug)) {
+      section.familiaIndex.set(famSlug, {
+        id: famSlug,
+        nome: row.familiaNome || row.familia || famRaw || famSlugBase,
+        indicadores: [],
+        indicadorSet: new Set()
+      });
+      section.familias.push(section.familiaIndex.get(famSlug));
+    }
+    const familia = section.familiaIndex.get(famSlug);
+    const indicadorRaw = row.produtoId || row.indicadorId || row.id_indicador || row.produto || row.ds_indicador || "";
+    const indicadorNome = row.produtoNome || row.ds_indicador || indicadorRaw;
+    const indicadorSlug = simplificarTexto(indicadorRaw) || simplificarTexto(indicadorNome);
+    const uniqueKey = indicadorSlug || simplificarTexto(`${indicadorRaw}`) || `ind-${familia.indicadores.length + 1}`;
+    if (familia.indicadorSet.has(uniqueKey)) return;
+    familia.indicadorSet.add(uniqueKey);
+
+    const aliasSet = new Set();
+    [indicadorRaw, indicadorNome, row.id_indicador, row.ds_indicador].forEach(val => {
+      const texto = limparTexto(val);
+      if (texto) aliasSet.add(texto);
+    });
+
+    const indicatorCandidates = [
+      row.produtoId,
+      row.id_indicador,
+      indicadorRaw,
+      indicadorNome,
+      row.produto,
+      row.ds_indicador
+    ];
+    let indicatorCardId = "";
+    for (const candidate of indicatorCandidates) {
+      const resolved = resolverIndicadorPorAlias(candidate);
+      if (resolved) { indicatorCardId = resolved; break; }
+    }
+    if (!indicatorCardId) indicatorCardId = limparTexto(row.produtoId || indicadorRaw || uniqueKey) || uniqueKey;
+    const subDefs = SUBINDICADORES_BY_INDICADOR.get(indicatorCardId) || [];
+    const subindicadores = subDefs.map(sub => ({
+      id: sub.id,
+      nome: sub.nome,
+      metric: sub.metric,
+      peso: sub.peso,
+      children: Array.isArray(sub.children)
+        ? sub.children.map(child => ({
+            id: child.id,
+            nome: child.nome,
+            metric: child.metric,
+            peso: child.peso,
+            children: Array.isArray(child.children)
+              ? child.children.map(grand => ({
+                  id: grand.id,
+                  nome: grand.nome,
+                  metric: grand.metric,
+                  peso: grand.peso,
+                  children: []
+                }))
+              : []
+          }))
+        : []
+    }));
+
+    familia.indicadores.push({
+      id: indicadorRaw || uniqueKey,
+      slug: uniqueKey,
+      nome: indicadorNome || indicadorRaw || uniqueKey,
+      cardId: indicatorCardId,
+      aliases: Array.from(aliasSet),
+      subindicadores
+    });
+  });
+
+  return sectionOrder.map(secId => {
+    const section = sectionMap.get(secId);
+    if (!section) return null;
+    const familias = section.familias
+      .map(fam => ({
+        id: fam.id,
+        nome: fam.nome,
+        indicadores: fam.indicadores.slice()
+      }))
+      .filter(f => f.indicadores.length);
+    if (!familias.length) return null;
+    return { id: section.id, label: section.label, familias };
+  }).filter(Boolean);
+}
+
+function buildResumoHierarchyFromSpec(spec = []) {
+  if (!Array.isArray(spec) || !spec.length) return [];
+
+  const ensureArray = (value) => (Array.isArray(value) ? value : []);
+  const normalizeChildren = (children = [], parentMetric = "valor", parentId = "", parentName = "") => {
+    return ensureArray(children).map((entry, idx) => {
+      const rawId = limparTexto(entry?.id) || "";
+      const fallbackId = parentId ? `${parentId}__${idx + 1}` : `child_${idx + 1}`;
+      const id = rawId || fallbackId;
+      const nome = limparTexto(entry?.nome || entry?.label || entry?.descricao) || `${parentName || "Indicador"} ${idx + 1}`;
+      const metric = limparTexto(entry?.metric) || parentMetric || "valor";
+      const peso = Number(entry?.peso) || 1;
+      const nested = normalizeChildren(entry?.children, metric, id, nome);
+      return { id, nome, metric, peso, children: nested };
+    });
+  };
+
+  return spec.map((sectionSpec, sectionIdx) => {
+    if (!sectionSpec) return null;
+    const rawLabel = sectionSpec.label || sectionSpec.nome || sectionSpec.id || `Seção ${sectionIdx + 1}`;
+    const sectionId = limparTexto(sectionSpec.id) || simplificarTexto(rawLabel) || `sec_${sectionIdx + 1}`;
+    const familias = ensureArray(sectionSpec.familias).map((familySpec, famIdx) => {
+      if (!familySpec) return null;
+      const familyLabel = familySpec.nome || familySpec.label || familySpec.id || `Família ${famIdx + 1}`;
+      const familyId = limparTexto(familySpec.id) || `${sectionId}__${simplificarTexto(familyLabel) || famIdx + 1}`;
+      const indicadores = ensureArray(familySpec.indicadores).map(indicatorSpec => {
+        if (!indicatorSpec) return null;
+        const indicatorLabel = indicatorSpec.nome || indicatorSpec.label || indicatorSpec.id;
+        if (!indicatorLabel) return null;
+        const indicatorSlug = simplificarTexto(indicatorSpec.slug || indicatorSpec.id || indicatorLabel);
+        const indicatorId = limparTexto(indicatorSpec.id) || indicatorSpec.cardId || indicatorSlug || `ind_${famIdx + 1}`;
+        const cardId = indicatorSpec.cardId
+          || resolverIndicadorPorAlias(indicatorId)
+          || resolverIndicadorPorAlias(indicatorLabel)
+          || indicatorId;
+        if (indicatorLabel) registrarAliasIndicador(cardId, indicatorLabel);
+        if (Array.isArray(indicatorSpec.aliases)) {
+          indicatorSpec.aliases.forEach(alias => registrarAliasIndicador(cardId, alias));
+        }
+        const subindicadores = normalizeChildren(indicatorSpec.subindicadores, indicatorSpec.metric || "valor", indicatorId, indicatorLabel);
+        return {
+          id: indicatorId,
+          slug: indicatorSlug || simplificarTexto(indicatorLabel) || indicatorId,
+          nome: indicatorLabel,
+          cardId,
+          aliases: Array.isArray(indicatorSpec.aliases) ? indicatorSpec.aliases.slice() : [],
+          subindicadores
+        };
+      }).filter(Boolean);
+      if (!indicadores.length) return null;
+      return { id: familyId, nome: familyLabel, indicadores };
+    }).filter(Boolean);
+    if (!familias.length) return null;
+    return { id: sectionId, label: rawLabel, familias };
+  }).filter(Boolean);
+}
+
+function buildResumoHierarchyFromProducts(rows = []) {
+  const fallback = buildResumoHierarchyDefault(rows);
+  if (!Array.isArray(LEGACY_RESUMO_STRUCTURE) || !LEGACY_RESUMO_STRUCTURE.length) {
+    return fallback;
+  }
+  const manual = buildResumoHierarchyFromSpec(LEGACY_RESUMO_STRUCTURE);
+  if (!manual.length) return fallback;
+  const manualIds = new Set(manual.map(sec => sec.id));
+  const extras = fallback.filter(sec => !manualIds.has(sec.id));
+  return manual.concat(extras);
+}
+
+function getResumoHierarchy() {
+  if (Array.isArray(RESUMO_HIERARCHY) && RESUMO_HIERARCHY.length) {
+    return RESUMO_HIERARCHY;
+  }
+  return [];
 }
 
 function optionMatchesValue(option, desired){
@@ -977,6 +1185,61 @@ function montarDadosProdutos(rows){
   FAMILIA_BY_ID = new Map(FAMILIA_DATA.map(f => [f.id, f]));
   PRODUTOS_BY_FAMILIA = byFamilia;
   PRODUTOS_DATA = rows;
+  SUBINDICADORES_BY_INDICADOR = new Map();
+  FORCED_EMPTY_SUBINDICADORES = new Set();
+
+  CARD_SECTIONS_DEF.forEach(sec => {
+    sec.items.forEach(item => {
+      const structure = resolveIndicatorStructureMeta(item.id, item.nome, item.metric);
+      const override = INDICATOR_STRUCTURE_OVERRIDES[item.id];
+      if (override && Array.isArray(override.subIndicators) && !override.subIndicators.length) {
+        FORCED_EMPTY_SUBINDICADORES.add(item.id);
+        const forcedSlug = simplificarTexto(item.id);
+        if (forcedSlug && forcedSlug !== item.id) {
+          FORCED_EMPTY_SUBINDICADORES.add(forcedSlug);
+        }
+      }
+      const normalized = Array.isArray(structure?.subIndicators)
+        ? structure.subIndicators.map(entry => ({
+            id: entry.id,
+            nome: entry.nome,
+            metric: entry.metric || item.metric || "valor",
+            peso: Number(entry.peso) || 1,
+            children: Array.isArray(entry.children)
+              ? entry.children.map(child => ({
+                  id: child.id,
+                  nome: child.nome,
+                  metric: child.metric || entry.metric || item.metric || "valor",
+                  peso: Number(child.peso) || 1,
+                  children: Array.isArray(child.children)
+                    ? child.children.map(grand => ({
+                        id: grand.id,
+                        nome: grand.nome,
+                        metric: grand.metric || child.metric || entry.metric || item.metric || "valor",
+                        peso: Number(grand.peso) || 1,
+                        children: []
+                      }))
+                    : []
+                }))
+              : []
+          }))
+        : [];
+
+      normalized.forEach(entry => {
+        if (entry?.nome) registrarAliasIndicador(item.id, entry.nome);
+        entry.children.forEach(child => {
+          if (child?.nome) registrarAliasIndicador(item.id, child.nome);
+          child.children.forEach(grand => {
+            if (grand?.nome) registrarAliasIndicador(item.id, grand.nome);
+          });
+        });
+      });
+
+      SUBINDICADORES_BY_INDICADOR.set(item.id, normalized);
+    });
+  });
+
+  RESUMO_HIERARCHY = buildResumoHierarchyFromProducts(rows);
 
   CAMPAIGN_UNIT_DATA.forEach(unit => {
     const prodMeta = unit.produtoId ? PRODUTO_TO_FAMILIA.get(unit.produtoId) : null;
@@ -1632,8 +1895,6 @@ async function loadBaseData(){
   }
 }
 
-
-
 /* ===== Aqui eu ajusto a altura da topbar para o CSS responsivo funcionar ===== */
 // Aqui eu calculo a altura real da topbar e jogo no CSS para o layout não quebrar ao abrir menus.
 const setTopbarH = () => {
@@ -1655,6 +1916,7 @@ const TABLE_VIEWS = [
   { id:"secao",    label:"Seção",             key:"secao" },
   { id:"familia",   label:"Família",            key:"familia" },
   { id:"prodsub",   label:"Indicador",          key:"prodOrSub" },
+  { id:"subindicador", label:"Subindicador",     key:"subIndicadorId" },
   { id:"contrato",  label:"Contratos",          key:"contrato" },
 ];
 
@@ -1663,6 +1925,7 @@ const TABLE_VIEWS = [
 const CARD_SECTIONS_DEF = [
   { id:"captacao", label:"CAPTAÇÃO", items:[
     { id:"captacao_bruta",   nome:"Captação Bruta",                           icon:"ti ti-pig-money",       peso:4, metric:"valor" },
+    { id:"captacao_bruta_total", nome:"Captação Bruta - Total",                icon:"ti ti-pig-money",       peso:4, metric:"valor", hiddenInCards:true },
     { id:"captacao_liquida", nome:"Captação Líquida",                         icon:"ti ti-arrows-exchange", peso:4, metric:"valor" },
     { id:"portab_prev",      nome:"Portabilidade de Previdência Privada",     icon:"ti ti-shield-check",    peso:3, metric:"valor" },
     { id:"centralizacao",    nome:"Centralização de Caixa",                   icon:"ti ti-briefcase",       peso:3, metric:"valor" },
@@ -1692,12 +1955,195 @@ const CARD_SECTIONS_DEF = [
   ]},
 ];
 
+const INDICATOR_STRUCTURE_OVERRIDES = {
+  rec_vencidos_59: {
+    subIndicators: []
+  },
+  rec_vencidos_50mais: {
+    subIndicators: []
+  },
+  centralizacao: {
+    subIndicators: [
+      { id: "centralizacao_receber", nome: "Contas a Receber (vol)", peso: 0.5 },
+      {
+        id: "centralizacao_pagar",
+        nome: "Contas a pagar (vol)",
+        peso: 0.5,
+        children: [
+          { id: "centralizacao_pf_qtd", nome: "Centralização de Caixa PF (Qtd)", metric: "qtd", peso: 1 }
+        ]
+      }
+    ]
+  },
+  rec_credito: {
+    subIndicators: [
+      { id: "recuperacao_de_credito_lp_total", nome: "Recuperação de Crédito LP Total", peso: 0.5 },
+      { id: "recuperacao_de_credito_lp_a_vista", nome: "Recuperação de Crédito LP à Vista", peso: 0.5 }
+    ]
+  },
+  captacao_bruta: {
+    subIndicators: []
+  },
+  captacao_bruta_total: {
+    subIndicators: []
+  },
+  captacao_liquida: {
+    subIndicators: [
+      { id: "captacao_liquida_grupo_a", nome: "Captação Líquida - Grupo A", peso: 1 },
+      { id: "captacao_liquida_isentos_aplicacao", nome: "Isentos - Aplicação", peso: 1 },
+      { id: "captacao_liquida_isentos_resgate", nome: "Isentos - Resgate", peso: 1 },
+      { id: "captacao_liquida_fundos_aplicacao", nome: "Fundos - Aplicação", peso: 1 },
+      { id: "captacao_liquida_fundos_resgate", nome: "Fundos - Resgate", peso: 1 },
+      { id: "captacao_liquida_previdencia_aplicacao", nome: "Previdência Privada - Aplicação", peso: 1 },
+      { id: "captacao_liquida_portab_previdencia_aplicacao", nome: "Portabilidade de Previdência Privada - Aplicação", peso: 1 },
+      { id: "captacao_liquida_previdencia_resgate", nome: "Previdência Privada - Resgate", peso: 1 },
+      { id: "captacao_liquida_portab_previdencia_resgate", nome: "Portabilidade de Previdência Privada - Resgate", peso: 1 },
+      { id: "captacao_liquida_coe_aplicacao", nome: "Coe - Aplicação", peso: 1 },
+      { id: "captacao_liquida_coe_resgate", nome: "Coe - Resgate", peso: 1 },
+      { id: "captacao_liquida_deposito_prazo_aplicacao", nome: "Depósito à Prazo - Aplicação", peso: 1 },
+      { id: "captacao_liquida_deposito_prazo_resgate", nome: "Depósito à Prazo - Resgate", peso: 1 },
+      { id: "captacao_liquida_grupo_b", nome: "Captação Líquida - Grupo B", peso: 1 },
+      { id: "captacao_liquida_investfacil", nome: "Investfácil", peso: 1 },
+      { id: "captacao_liquida_investfacil_aplicacao", nome: "Investfácil - Aplicação", peso: 1 },
+      { id: "captacao_liquida_investfacil_resgate", nome: "Investfácil - Resgate", peso: 1 },
+      { id: "captacao_liquida_poupanca", nome: "Poupança", peso: 1 },
+      { id: "captacao_liquida_poupanca_aplicacao", nome: "Poupança - Aplicação", peso: 1 },
+      { id: "captacao_liquida_poupanca_resgate", nome: "Poupança - Resgate", peso: 1 }
+    ]
+  },
+  portab_prev: {
+    subIndicators: [
+      { id: "portab_prev_aplicacao", nome: "Portabilidade de Previdência Privada - Aplicação", peso: 0.5 },
+      { id: "portab_prev_resgate", nome: "Portabilidade de Previdência Privada - Resgate", peso: 0.5 }
+    ]
+  },
+  rec_vencidos_59: {
+    subIndicators: []
+  },
+  rec_vencidos_50mais: {
+    subIndicators: []
+  },
+  prod_credito_pj: {
+    subIndicators: [
+      { id: "prod_credito_pj_linha", nome: "Linha PJ", peso: 0.7 },
+      { id: "prod_credito_pj_cartao", nome: "Cartão PJ", peso: 0.3 }
+    ]
+  },
+  rotativo_pj_vol: {
+    subIndicators: [
+      { id: "rotativo_pj_vol_carteira", nome: "Carteira ativa", peso: 1 }
+    ]
+  },
+  rotativo_pj_qtd: {
+    subIndicators: [
+      { id: "rotativo_pj_qtd_carteira", nome: "Carteira ativa", peso: 1 }
+    ]
+  },
+  cartoes: {
+    subIndicators: [
+      { id: "cartoes_pf", nome: "Cartões PF", peso: 0.6 },
+      { id: "cartoes_pj", nome: "Cartões PJ", peso: 0.4 }
+    ]
+  },
+  consorcios: {
+    subIndicators: [
+      { id: "consorcios_auto", nome: "Auto", peso: 0.55 },
+      { id: "consorcios_imobiliario", nome: "Imobiliário", peso: 0.45 }
+    ]
+  },
+  seguros: {
+    subIndicators: [
+      { id: "seguros_empresas", nome: "Empresas", peso: 0.5 },
+      { id: "seguros_pessoas", nome: "Pessoas", peso: 0.5 }
+    ]
+  },
+  conquista_qualif_pj: {
+    subIndicators: [
+      { id: "conquista_qualif_pj_ativacao", nome: "Ativação", peso: 0.6 },
+      { id: "conquista_qualif_pj_cross", nome: "Cross-sell", peso: 0.4 }
+    ]
+  },
+  conquista_folha: {
+    subIndicators: [
+      { id: "conquista_folha_publico", nome: "Público", peso: 0.5 },
+      { id: "conquista_folha_privado", nome: "Privado", peso: 0.5 }
+    ]
+  },
+  bradesco_expresso: {
+    subIndicators: [
+      { id: "bradesco_expresso_agencia", nome: "Agência", peso: 0.5 },
+      { id: "bradesco_expresso_digital", nome: "Digital", peso: 0.5 }
+    ]
+  },
+  sucesso_equipe_credito: {
+    subIndicators: [
+      { id: "sucesso_equipe_credito_base", nome: "Equipes", peso: 1 }
+    ]
+  }
+};
+
 CARD_SECTIONS_DEF.forEach(sec => {
   sec.items.forEach(item => {
     registrarAliasIndicador(item.id, item.id);
     registrarAliasIndicador(item.id, item.nome);
   });
 });
+
+const INDICATOR_CARD_INDEX = new Map();
+CARD_SECTIONS_DEF.forEach(sec => {
+  sec.items.forEach(item => {
+    INDICATOR_CARD_INDEX.set(item.id, { ...item, sectionId: sec.id, sectionLabel: sec.label });
+  });
+});
+
+function normalizeStructureChildren(parentId, parentName, parentMetric, list = []) {
+  if (!Array.isArray(list) || !list.length) return [];
+  return list.map((entry, idx) => {
+    const rawId = limparTexto(entry?.id) || "";
+    const fallbackId = `${parentId}_lp_${idx + 1}`;
+    const id = rawId || fallbackId;
+    const nome = limparTexto(entry?.nome || entry?.label || entry?.descricao || entry?.name) || `${parentName} ${idx + 1}`;
+    const metric = limparTexto(entry?.metric) || parentMetric || "valor";
+    const peso = Number(entry?.peso) || 1;
+    const nested = normalizeStructureChildren(id, nome, metric, entry?.children || []);
+    return {
+      id,
+      nome,
+      metric,
+      peso,
+      children: nested
+    };
+  });
+}
+
+function resolveIndicatorStructureMeta(indicatorId, indicatorNome = "", metric = "valor") {
+  const override = INDICATOR_STRUCTURE_OVERRIDES[indicatorId];
+  const normalizedMetric = typeof metric === "string" && metric ? metric : "valor";
+  const ensureArray = (source = []) => Array.isArray(source) ? source : [];
+  if (override && Array.isArray(override.subIndicators)) {
+    if (!override.subIndicators.length) {
+      return { subIndicators: [] };
+    }
+    const entries = override.subIndicators.map((entry, idx) => {
+      const rawId = limparTexto(entry?.id) || "";
+      const fallbackId = `${indicatorId}_sub_${idx + 1}`;
+      const id = rawId || fallbackId;
+      const nome = limparTexto(entry?.nome || entry?.label || entry?.descricao || entry?.name) || `${indicatorNome || "Subindicador"} ${idx + 1}`;
+      const metricEntry = limparTexto(entry?.metric) || normalizedMetric;
+      const peso = Number(entry?.peso) || 1;
+      const children = normalizeStructureChildren(id, nome, metricEntry, ensureArray(entry?.children));
+      return { id, nome, metric: metricEntry, peso, children };
+    });
+    return { subIndicators: entries };
+  }
+
+  const baseName = indicatorNome || "Subindicador";
+  const fallback = [
+    { id: `${indicatorId}_sub_1`, nome: `${baseName} 1`, metric: normalizedMetric, peso: 0.6 },
+    { id: `${indicatorId}_sub_2`, nome: `${baseName} 2`, metric: normalizedMetric, peso: 0.4 }
+  ];
+  return { subIndicators: fallback };
+}
 
 const SECTION_IDS = new Set(CARD_SECTIONS_DEF.map(sec => sec.id));
 const SECTION_BY_ID = new Map(CARD_SECTIONS_DEF.map(sec => [sec.id, sec]));
@@ -3039,50 +3485,166 @@ async function getData(){
           secaoNome: prod.sectionLabel
         };
 
-        factRows.push({
-          segmento: agency.segmentoNome || agency.segmentoId || segs[agencyIndex % segs.length] || "Segmento",
-          diretoria: agency.diretoriaId || diretoriasBase[agencyIndex % diretoriasBase.length]?.id || `DR ${String(agencyIndex + 1).padStart(2, "0")}`,
-          diretoriaNome: agency.diretoriaNome || diretoriasBase[agencyIndex % diretoriasBase.length]?.nome || `Diretoria ${agencyIndex + 1}`,
-          gerenciaRegional: agency.regionalId || gerenciasBase[agencyIndex % gerenciasBase.length]?.id || `GR ${String(agencyIndex + 1).padStart(2, "0")}`,
-          gerenciaNome: agency.regionalNome || gerenciasBase[agencyIndex % gerenciasBase.length]?.nome || `Regional ${agencyIndex + 1}`,
-          regional: agency.regionalNome || gerenciasBase[agencyIndex % gerenciasBase.length]?.nome || `Regional ${agencyIndex + 1}`,
-          agencia: agency.agenciaId || agenciasBase[agencyIndex % agenciasBase.length]?.id || `Ag ${String(agencyIndex + 1).padStart(2, "0")}`,
-          agenciaNome: agency.agenciaNome || agenciasBase[agencyIndex % agenciasBase.length]?.nome || `Agência ${agencyIndex + 1}`,
-          agenciaCodigo: agency.agenciaId || agenciasBase[agencyIndex % agenciasBase.length]?.id || `Ag ${String(agencyIndex + 1).padStart(2, "0")}`,
-          gerenteGestao: agency.gerenteGestaoId || gerentesGestaoBase[agencyIndex % gerentesGestaoBase.length]?.id || `GG ${String(agencyIndex + 1).padStart(2, "0")}`,
-          gerenteGestaoNome: agency.gerenteGestaoNome || gerentesGestaoBase[agencyIndex % gerentesGestaoBase.length]?.nome || `Gerente geral ${agencyIndex + 1}`,
-          gerente: agency.gerenteId || gerentesBase[agencyIndex % gerentesBase.length]?.id || `Gerente ${agencyIndex + 1}`,
-          gerenteNome: agency.gerenteNome || gerentesBase[agencyIndex % gerentesBase.length]?.nome || `Gerente ${agencyIndex + 1}`,
-          segmentoNome: agency.segmentoNome || agency.segmentoId || segs[agencyIndex % segs.length] || "Segmento",
-          secaoId: familiaMeta.secaoId || prod.sectionId,
-          secao: familiaMeta.secaoNome || prod.sectionLabel,
-          secaoNome: familiaMeta.secaoNome || prod.sectionLabel,
-          familiaId: familiaMeta.id,
-          familia: familiaMeta.nome || familiaMeta.id,
-          familiaNome: familiaMeta.nome || familiaMeta.id,
-          produtoId: prod.id,
-          produto: prod.nome,
-          produtoNome: prod.nome,
-          prodOrSub: prod.nome,
-          subproduto: prod.nome,
-          carteira: `${agency.agenciaNome || agency.agenciaId || "Carteira"} ${String.fromCharCode(65 + iter)}`,
-          canalVenda: canaisVenda[(agencyIndex + prodIndex + iter) % canaisVenda.length],
-          tipoVenda: tiposVenda[(agencyIndex + iter) % tiposVenda.length],
-          modalidadePagamento: modalidadesVenda[(prodIndex + iter) % modalidadesVenda.length],
-          realizado: realMens,
-          meta: metaMens,
-          real_mens: realMens,
-          meta_mens: metaMens,
-          real_acum: realAcum,
-          meta_acum: metaAcum,
-          qtd,
-          data: dataISO,
-          competencia: competenciaMes,
-          peso,
-          pontos,
-          variavelMeta,
-          variavelReal,
-          ating
+        const structureMeta = resolveIndicatorStructureMeta(prod.id, prod.nome, prod.metric);
+        const mappedSubs = SUBINDICADORES_BY_INDICADOR.get(prod.id);
+        const subDefs = Array.isArray(mappedSubs) ? mappedSubs : (Array.isArray(structureMeta?.subIndicators) ? structureMeta.subIndicators : []);
+        const hasForcedEmpty = FORCED_EMPTY_SUBINDICADORES.has(prod.id);
+        const subIndicators = (subDefs.length || hasForcedEmpty)
+          ? subDefs
+          : [{ id: `${prod.id}_sub`, nome: prod.nome, metric: prod.metric, peso: 1, children: [] }];
+        const subWeightSum = subIndicators.reduce((acc, sub) => acc + Math.max(0.01, Number(sub.peso) || 1), 0);
+
+        let metaSubAssigned = 0;
+        let realSubAssigned = 0;
+        let varMetaSubAssigned = 0;
+        let varRealSubAssigned = 0;
+        let pesoSubAssigned = 0;
+
+        subIndicators.forEach((sub, subIdx) => {
+          const subWeight = Math.max(0.01, Number(sub.peso) || 1);
+          const remainingSubs = subIndicators.length - subIdx;
+          const baseShare = subWeight / (subWeightSum || subIndicators.length || 1);
+          const jitterMeta = 0.88 + Math.random() * 0.24;
+          const jitterReal = 0.85 + Math.random() * 0.3;
+          const jitterVar = 0.9 + Math.random() * 0.2;
+          const jitterPeso = 0.9 + Math.random() * 0.2;
+
+          const metaTarget = subIdx === subIndicators.length - 1
+            ? Math.max(0, metaMens - metaSubAssigned)
+            : Math.max(0, Math.round(metaMens * baseShare * jitterMeta));
+          const realTarget = subIdx === subIndicators.length - 1
+            ? Math.max(0, realMens - realSubAssigned)
+            : Math.max(0, Math.round(realMens * baseShare * jitterReal));
+          const varMetaTarget = subIdx === subIndicators.length - 1
+            ? Math.max(0, variavelMeta - varMetaSubAssigned)
+            : Math.max(0, Math.round(variavelMeta * baseShare * jitterVar));
+          const varRealTarget = subIdx === subIndicators.length - 1
+            ? Math.max(0, variavelReal - varRealSubAssigned)
+            : Math.max(0, Math.round(variavelReal * baseShare * jitterVar));
+          const pesoTarget = subIdx === subIndicators.length - 1
+            ? Math.max(0, peso - pesoSubAssigned)
+            : Math.max(0, Math.round(peso * baseShare * jitterPeso));
+
+          metaSubAssigned += metaTarget;
+          realSubAssigned += realTarget;
+          varMetaSubAssigned += varMetaTarget;
+          varRealSubAssigned += varRealTarget;
+          pesoSubAssigned += pesoTarget;
+
+          const hasChildren = Array.isArray(sub.children) && sub.children.length;
+          const childDefs = hasChildren
+            ? sub.children
+            : [{ id: `${sub.id}_lp`, nome: sub.nome, metric: sub.metric, peso: 1, children: [], __isSelf: true }];
+          const childWeightSum = childDefs.reduce((acc, child) => acc + Math.max(0.01, Number(child.peso) || 1), 0);
+
+          let metaChildAssigned = 0;
+          let realChildAssigned = 0;
+          let varMetaChildAssigned = 0;
+          let varRealChildAssigned = 0;
+          let pesoChildAssigned = 0;
+
+          childDefs.forEach((child, childIdx) => {
+            const childWeight = Math.max(0.01, Number(child.peso) || 1);
+            const childShare = childWeight / (childWeightSum || childDefs.length || 1);
+            const childJitter = 0.9 + Math.random() * 0.2;
+
+            const childMeta = childIdx === childDefs.length - 1
+              ? Math.max(0, metaTarget - metaChildAssigned)
+              : Math.max(0, Math.round(metaTarget * childShare * childJitter));
+            const childReal = childIdx === childDefs.length - 1
+              ? Math.max(0, realTarget - realChildAssigned)
+              : Math.max(0, Math.round(realTarget * childShare * childJitter));
+            const childVarMeta = childIdx === childDefs.length - 1
+              ? Math.max(0, varMetaTarget - varMetaChildAssigned)
+              : Math.max(0, Math.round(varMetaTarget * childShare * childJitter));
+            const childVarReal = childIdx === childDefs.length - 1
+              ? Math.max(0, varRealTarget - varRealChildAssigned)
+              : Math.max(0, Math.round(varRealTarget * childShare * childJitter));
+            const childPeso = childIdx === childDefs.length - 1
+              ? Math.max(0, pesoTarget - pesoChildAssigned)
+              : Math.max(0, Math.round(pesoTarget * childShare * childJitter));
+
+            if (metaTarget > 0 && childMeta <= 0) {
+              childMeta = Math.max(1, Math.round(metaTarget / Math.max(1, childDefs.length)));
+            }
+            if (realTarget > 0 && childReal <= 0) {
+              childReal = Math.max(1, Math.round(realTarget / Math.max(1, childDefs.length)));
+            }
+            if (pesoTarget > 0 && childPeso <= 0) {
+              childPeso = Math.max(1, Math.round(pesoTarget / Math.max(1, childDefs.length)));
+            }
+            if (varMetaTarget > 0 && childVarMeta <= 0) {
+              childVarMeta = Math.max(1, Math.round(varMetaTarget / Math.max(1, childDefs.length)));
+            }
+            if (varRealTarget > 0 && childVarReal <= 0) {
+              childVarReal = Math.max(1, Math.round(varRealTarget / Math.max(1, childDefs.length)));
+            }
+
+            metaChildAssigned += childMeta;
+            realChildAssigned += childReal;
+            varMetaChildAssigned += childVarMeta;
+            varRealChildAssigned += childVarReal;
+            pesoChildAssigned += childPeso;
+
+            const isSelfChild = child.__isSelf === true;
+            const childMetric = child.metric || sub.metric || prod.metric || "valor";
+            const childAting = childMeta ? (childReal / childMeta) : 0;
+            const childPontos = Math.round(Math.max(0, Math.min(childPeso, childPeso * childAting)));
+
+            factRows.push({
+              segmento: agency.segmentoNome || agency.segmentoId || segs[agencyIndex % segs.length] || "Segmento",
+              diretoria: agency.diretoriaId || diretoriasBase[agencyIndex % diretoriasBase.length]?.id || `DR ${String(agencyIndex + 1).padStart(2, "0")}`,
+              diretoriaNome: agency.diretoriaNome || diretoriasBase[agencyIndex % diretoriasBase.length]?.nome || `Diretoria ${agencyIndex + 1}`,
+              gerenciaRegional: agency.regionalId || gerenciasBase[agencyIndex % gerenciasBase.length]?.id || `GR ${String(agencyIndex + 1).padStart(2, "0")}`,
+              gerenciaNome: agency.regionalNome || gerenciasBase[agencyIndex % gerenciasBase.length]?.nome || `Regional ${agencyIndex + 1}`,
+              regional: agency.regionalNome || gerenciasBase[agencyIndex % gerenciasBase.length]?.nome || `Regional ${agencyIndex + 1}`,
+              agencia: agency.agenciaId || agenciasBase[agencyIndex % agenciasBase.length]?.id || `Ag ${String(agencyIndex + 1).padStart(2, "0")}`,
+              agenciaNome: agency.agenciaNome || agenciasBase[agencyIndex % agenciasBase.length]?.nome || `Agência ${agencyIndex + 1}`,
+              agenciaCodigo: agency.agenciaId || agenciasBase[agencyIndex % agenciasBase.length]?.id || `Ag ${String(agencyIndex + 1).padStart(2, "0")}`,
+              gerenteGestao: agency.gerenteGestaoId || gerentesGestaoBase[agencyIndex % gerentesGestaoBase.length]?.id || `GG ${String(agencyIndex + 1).padStart(2, "0")}`,
+              gerenteGestaoNome: agency.gerenteGestaoNome || gerentesGestaoBase[agencyIndex % gerentesGestaoBase.length]?.nome || `Gerente geral ${agencyIndex + 1}`,
+              gerente: agency.gerenteId || gerentesBase[agencyIndex % gerentesBase.length]?.id || `Gerente ${agencyIndex + 1}`,
+              gerenteNome: agency.gerenteNome || gerentesBase[agencyIndex % gerentesBase.length]?.nome || `Gerente ${agencyIndex + 1}`,
+              segmentoNome: agency.segmentoNome || agency.segmentoId || segs[agencyIndex % segs.length] || "Segmento",
+              secaoId: familiaMeta.secaoId || prod.sectionId,
+              secao: familiaMeta.secaoNome || prod.sectionLabel,
+              secaoNome: familiaMeta.secaoNome || prod.sectionLabel,
+              familiaId: familiaMeta.id,
+              familia: familiaMeta.nome || familiaMeta.id,
+              familiaNome: familiaMeta.nome || familiaMeta.id,
+              produtoId: prod.id,
+              produto: prod.nome,
+              produtoNome: prod.nome,
+              prodOrSub: prod.nome,
+              subIndicadorId: sub.id,
+              subIndicadorNome: sub.nome,
+              subIndicador: sub.nome,
+              linhaProdutoId: isSelfChild ? "" : (child.id || ""),
+              linhaProdutoNome: isSelfChild ? "" : (child.nome || ""),
+              lpId: isSelfChild ? "" : (child.id || ""),
+              lpNome: isSelfChild ? "" : (child.nome || ""),
+              subproduto: isSelfChild ? "" : (child.nome || ""),
+              carteira: `${agency.agenciaNome || agency.agenciaId || "Carteira"} ${String.fromCharCode(65 + iter)}`,
+              canalVenda: canaisVenda[(agencyIndex + prodIndex + iter) % canaisVenda.length],
+              tipoVenda: tiposVenda[(agencyIndex + iter) % tiposVenda.length],
+              modalidadePagamento: modalidadesVenda[(prodIndex + iter) % modalidadesVenda.length],
+              realizado: childReal,
+              meta: childMeta,
+              real_mens: childReal,
+              meta_mens: childMeta,
+              real_acum: Math.round(childReal * (1.15 + Math.random() * 0.4)),
+              meta_acum: Math.round(childMeta * (1.2 + Math.random() * 0.45)),
+              qtd: childMetric === "qtd" ? Math.max(1, Math.round(childReal)) : qtd,
+              data: dataISO,
+              competencia: competenciaMes,
+              peso: childPeso,
+              pontos: childPontos,
+              variavelMeta: childVarMeta,
+              variavelReal: childVarReal,
+              ating: childAting,
+              metric: childMetric
+            });
+          });
         });
       }
     });
@@ -3146,7 +3708,9 @@ const state = {
   _rankingRaw:[],
   facts:{ dados:[], campanhas:[], variavel:[], historico:[] },
   dashboard:{ sections:[], summary:{} },
+  dashboardVisibleSections:[],
   activeView:"cards",
+  resumoMode: readLocalStorageItem(RESUMO_MODE_STORAGE_KEY) === "legacy" ? "legacy" : "cards",
   tableView:"diretoria",
   tableRendered:false,
   isAnimating:false,
@@ -3156,6 +3720,8 @@ const state = {
   compact:false,
   contractIndex:[],
   lastNonContractView:"diretoria",
+
+  exec:{ heatmapMode:"secoes", seriesColors:new Map() },
 
   // ranking
   rk:{
@@ -3649,6 +4215,8 @@ async function clearFilters() {
   if (secaoSelect) secaoSelect.dispatchEvent(new Event("change"));
   const familiaSelect = $("#f-familia");
   if (familiaSelect) familiaSelect.dispatchEvent(new Event("change"));
+  const produtoSelect = $("#f-produto");
+  if (produtoSelect) produtoSelect.dispatchEvent(new Event("change"));
 
   refreshHierarchyCombos();
 
@@ -3989,6 +4557,8 @@ function ensureStatusFilterInAdvanced() {
   if (gStart) gStart.remove();
 }
 
+
+
 /* ===== Aqui eu monto os chips da tabela e a toolbar com as ações rápidas ===== */
 function ensureChipBarAndToolbar() {
   if ($("#table-controls")) return;
@@ -4008,7 +4578,6 @@ function ensureChipBarAndToolbar() {
     </div>`;
   const header = card.querySelector(".card__header") || card;
   header.insertAdjacentElement("afterend", holder);
-
 
   const chipbar = $("#chipbar");
   TABLE_VIEWS.forEach(v => {
@@ -5247,7 +5816,8 @@ const TREE_LEVEL_LABEL_RESOLVERS = {
   gerente:   (row) => row.gerenteNome || row.gerente || "—",
   secao:     (row) => row.secaoNome || row.secao || getSectionLabel(row.secaoId) || "—",
   familia:   (row) => row.familia || "—",
-  prodsub:   (row) => row.prodOrSub || row.produto || row.subproduto || "—"
+  prodsub:   (row) => row.prodOrSub || row.produto || row.subproduto || "—",
+  subindicador: (row) => row.subIndicadorNome || row.subIndicador || row.linhaProdutoNome || row.linhaProdutoId || row.subproduto || "—"
 };
 
 function resolveTreeLabel(levelKey, subset, fallback) {
@@ -5258,8 +5828,8 @@ function resolveTreeLabel(levelKey, subset, fallback) {
   return label != null && label !== "" ? label : fallback;
 }
 function buildTree(list, startKey) {
-  const keyMap = { diretoria:"diretoria", gerencia:"gerenciaRegional", agencia:"agencia", gGestao:"gerenteGestao", gerente:"gerente", secao:"secaoId", familia:"familia", prodsub:"prodOrSub", produto:"prodOrSub", contrato:"contrato" };
-  const NEXT   = { diretoria:"gerencia",  gerencia:"agencia",         agencia:"gGestao", gGestao:"gerente",       gerente:"secao", secao:"familia", familia:"contrato",   prodsub:"contrato", contrato:null };
+  const keyMap = { diretoria:"diretoria", gerencia:"gerenciaRegional", agencia:"agencia", gGestao:"gerenteGestao", gerente:"gerente", secao:"secaoId", familia:"familia", prodsub:"prodOrSub", subindicador:"subIndicadorId", produto:"prodOrSub", contrato:"contrato" };
+  const NEXT   = { diretoria:"gerencia",  gerencia:"agencia",         agencia:"gGestao", gGestao:"gerente",       gerente:"secao", secao:"familia", familia:"prodsub",   prodsub:"subindicador", subindicador:"contrato", contrato:null };
 
   const periodStart = state.period?.start || "";
   const periodEnd = state.period?.end || "";
@@ -5343,6 +5913,7 @@ function buildTree(list, startKey) {
   }
 
   function buildLevel(arr, levelKey, level, lineage = []){
+    if (!Array.isArray(arr) || !arr.length) return [];
     if (levelKey === "contrato") {
       return arr.flatMap(r => ensureContracts(r).map(c => {
         const detailGroups = buildDetailGroups([c]);
@@ -5382,10 +5953,12 @@ function buildTree(list, startKey) {
       }));
     }
     const mapKey = keyMap[levelKey] || levelKey;
-    return group(arr, mapKey).map(([k, subset]) => {
+    const entries = group(arr, mapKey);
+    const nodes = [];
+    const handleSubset = (labelKey, subset) => {
       const a = agg(subset), next = NEXT[levelKey];
-      const labelText = resolveTreeLabel(levelKey, subset, k);
-      const entryMeta = { levelKey, groupField: mapKey, value: k, label: labelText };
+      const labelText = resolveTreeLabel(levelKey, subset, labelKey);
+      const entryMeta = { levelKey, groupField: mapKey, value: labelKey, label: labelText };
       const nextLineage = [...lineage, entryMeta];
       const breadcrumb = nextLineage.map(item => item.label || item.value).filter(Boolean);
       return {
@@ -5396,11 +5969,35 @@ function buildTree(list, startKey) {
         detailGroups: [],
         levelKey,
         groupField: mapKey,
-        groupValue: k,
+        groupValue: labelKey,
         lineage: nextLineage.map(item => ({ ...item })),
         children: next ? buildLevel(subset, next, level+1, nextLineage) : []
       };
+    };
+    entries.forEach(([k, subset]) => {
+      if (levelKey === "subindicador") {
+        const hasLabel = subset.some(row => {
+          const id = row?.subIndicadorId || row?.subIndicador || row?.subIndicadorNome || row?.linhaProdutoId || row?.linhaProdutoNome || row?.subproduto;
+          return id != null && String(id).trim() !== "" && String(id).trim() !== "—";
+        });
+        if (!hasLabel) {
+          const skipKey = NEXT[levelKey];
+          if (skipKey) {
+            nodes.push(...buildLevel(subset, skipKey, level, lineage));
+          }
+          return;
+        }
+        if (k == null || String(k).trim() === "" || String(k).trim() === "—") {
+          const skipKey = NEXT[levelKey];
+          if (skipKey) {
+            nodes.push(...buildLevel(subset, skipKey, level, lineage));
+          }
+          return;
+        }
+      }
+      nodes.push(handleSubset(k, subset));
     });
+    return nodes;
   }
   return buildLevel(list, startKey, 0, []);
 }
@@ -5768,6 +6365,7 @@ function initCombos() {
 
   const familiaSelect = $("#f-familia");
   const secaoSelect = $("#f-secao");
+  const produtoSelect = $("#f-produto");
   const initialFamilia = familiaSelect ? familiaSelect.value : "Todas";
   const initialSecao = secaoSelect ? secaoSelect.value : "Todas";
   fill("#f-produto", buildProdutoOptions(initialFamilia, initialSecao));
@@ -5835,6 +6433,7 @@ function bindEvents() {
   });
 
   ensureExtraTabs();
+  setupResumoModeToggle();
 
   $$(".tab").forEach(t => {
     t.addEventListener("click", () => {
@@ -5965,8 +6564,6 @@ function reorderFiltersUI() {
 
   const gStart = $("#f-inicio")?.closest(".filters__group"); if (gStart) gStart.remove();
 }
-
-
 
 /* ===== Aqui eu controlo o overlay de carregamento para indicar processamento ===== */   // <- COLE AQUI O BLOCO INTEIRO
 function ensureLoader(){
@@ -6143,8 +6740,6 @@ function ensureChatWidget(){
   }
 }
 
-
-
 /* ===== Aqui eu gerencio a troca entre as abas principais mostrando um spinner decente ===== */
 async function switchView(next) {
   const label =
@@ -6162,7 +6757,6 @@ async function switchView(next) {
     if (next === "ranking" && !$("#view-ranking")) createRankingView();
     if (next === "exec") createExecutiveView();
     if (next === "campanhas") ensureCampanhasView();
-
 
     Object.values(views).forEach(sel => $(sel)?.classList.add("hidden"));
 
@@ -6185,8 +6779,6 @@ async function switchView(next) {
   }, label);
 }
 
-
-
 /* ===== Aqui eu monto o resumo com os indicadores e pontos principais ===== */
 function hitbarClass(p){ return p<50 ? "hitbar--low" : (p<100 ? "hitbar--warn" : "hitbar--ok"); }
 function renderResumoKPI(summary, context = {}) {
@@ -6199,10 +6791,17 @@ function renderResumoKPI(summary, context = {}) {
 
   let kpi = $("#kpi-summary");
   if (!kpi) {
+    const host = $("#resumo-summary") || $("#grid-familias");
+    if (!host) return;
     kpi = document.createElement("div");
     kpi.id = "kpi-summary";
     kpi.className = "kpi-summary";
-    $("#grid-familias").prepend(kpi);
+    host.prepend(kpi);
+  } else {
+    const summaryHost = $("#resumo-summary");
+    if (summaryHost && kpi.parentElement !== summaryHost) {
+      summaryHost.prepend(kpi);
+    }
   }
 
   const indicadoresAtingidos = toNumber(summary.indicadoresAtingidos ?? visibleItemsHitCount ?? 0);
@@ -6311,6 +6910,1225 @@ function renderResumoKPI(summary, context = {}) {
 
   triggerBarAnimation(kpi.querySelectorAll('.hitbar'), shouldAnimateResumo);
   if (resumoAnim) resumoAnim.kpiKey = nextResumoKey;
+}
+
+function buildResumoLegacyAnnualDataset(sections = []) {
+  const safeSections = Array.isArray(sections) ? sections : [];
+  const period = state.period || { start: todayISO(), end: todayISO() };
+  const monthKeys = buildMonthlyAxis(period);
+  if (!safeSections.length || !monthKeys.length) {
+    return { monthKeys: [], monthLabels: [], monthLongLabels: [], currentIdx: 0, sections: [] };
+  }
+
+  const monthCount = monthKeys.length;
+  const monthLabels = monthKeys.map(monthKeyShortLabel);
+  const monthLongLabels = monthKeys.map(monthKeyLabel);
+  const monthIndex = new Map(monthKeys.map((key, idx) => [key, idx]));
+  const rowsSource = Array.isArray(state._rankingRaw)
+    ? filterRowsExcept(state._rankingRaw, {}, { searchTerm: state.tableSearchTerm, ignoreDate: true })
+    : [];
+
+  const normalizeKey = (value) => {
+    if (value == null) return "";
+    const slug = simplificarTexto(value);
+    if (slug) return slug;
+    const cleaned = limparTexto(value);
+    if (cleaned) {
+      const altSlug = simplificarTexto(cleaned);
+      if (altSlug) return altSlug;
+      return cleaned.toLowerCase();
+    }
+    const text = String(value).trim();
+    return text ? text.toLowerCase() : "";
+  };
+
+  const buildKeyCandidates = (...values) => {
+    const seen = new Set();
+    const list = [];
+    values.forEach(val => {
+      const key = normalizeKey(val);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      list.push(key);
+    });
+    return list;
+  };
+
+  const productMonthly = new Map();
+  const subMonthly = new Map();
+  const lpMonthly = new Map();
+  const hasDataByIndex = Array(monthCount).fill(false);
+
+  const ensureProductEntry = (primaryKey, extra = {}, aliasKeys = []) => {
+    if (!primaryKey) return { entry: null, key: "" };
+    let entry = productMonthly.get(primaryKey);
+    if (!entry) {
+      entry = {
+        id: extra.id || primaryKey,
+        label: extra.label || extra.id || primaryKey,
+        meta: Array(monthCount).fill(0),
+        real: Array(monthCount).fill(0)
+      };
+      productMonthly.set(primaryKey, entry);
+    } else {
+      if (extra.id && !entry.id) entry.id = extra.id;
+      if (extra.label && !entry.label) entry.label = extra.label;
+    }
+    aliasKeys.forEach(aliasKey => {
+      if (!aliasKey || aliasKey === primaryKey) return;
+      if (!productMonthly.has(aliasKey)) productMonthly.set(aliasKey, entry);
+    });
+    return { entry, key: primaryKey };
+  };
+
+  const ensureNestedEntry = (rootMap, productKey, nodeKey, extra = {}, nodeAliasKeys = [], productAliasKeys = []) => {
+    if (!productKey || !nodeKey) return null;
+    let childMap = rootMap.get(productKey);
+    if (!childMap) {
+      childMap = new Map();
+      rootMap.set(productKey, childMap);
+    }
+    productAliasKeys.forEach(aliasKey => {
+      if (!aliasKey || aliasKey === productKey) return;
+      if (!rootMap.has(aliasKey)) rootMap.set(aliasKey, childMap);
+    });
+    let entry = childMap.get(nodeKey);
+    if (!entry) {
+      entry = {
+        id: extra.id || nodeKey,
+        label: extra.label || extra.id || nodeKey,
+        meta: Array(monthCount).fill(0),
+        real: Array(monthCount).fill(0)
+      };
+      childMap.set(nodeKey, entry);
+    } else {
+      if (extra.id && !entry.id) entry.id = extra.id;
+      if (extra.label && !entry.label) entry.label = extra.label;
+    }
+    nodeAliasKeys.forEach(aliasKey => {
+      if (!aliasKey || aliasKey === nodeKey) return;
+      if (!childMap.has(aliasKey)) childMap.set(aliasKey, entry);
+    });
+    return entry;
+  };
+
+  rowsSource.forEach(row => {
+    const rawDate = row?.competencia || row?.mes || row?.data || row?.dataReferencia || row?.dt;
+    const key = normalizeMonthKey(rawDate);
+    if (!monthIndex.has(key)) return;
+    const idx = monthIndex.get(key);
+
+    const metaVal = toNumber(row?.meta_mens ?? row?.meta ?? 0);
+    const realVal = toNumber(row?.real_mens ?? row?.realizado ?? 0);
+    if (metaVal || realVal) {
+      hasDataByIndex[idx] = true;
+    }
+
+    const candidates = [
+      row?.id_indicador,
+      row?.indicadorId,
+      row?.produtoId,
+      row?.produto,
+      row?.produtoNome,
+      row?.prodOrSub,
+      row?.ds_indicador
+    ];
+    let productId = "";
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const resolved = resolverIndicadorPorAlias(candidate);
+      if (resolved) { productId = resolved; break; }
+      const cleaned = limparTexto(candidate);
+      if (cleaned) {
+        const alt = resolverIndicadorPorAlias(cleaned);
+        if (alt) { productId = alt; break; }
+      }
+    }
+    if (!productId) {
+      const fallback = limparTexto(row?.produtoId || row?.produto || row?.prodOrSub || row?.ds_indicador);
+      if (fallback) productId = resolverIndicadorPorAlias(fallback) || fallback;
+    }
+    if (!productId) return;
+
+    const productCandidates = buildKeyCandidates(
+      productId,
+      row?.id_indicador,
+      row?.indicadorId,
+      row?.produtoId,
+      row?.produto,
+      row?.produtoNome,
+      row?.prodOrSub,
+      row?.ds_indicador
+    );
+    if (!productCandidates.length) return;
+    const [productKey, ...productAliasList] = productCandidates;
+    const productLabelSource = row?.produtoNome || row?.produto || row?.prodOrSub || row?.ds_indicador || productId || productKey;
+    const { entry: prodEntry, key: canonicalProductKey } = ensureProductEntry(
+      productKey,
+      {
+        id: productId || productLabelSource || productKey,
+        label: limparTexto(productLabelSource) || productLabelSource || productKey
+      },
+      productAliasList
+    );
+    if (!canonicalProductKey || !prodEntry) return;
+
+    prodEntry.meta[idx] += metaVal;
+    prodEntry.real[idx] += realVal;
+
+    const productAliasRefs = buildKeyCandidates(canonicalProductKey, ...productAliasList);
+
+    const subRawValues = [
+      row?.subIndicadorId,
+      row?.subIndicador,
+      row?.subIndicadorNome,
+      row?.linhaProdutoPai,
+      row?.linhaProdutoParent
+    ];
+    const subCandidates = buildKeyCandidates(...subRawValues);
+    if (subCandidates.length) {
+      const [subKey, ...subAliasList] = subCandidates;
+      const subLabelSource = row?.subIndicadorNome || row?.subIndicador || row?.subIndicadorId || subKey;
+      const subEntry = ensureNestedEntry(
+        subMonthly,
+        canonicalProductKey,
+        subKey,
+        {
+          id: subRawValues.find(val => val) || subKey,
+          label: limparTexto(subLabelSource) || subLabelSource || subKey
+        },
+        subAliasList,
+        productAliasRefs
+      );
+      if (subEntry) {
+        subEntry.meta[idx] += metaVal;
+        subEntry.real[idx] += realVal;
+      }
+    }
+
+    const lpRawValues = [
+      row?.linhaProdutoId,
+      row?.lpId,
+      row?.subproduto,
+      row?.linhaProdutoNome,
+      row?.lpNome
+    ];
+    const lpCandidates = buildKeyCandidates(...lpRawValues);
+    if (lpCandidates.length) {
+      const [lpKey, ...lpAliasList] = lpCandidates;
+      const lpLabelSource = row?.linhaProdutoNome || row?.lpNome || row?.subproduto || row?.linhaProdutoId || row?.lpId || lpKey;
+      const lpEntry = ensureNestedEntry(
+        lpMonthly,
+        canonicalProductKey,
+        lpKey,
+        {
+          id: lpRawValues.find(val => val) || lpKey,
+          label: limparTexto(lpLabelSource) || lpLabelSource || lpKey
+        },
+        lpAliasList,
+        productAliasRefs
+      );
+      if (lpEntry) {
+        lpEntry.meta[idx] += metaVal;
+        lpEntry.real[idx] += realVal;
+      }
+    }
+  });
+
+  let currentIdx = monthCount ? monthCount - 1 : 0;
+  for (let idx = monthCount - 1; idx >= 0; idx--) {
+    if (hasDataByIndex[idx]) {
+      currentIdx = idx;
+      break;
+    }
+  }
+
+  const aggregateChildrenMonths = (children) => {
+    const totalsMeta = Array(monthCount).fill(0);
+    const totalsReal = Array(monthCount).fill(0);
+    let hasData = false;
+    children.forEach(child => {
+      const childMonths = Array.isArray(child?.months) ? child.months : [];
+      childMonths.forEach((month, idx) => {
+        const metaVal = Number(month?.meta) || 0;
+        const realVal = Number(month?.real) || 0;
+        if (metaVal || realVal) hasData = true;
+        if (idx < totalsMeta.length) {
+          totalsMeta[idx] += metaVal;
+          totalsReal[idx] += realVal;
+        }
+      });
+    });
+    return { totalsMeta, totalsReal, hasData };
+  };
+
+  const buildNodeCandidateKeys = (node, extra = []) => {
+    const values = [];
+    if (node) {
+      values.push(
+        node.id,
+        node.nome,
+        node.label,
+        node.produtoId,
+        node.produtoNome,
+        node.indicadorId,
+        node.indicadorCodigo
+      );
+      if (Array.isArray(node.aliases)) values.push(...node.aliases);
+      if (Array.isArray(node.subProdutos)) values.push(...node.subProdutos);
+    }
+    if (Array.isArray(extra)) values.push(...extra);
+    return buildKeyCandidates(...values);
+  };
+
+  const resolveIndicatorKey = (item) => {
+    const candidates = buildNodeCandidateKeys(item);
+    for (const key of candidates) {
+      if (productMonthly.has(key) || subMonthly.has(key) || lpMonthly.has(key)) return key;
+    }
+    return candidates[0] || "";
+  };
+
+  const makeMonthsFromEntry = (entry) => monthKeys.map((monthKey, idx) => {
+    const metaVal = entry ? entry.meta[idx] : 0;
+    const realVal = entry ? entry.real[idx] : 0;
+    const ating = metaVal > 0 ? (realVal / metaVal) * 100 : NaN;
+    return {
+      key: monthKey,
+      label: monthLongLabels[idx],
+      short: monthLabels[idx],
+      meta: metaVal,
+      real: realVal,
+      atingimento: ating
+    };
+  });
+
+  const buildChildNodes = (children, indicatorKey) => {
+    const safeChildren = Array.isArray(children) ? children : [];
+    if (!safeChildren.length) return [];
+    return safeChildren.map(child => {
+      const candidates = buildNodeCandidateKeys(child);
+      const preferSub = Array.isArray(child.children) && child.children.length > 0;
+      let entry = null;
+      if (indicatorKey) {
+        const primaryMap = (preferSub ? subMonthly : lpMonthly).get(indicatorKey);
+        if (primaryMap) {
+          for (const key of candidates) {
+            if (primaryMap.has(key)) { entry = primaryMap.get(key); break; }
+          }
+        }
+        if (!entry) {
+          const fallbackMap = (preferSub ? lpMonthly : subMonthly).get(indicatorKey);
+          if (fallbackMap) {
+            for (const key of candidates) {
+              if (fallbackMap.has(key)) { entry = fallbackMap.get(key); break; }
+            }
+          }
+        }
+      }
+
+      const months = makeMonthsFromEntry(entry);
+      const nestedChildren = buildChildNodes(child.children, indicatorKey);
+      if (nestedChildren.length) {
+        const { totalsMeta, totalsReal, hasData } = aggregateChildrenMonths(nestedChildren);
+        if (hasData) {
+          months.forEach((month, idx) => {
+            const metaVal = totalsMeta[idx];
+            const realVal = totalsReal[idx];
+            month.meta = metaVal;
+            month.real = realVal;
+            month.atingimento = metaVal > 0 ? (realVal / metaVal) * 100 : NaN;
+          });
+        }
+      }
+      const monthMeta = months[currentIdx]?.meta ?? 0;
+      const monthReal = months[currentIdx]?.real ?? 0;
+      return {
+        ...child,
+        months,
+        monthMeta,
+        monthReal,
+        children: nestedChildren
+      };
+    });
+  };
+
+  const datasetSections = safeSections.map(section => {
+    const items = (section.items || []).map(item => {
+      const indicatorKey = resolveIndicatorKey(item);
+      const entry = indicatorKey ? productMonthly.get(indicatorKey) || null : null;
+      const months = makeMonthsFromEntry(entry);
+      const children = buildChildNodes(item.children, indicatorKey);
+      const { totalsMeta, totalsReal, hasData } = aggregateChildrenMonths(children);
+      if (hasData) {
+        months.forEach((month, idx) => {
+          const metaVal = totalsMeta[idx];
+          const realVal = totalsReal[idx];
+          month.meta = metaVal;
+          month.real = realVal;
+          month.atingimento = metaVal > 0 ? (realVal / metaVal) * 100 : NaN;
+        });
+      }
+      const monthMeta = months[currentIdx]?.meta ?? 0;
+      const monthReal = months[currentIdx]?.real ?? 0;
+      return {
+        ...item,
+        months,
+        monthMeta,
+        monthReal,
+        children
+      };
+    });
+
+    return {
+      ...section,
+      items
+    };
+  });
+
+  return { monthKeys, monthLabels, monthLongLabels, currentIdx, sections: datasetSections };
+}
+
+function renderResumoLegacyAnnualMatrix(host, sections = [], summary = {}) {
+  if (!host) return false;
+  const dataset = buildResumoLegacyAnnualDataset(sections);
+  const { monthLabels, monthLongLabels, currentIdx, sections: sectionData } = dataset;
+  if (!sectionData.length) return false;
+
+  const currentShort = monthLabels[currentIdx] || "";
+  const currentLong = monthLongLabels[currentIdx] || currentShort || "";
+  const metaHeader = currentShort ? `Meta ${currentShort}` : "Meta (Mês atual)";
+  const metaHeaderTitle = currentLong ? `Meta do mês ${currentLong}` : "Meta do mês atual";
+  const realHeader = currentShort ? `Realizado ${currentShort}` : "Realizado (Mês atual)";
+  const realHeaderTitle = currentLong ? `Realizado do mês ${currentLong}` : "Realizado do mês atual";
+
+  const metricInfo = {
+    valor: { label: "Valor", title: "Indicador financeiro" },
+    qtd:   { label: "Quantidade", title: "Indicador por quantidade" },
+    perc:  { label: "Percentual", title: "Indicador percentual" }
+  };
+
+  sectionData.forEach(section => {
+    const items = Array.isArray(section.items) ? section.items : [];
+    const totals = section.totals || {};
+    const pontosTotal = Number(totals.pontosTotal) || items.reduce((acc, item) => acc + (Number(item.pontosMeta ?? item.peso) || 0), 0);
+    const pontosHit = Number(totals.pontosHit) || items.reduce((acc, item) => acc + Math.min(Number(item.pontos ?? 0) || 0, Number(item.pontosMeta ?? item.peso) || 0), 0);
+    const metaTotal = Number(totals.metaTotal) || items.reduce((acc, item) => acc + (Number(item.meta) || 0), 0);
+    const realizadoTotal = Number(totals.realizadoTotal) || items.reduce((acc, item) => acc + (Number(item.realizado) || 0), 0);
+
+    const atingPctBase = Number.isFinite(totals.atingPct) ? totals.atingPct : (metaTotal ? (realizadoTotal / metaTotal) * 100 : 0);
+    const hasMeta = metaTotal > 0;
+    const atingSectionClamped = hasMeta ? Math.max(0, Math.min(200, atingPctBase)) : 0;
+    const atingSectionLabel = hasMeta ? `${atingSectionClamped.toFixed(1)}%` : "—";
+
+    const uniqueMetrics = new Set(items.map(item => item.metric));
+    const singleMetric = uniqueMetrics.size === 1 ? (uniqueMetrics.values().next().value || "") : "";
+    const normalizedMetric = typeof singleMetric === "string" ? singleMetric.toLowerCase() : "";
+    const canAggregateMetric = normalizedMetric === "valor" || normalizedMetric === "qtd";
+    const aggregatedLabel = normalizedMetric === "qtd" ? "Quantidade" : (normalizedMetric === "valor" ? "Realizado" : "");
+    const aggregatedValue = canAggregateMetric ? formatByMetric(normalizedMetric, realizadoTotal) : "";
+
+    const sectionEl = document.createElement("section");
+    sectionEl.className = "resumo-legacy__section resumo-legacy__section--annual card card--legacy";
+    const safeLabel = escapeHTML(section.label || "Indicadores");
+    const chipPointsTitle = `Pontos: ${formatPoints(pontosHit, { withUnit: true })} / ${formatPoints(pontosTotal, { withUnit: true })}`;
+    const pontosHitLabel = escapeHTML(fmtINT.format(Math.round(pontosHit || 0)));
+    const pontosTotalLabel = escapeHTML(fmtINT.format(Math.round(pontosTotal || 0)));
+    const sectionHasExpandableRows = items.some(item => Array.isArray(item.children) && item.children.length);
+    const sectionToggleClass = `resumo-legacy__section-toggle${sectionHasExpandableRows ? "" : " is-disabled"}`;
+    const sectionToggleAttrs = sectionHasExpandableRows ? "" : " disabled aria-disabled=\"true\"";
+
+    const statsPieces = [
+      `<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">Peso total</span><strong class=\"resumo-legacy__stat-value\">${escapeHTML(fmtINT.format(Math.round(pontosTotal || 0)))}</strong></div>`
+    ];
+    if (canAggregateMetric && aggregatedLabel) {
+      statsPieces.push(`<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">${aggregatedLabel}</span><strong class=\"resumo-legacy__stat-value\">${escapeHTML(aggregatedValue)}</strong></div>`);
+    }
+    statsPieces.push(`<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">Atingimento</span><strong class=\"resumo-legacy__stat-value\">${atingSectionLabel}</strong></div>`);
+
+    const monthHeadCells = monthLabels.map((label, idx) => {
+      const classes = ["resumo-legacy__col--month-head"];
+      if (idx === currentIdx) classes.push("is-current");
+      const headerLabel = label || `M${idx + 1}`;
+      const headerTitle = monthLongLabels[idx] || headerLabel;
+      return `<th scope=\"col\" class=\"${classes.join(" ")}\" title=\"${escapeHTML(headerTitle)}\">${escapeHTML(headerLabel)}</th>`;
+    }).join("");
+
+    sectionEl.innerHTML = `
+      <header class="resumo-legacy__head">
+        <div class="resumo-legacy__heading">
+          <div class="resumo-legacy__title-row">
+            <span class="resumo-legacy__name">${safeLabel}</span>
+            <div class="resumo-legacy__section-actions">
+              <button type="button" class="${sectionToggleClass}" data-expanded="false"${sectionToggleAttrs}>
+                <i class="ti ti-filter" aria-hidden="true"></i>
+                <span class="resumo-legacy__section-toggle-label">Abrir todos os filtros</span>
+              </button>
+            </div>
+          </div>
+          <div class="resumo-legacy__chips">
+            <span class="resumo-legacy__chip"><i class="ti ti-box-multiple" aria-hidden="true"></i>${escapeHTML(fmtINT.format(items.length || 0))} indicadores</span>
+            <span class="resumo-legacy__chip" title="${escapeHTML(chipPointsTitle)}">Pontos ${pontosHitLabel} / ${pontosTotalLabel}</span>
+          </div>
+        </div>
+        <div class="resumo-legacy__stats">
+          ${statsPieces.join("")}
+        </div>
+      </header>
+      <div class="resumo-legacy__table-wrapper">
+        <table class="resumo-legacy__table resumo-legacy__table--annual">
+          <thead>
+            <tr>
+              <th scope="col">Produto</th>
+              <th scope="col" class="resumo-legacy__col--peso">Peso</th>
+              <th scope="col" class="resumo-legacy__col--meta" title="${escapeHTML(metaHeaderTitle)}">${escapeHTML(metaHeader)}</th>
+              <th scope="col" class="resumo-legacy__col--real" title="${escapeHTML(realHeaderTitle)}">${escapeHTML(realHeader)}</th>
+              ${monthHeadCells}
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    `;
+
+    const tbody = sectionEl.querySelector("tbody");
+    if (!tbody) return;
+
+    let rowAutoId = 0;
+    const rowToggleHandlers = new Map();
+    const sectionToggle = sectionEl.querySelector(".resumo-legacy__section-toggle");
+    const sectionToggleLabel = sectionEl.querySelector(".resumo-legacy__section-toggle-label");
+
+    const syncSectionToggleState = () => {
+      if (!sectionToggle) return;
+      if (!rowToggleHandlers.size) {
+        sectionToggle.setAttribute("data-expanded", "false");
+        sectionToggle.classList.remove("is-expanded");
+        if (!sectionHasExpandableRows) {
+          sectionToggle.classList.add("is-disabled");
+          sectionToggle.setAttribute("aria-disabled", "true");
+          sectionToggle.setAttribute("disabled", "true");
+        }
+        if (sectionToggleLabel) sectionToggleLabel.textContent = "Abrir todos os filtros";
+        return;
+      }
+      sectionToggle.classList.remove("is-disabled");
+      sectionToggle.removeAttribute("aria-disabled");
+      sectionToggle.removeAttribute("disabled");
+      let expandedCount = 0;
+      rowToggleHandlers.forEach((_, rowId) => {
+        const rowEl = tbody.querySelector(`tr[data-row-id="${rowId}"]`);
+        if (rowEl?.classList.contains("is-expanded")) expandedCount += 1;
+      });
+      const allExpanded = expandedCount > 0 && expandedCount === rowToggleHandlers.size;
+      sectionToggle.setAttribute("data-expanded", String(allExpanded));
+      sectionToggle.classList.toggle("is-expanded", allExpanded);
+      if (sectionToggleLabel) sectionToggleLabel.textContent = allExpanded ? "Recolher filtros" : "Abrir todos os filtros";
+    };
+
+    items.forEach(item => {
+      const pesoValor = Number(item.pontosMeta ?? item.peso ?? 0);
+      const pesoLabel = escapeHTML(fmtINT.format(Math.round(pesoValor || 0)));
+      const metricKeyRaw = typeof item.metric === "string" ? item.metric.toLowerCase() : "";
+      const metricMeta = metricInfo[metricKeyRaw] || { label: item.metric || "—", title: "Métrica do indicador" };
+      const metricLabel = escapeHTML(metricMeta.label || "—");
+      const metricTitle = escapeHTML(metricMeta.title || "Métrica do indicador");
+
+      const currentMeta = item.monthMeta ?? 0;
+      const currentReal = item.monthReal ?? 0;
+      const metaDisplay = formatByMetric(item.metric, currentMeta);
+      const realizadoDisplay = formatByMetric(item.metric, currentReal);
+      const metaFull = formatMetricFull(item.metric, currentMeta);
+      const realizadoFull = formatMetricFull(item.metric, currentReal);
+      const metaCell = escapeHTML(metaDisplay);
+      const metaTitleSafe = escapeHTML(metaFull);
+      const realizadoCell = escapeHTML(realizadoDisplay);
+      const realizadoTitleSafe = escapeHTML(realizadoFull);
+
+      const monthCellsHtml = (item.months || monthLabels.map(() => ({}))).map((month, idx) => {
+        const pct = Number.isFinite(month?.atingimento) ? month.atingimento : NaN;
+        const classes = ["resumo-legacy__col--month"];
+        if (Number.isFinite(pct)) classes.push(pctBadgeCls(pct)); else classes.push("is-empty");
+        if (idx === currentIdx) classes.push("is-current");
+        const pctLabel = Number.isFinite(pct) ? `${pct.toFixed(1)}%` : "—";
+        const monthLabel = month?.label || month?.short || `Mês ${idx + 1}`;
+        const tooltip = Number.isFinite(pct)
+          ? `${monthLabel}: ${pctLabel}`
+          : `${monthLabel}: sem dados disponíveis`;
+        return `<td class="${classes.join(' ')}" title="${escapeHTML(tooltip)}"><span>${pctLabel}</span></td>`;
+      }).join("");
+
+      const hasChildren = Array.isArray(item.children) && item.children.length > 0;
+      const rowId = `legacy-annual-${section.id || "sec"}-${rowAutoId++}`;
+      const produtoCellHtml = hasChildren
+        ? `<div class="resumo-legacy__prod"><button type="button" class="resumo-legacy__prod-toggle" aria-expanded="false"><i class="ti ti-chevron-right resumo-legacy__prod-toggle-icon" aria-hidden="true"></i><span class="resumo-legacy__prod-name" title="${escapeHTML(item.nome || "")}">${escapeHTML(item.nome || "—")}</span><span class="resumo-legacy__prod-meta" title="${metricTitle}">${metricLabel}</span></button></div>`
+        : `<div class="resumo-legacy__prod"><span class="resumo-legacy__prod-name" title="${escapeHTML(item.nome || "")}">${escapeHTML(item.nome || "—")}</span><span class="resumo-legacy__prod-meta" title="${metricTitle}">${metricLabel}</span></div>`;
+
+      let childRowsHtml = "";
+      if (hasChildren) {
+        childRowsHtml = item.children.map(child => {
+          const childMetricKey = typeof child.metric === "string" ? child.metric.toLowerCase() : metricKeyRaw;
+          const childMetricMeta = metricInfo[childMetricKey] || { label: child.metric || "—", title: "Métrica do indicador" };
+          const childMetricLabel = escapeHTML(childMetricMeta.label || "—");
+          const childMetricTitle = escapeHTML(childMetricMeta.title || "Métrica do indicador");
+          const childMetaDisplay = formatByMetric(childMetricKey, child.monthMeta ?? 0);
+          const childMetaFull = formatMetricFull(childMetricKey, child.monthMeta ?? 0);
+          const childRealDisplay = formatByMetric(childMetricKey, child.monthReal ?? 0);
+          const childRealFull = formatMetricFull(childMetricKey, child.monthReal ?? 0);
+          const childMetaCell = escapeHTML(childMetaDisplay);
+          const childMetaTitle = escapeHTML(childMetaFull);
+          const childRealCell = escapeHTML(childRealDisplay);
+          const childRealTitle = escapeHTML(childRealFull);
+          const childPesoValor = Number(child.pontosMeta ?? child.peso ?? 0);
+          const childPesoLabel = childPesoValor ? escapeHTML(fmtINT.format(Math.round(childPesoValor))) : "—";
+          const childMonthsHtml = (child.months || monthLabels.map(() => ({}))).map((month, idx) => {
+            const pct = Number.isFinite(month?.atingimento) ? month.atingimento : NaN;
+            const classes = ["resumo-legacy__col--month"];
+            if (Number.isFinite(pct)) classes.push(pctBadgeCls(pct)); else classes.push("is-empty");
+            if (idx === currentIdx) classes.push("is-current");
+            const pctLabel = Number.isFinite(pct) ? `${pct.toFixed(1)}%` : "—";
+            const monthLabel = month?.label || month?.short || `Mês ${idx + 1}`;
+            const tooltip = Number.isFinite(pct)
+              ? `${monthLabel}: ${pctLabel}`
+              : `${monthLabel}: sem dados disponíveis`;
+            return `<td class="${classes.join(' ')}" title="${escapeHTML(tooltip)}"><span>${pctLabel}</span></td>`;
+          }).join("");
+
+          return `
+            <tr class=\"resumo-legacy__child-row\" data-parent-id=\"${rowId}\" hidden>
+              <th scope=\"row\">
+                <div class=\"resumo-legacy__prod resumo-legacy__prod--child\">
+                  <span class=\"resumo-legacy__prod-name\" title=\"${escapeHTML(child.label || "")}\">${escapeHTML(child.label || "—")}</span>
+                  <span class=\"resumo-legacy__prod-meta\" title=\"${childMetricTitle}\">${childMetricLabel}</span>
+                </div>
+              </th>
+              <td class=\"resumo-legacy__col--peso\">${childPesoLabel}</td>
+              <td class=\"resumo-legacy__col--meta\" title=\"${childMetaTitle}\">${childMetaCell}</td>
+              <td class=\"resumo-legacy__col--real\" title=\"${childRealTitle}\">${childRealCell}</td>
+              ${childMonthsHtml}
+            </tr>`;
+        }).join("");
+      }
+
+      tbody.insertAdjacentHTML("beforeend", `
+        <tr class="resumo-legacy__row resumo-legacy__row--annual${hasChildren ? " has-children" : ""}" data-row-id="${rowId}">
+          <th scope="row">
+            ${produtoCellHtml}
+          </th>
+          <td class="resumo-legacy__col--peso" title="Peso do indicador">${pesoLabel}</td>
+          <td class="resumo-legacy__col--meta" title="${metaTitleSafe}">${metaCell}</td>
+          <td class="resumo-legacy__col--real" title="${realizadoTitleSafe}">${realizadoCell}</td>
+          ${monthCellsHtml}
+        </tr>
+        ${childRowsHtml}
+      `);
+
+      if (hasChildren) {
+        const mainRow = tbody.querySelector(`tr[data-row-id="${rowId}"]`);
+        const toggleBtn = mainRow?.querySelector(".resumo-legacy__prod-toggle");
+        if (mainRow && toggleBtn) {
+          const toggleChildren = (expand) => {
+            const nextState = typeof expand === "boolean" ? expand : toggleBtn.getAttribute("aria-expanded") !== "true";
+            toggleBtn.setAttribute("aria-expanded", String(nextState));
+            mainRow.classList.toggle("is-expanded", nextState);
+            tbody.querySelectorAll(`tr[data-parent-id="${rowId}"]`).forEach(childRow => {
+              childRow.hidden = !nextState;
+            });
+            syncSectionToggleState();
+          };
+
+          toggleBtn.addEventListener("click", ev => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            toggleChildren();
+          });
+
+          mainRow.addEventListener("click", ev => {
+            if (ev.target.closest(".resumo-legacy__prod-toggle")) return;
+            toggleChildren();
+          });
+
+          rowToggleHandlers.set(rowId, toggleChildren);
+        }
+      }
+    });
+
+    if (sectionToggle) {
+      if (sectionHasExpandableRows) {
+        sectionToggle.addEventListener("click", ev => {
+          ev.preventDefault();
+          const targetState = sectionToggle.getAttribute("data-expanded") !== "true";
+          rowToggleHandlers.forEach(toggleFn => {
+            toggleFn(targetState);
+          });
+          sectionToggle.setAttribute("data-expanded", String(targetState));
+          sectionToggle.classList.toggle("is-expanded", targetState);
+          if (sectionToggleLabel) sectionToggleLabel.textContent = targetState ? "Recolher filtros" : "Abrir todos os filtros";
+        });
+      } else {
+        sectionToggle.classList.add("is-disabled");
+        sectionToggle.setAttribute("aria-disabled", "true");
+        sectionToggle.setAttribute("disabled", "true");
+      }
+    }
+
+    syncSectionToggleState();
+
+    host.appendChild(sectionEl);
+  });
+
+  return true;
+}
+
+function buildResumoLegacySections(sections = []) {
+  const hierarchy = getResumoHierarchy();
+  if (!hierarchy.length) return [];
+
+  const periodStart = state.period?.start || "";
+  const periodEnd = state.period?.end || "";
+  const diasTotais = businessDaysBetweenInclusive(periodStart, periodEnd);
+  const diasDecorridos = businessDaysElapsedUntilToday(periodStart, periodEnd);
+  const diasRestantes = Math.max(0, diasTotais - diasDecorridos);
+
+  const normalizeNodeMetrics = (node = {}, fallbackMetric = "valor") => {
+    const metric = typeof node.metric === "string" && node.metric ? node.metric.toLowerCase() : fallbackMetric;
+    const metaVal = Number(node.meta) || 0;
+    const realVal = Number(node.realizado) || 0;
+    const variavelMetaVal = Number(node.variavelMeta) || 0;
+    const variavelRealVal = Number(node.variavelReal) || 0;
+    const pesoVal = Number(node.peso ?? node.pontosMeta) || 0;
+    const pontosMetaVal = Number(node.pontosMeta ?? node.peso) || pesoVal;
+    const pontosBrutosVal = Number(node.pontos ?? Math.min(pesoVal, realVal)) || 0;
+    const ultimaAtualizacao = node.ultimaAtualizacao || node.ultimaAtualizacaoTexto || "";
+    const ating = metaVal ? realVal / metaVal : 0;
+    const metaDiariaValCandidate = toNumber(node.metaDiaria);
+    const metaDiariaVal = Number.isFinite(metaDiariaValCandidate)
+      ? metaDiariaValCandidate
+      : (diasTotais > 0 ? metaVal / diasTotais : 0);
+    const referenciaCandidate = toNumber(
+      node.referenciaHoje ?? node.referenciaDia ?? node.referencia ?? node.referenciaAtual
+    );
+    const referenciaHojeVal = Number.isFinite(referenciaCandidate)
+      ? referenciaCandidate
+      : (diasDecorridos > 0 ? Math.min(metaVal, metaDiariaVal * diasDecorridos) : 0);
+    const metaNecCandidate = toNumber(
+      node.metaDiariaNecessaria ?? node.metaNecessaria ?? node.metaDiaNecessaria ?? node.metaDiariaRestante
+    );
+    const metaDiariaNecessariaVal = Number.isFinite(metaNecCandidate)
+      ? metaNecCandidate
+      : (diasRestantes > 0 ? Math.max(0, (metaVal - realVal) / diasRestantes) : 0);
+    const projecaoCandidate = toNumber(node.projecao ?? node.forecast ?? node.previsao);
+    const projecaoVal = Number.isFinite(projecaoCandidate)
+      ? projecaoCandidate
+      : (diasDecorridos > 0 ? (realVal / Math.max(diasDecorridos, 1)) * diasTotais : realVal);
+    return {
+      ...node,
+      metric,
+      meta: metaVal,
+      realizado: realVal,
+      variavelMeta: variavelMetaVal,
+      variavelReal: variavelRealVal,
+      peso: pesoVal,
+      pontosMeta: pontosMetaVal,
+      pontosBrutos: pontosBrutosVal,
+      pontos: Math.max(0, Math.min(pesoVal || pontosMetaVal, pontosBrutosVal)),
+      metaDiaria: metaDiariaVal,
+      referenciaHoje: referenciaHojeVal,
+      metaDiariaNecessaria: metaDiariaNecessariaVal,
+      projecao: projecaoVal,
+      ating,
+      atingido: metaVal ? realVal >= metaVal : false,
+      ultimaAtualizacao
+    };
+  };
+
+  const alignChildrenToDefinition = (defs = [], existing = [], fallbackMetric = "valor", options = {}) => {
+    const normalizedDefs = Array.isArray(defs) ? defs : [];
+    const allowOrphans = options.allowOrphans ?? (normalizedDefs.length === 0);
+    const existingList = Array.isArray(existing) ? existing : [];
+    const map = new Map(existingList.map(child => {
+      const key = simplificarTexto(child.id || child.nome || child.label || "");
+      return [key, normalizeNodeMetrics(child, fallbackMetric)];
+    }));
+    let result = normalizedDefs.map(def => {
+      const key = simplificarTexto(def.id || def.nome);
+      const existingNode = key ? map.get(key) : null;
+      if (key) map.delete(key);
+      const baseNode = existingNode || normalizeNodeMetrics({
+        id: def.id,
+        nome: def.nome,
+        label: def.nome,
+        metric: def.metric || fallbackMetric,
+        meta: 0,
+        realizado: 0,
+        variavelMeta: 0,
+        variavelReal: 0,
+        peso: Number(def.peso) || 0,
+        pontosMeta: Number(def.peso) || 0,
+        pontos: 0,
+        metaDiaria: 0,
+        referenciaHoje: 0,
+        metaDiariaNecessaria: 0,
+        projecao: 0,
+        ultimaAtualizacao: ""
+      }, def.metric || fallbackMetric);
+      baseNode.id = baseNode.id || def.id || key || baseNode.nome;
+      baseNode.nome = def.nome || baseNode.nome;
+      baseNode.label = baseNode.nome;
+      const childDefs = Array.isArray(def.children) ? def.children : [];
+      const existingChildren = existingNode?.children || [];
+      baseNode.children = alignChildrenToDefinition(childDefs, existingChildren, baseNode.metric);
+      return baseNode;
+    });
+    const leftover = Array.from(map.values());
+    if (normalizedDefs.length && leftover.length) {
+      const totals = leftover.reduce((acc, child) => {
+        acc.meta += Number(child.meta) || 0;
+        acc.realizado += Number(child.realizado) || 0;
+        acc.variavelMeta += Number(child.variavelMeta) || 0;
+        acc.variavelReal += Number(child.variavelReal) || 0;
+        acc.peso += Number(child.peso) || 0;
+        acc.pontos += Number(child.pontos) || 0;
+        acc.pontosMeta += Number(child.pontosMeta) || 0;
+        acc.pontosBrutos += Number(child.pontosBrutos) || 0;
+        acc.metaDiaria += Number(child.metaDiaria) || 0;
+        acc.referenciaHoje += Number(child.referenciaHoje) || 0;
+        acc.metaDiariaNecessaria += Number(child.metaDiariaNecessaria) || 0;
+        acc.projecao += Number(child.projecao) || 0;
+        const ultima = child.ultimaAtualizacao || "";
+        if (ultima && (!acc.ultimaAtualizacao || ultima > acc.ultimaAtualizacao)) {
+          acc.ultimaAtualizacao = ultima;
+        }
+        return acc;
+      }, {
+        meta: 0,
+        realizado: 0,
+        variavelMeta: 0,
+        variavelReal: 0,
+        peso: 0,
+        pontos: 0,
+        pontosMeta: 0,
+        pontosBrutos: 0,
+        metaDiaria: 0,
+        referenciaHoje: 0,
+        metaDiariaNecessaria: 0,
+        projecao: 0,
+        ultimaAtualizacao: ""
+      });
+      const weightSum = normalizedDefs.reduce((acc, def) => acc + Math.max(0.01, Number(def.peso) || 1), 0);
+      result = result.map((node, idx) => {
+        const weight = Math.max(0.01, Number(normalizedDefs[idx]?.peso) || 1);
+        const share = weightSum ? weight / weightSum : (1 / Math.max(1, normalizedDefs.length));
+        const augmented = { ...node };
+        augmented.meta += totals.meta * share;
+        augmented.realizado += totals.realizado * share;
+        augmented.variavelMeta += totals.variavelMeta * share;
+        augmented.variavelReal += totals.variavelReal * share;
+        augmented.peso += totals.peso * share;
+        augmented.pontos += totals.pontos * share;
+        augmented.pontosMeta += totals.pontosMeta * share;
+        augmented.pontosBrutos += totals.pontosBrutos * share;
+        augmented.metaDiaria += totals.metaDiaria * share;
+        augmented.referenciaHoje += totals.referenciaHoje * share;
+        augmented.metaDiariaNecessaria += totals.metaDiariaNecessaria * share;
+        augmented.projecao += totals.projecao * share;
+        if (totals.ultimaAtualizacao) {
+          const currentUltima = augmented.ultimaAtualizacao || "";
+          if (!currentUltima || totals.ultimaAtualizacao > currentUltima) {
+            augmented.ultimaAtualizacao = totals.ultimaAtualizacao;
+          }
+        }
+        return normalizeNodeMetrics(augmented, augmented.metric || fallbackMetric);
+      });
+    } else {
+      result = result.map(node => normalizeNodeMetrics(node, node.metric || fallbackMetric));
+    }
+    if (allowOrphans) {
+      leftover.forEach(child => {
+        const fallback = normalizeNodeMetrics({
+          ...child,
+          nome: child.nome || child.label || child.id,
+          label: child.nome || child.label || child.id,
+          children: Array.isArray(child.children) ? child.children : []
+        }, child.metric || fallbackMetric);
+        fallback.children = alignChildrenToDefinition([], fallback.children, fallback.metric);
+        result.push(fallback);
+      });
+    }
+    return result;
+  };
+
+  const lookup = new Map();
+  sections.forEach(sec => {
+    const items = Array.isArray(sec.items) ? sec.items : [];
+    items.forEach(item => {
+      if (!item) return;
+      const aliasSet = new Set([
+        item.id,
+        item.nome,
+        item.produtoId,
+        item.produtoNome,
+        item.indicadorId,
+        item.indicadorCodigo,
+      ]);
+      if (Array.isArray(item.aliases)) item.aliases.forEach(alias => aliasSet.add(alias));
+      if (Array.isArray(item.subProdutos)) item.subProdutos.forEach(alias => aliasSet.add(alias));
+      aliasSet.forEach(alias => {
+        const slug = simplificarTexto(alias);
+        if (slug && !lookup.has(slug)) {
+          lookup.set(slug, item);
+        }
+      });
+    });
+  });
+
+  const toISODate = (value = "") => {
+    const text = limparTexto(value);
+    if (!text) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+    const match = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (match) {
+      return `${match[3]}-${match[2]}-${match[1]}`;
+    }
+    return "";
+  };
+
+  const cloneItem = (item, fallbackNome) => {
+    const cloned = { ...item };
+    cloned.nome = fallbackNome || item.nome || item.id;
+    if (Array.isArray(item.aliases)) cloned.aliases = item.aliases.slice();
+    if (Array.isArray(item.subProdutos)) cloned.subProdutos = item.subProdutos.slice();
+    if (Array.isArray(item.children)) {
+      cloned.children = item.children.map(child => ({ ...child }));
+    }
+    return cloned;
+  };
+
+  const result = [];
+
+  hierarchy.forEach(secDef => {
+    if (!secDef || !Array.isArray(secDef.familias)) return;
+    const sectionItems = [];
+    let secMeta = 0;
+    let secReal = 0;
+    let secPontosMeta = 0;
+    let secPontos = 0;
+    let secVariavelMeta = 0;
+    let secVariavelReal = 0;
+
+    secDef.familias.forEach(famDef => {
+      if (!famDef || !Array.isArray(famDef.indicadores)) return;
+      let famMeta = 0;
+      let famReal = 0;
+      let famPontosMeta = 0;
+      let famPontos = 0;
+      let famVariavelMeta = 0;
+      let famVariavelReal = 0;
+      let famUltimaISO = "";
+      const familyIndicators = [];
+
+      famDef.indicadores.forEach(indDef => {
+        if (!indDef) return;
+        const candidates = [indDef.id, indDef.slug, indDef.nome, ...(Array.isArray(indDef.aliases) ? indDef.aliases : [])];
+        let match = null;
+        for (const candidate of candidates) {
+          const slug = simplificarTexto(candidate);
+          if (slug && lookup.has(slug)) {
+            match = lookup.get(slug);
+            break;
+          }
+        }
+
+        let rowItem;
+        if (match) {
+          rowItem = cloneItem(match, indDef.nome);
+        } else {
+          rowItem = {
+            id: indDef.id || indDef.slug,
+            nome: indDef.nome,
+            metric: "valor",
+            meta: 0,
+            realizado: 0,
+            variavelMeta: 0,
+            variavelReal: 0,
+            pontosMeta: 0,
+            pontosBrutos: 0,
+            pontos: 0,
+            metaDiaria: 0,
+            referenciaHoje: 0,
+            metaDiariaNecessaria: 0,
+            projecao: 0,
+            ating: 0,
+            atingVariavel: 0,
+            atingido: false,
+            ultimaAtualizacao: "",
+            aliases: Array.isArray(indDef.aliases) ? indDef.aliases.slice() : []
+          };
+        }
+
+        rowItem = normalizeNodeMetrics(rowItem, rowItem.metric || match?.metric || "valor");
+
+        if (!rowItem.familiaId) rowItem.familiaId = famDef.id;
+        rowItem.familiaNome = famDef.nome;
+        rowItem.familiaNodeId = famDef.id;
+        rowItem.familiaNodeNome = famDef.nome;
+        if (!rowItem.secaoId) rowItem.secaoId = secDef.id;
+        rowItem.secaoLabel = rowItem.secaoLabel || secDef.label;
+        rowItem.secaoNodeId = secDef.id;
+        rowItem.type = "indicator";
+        rowItem.ating = rowItem.meta ? rowItem.realizado / rowItem.meta : 0;
+        rowItem.atingVariavel = rowItem.variavelMeta ? rowItem.variavelReal / rowItem.variavelMeta : 0;
+
+        const structureDefs = Array.isArray(indDef.subindicadores) ? indDef.subindicadores : [];
+        const hasStructure = structureDefs.length > 0;
+        const existingChildren = Array.isArray(rowItem.children)
+          ? rowItem.children.map(child => normalizeNodeMetrics(child, rowItem.metric || match?.metric || "valor"))
+          : [];
+        const indicatorKeyRaw = rowItem.cardId || rowItem.id || indDef.id;
+        const indicatorKey = limparTexto(indicatorKeyRaw);
+        const indicatorSlug = simplificarTexto(indicatorKeyRaw);
+        const forcedEmpty = !!(
+          (indicatorKey && FORCED_EMPTY_SUBINDICADORES.has(indicatorKey)) ||
+          (indicatorSlug && FORCED_EMPTY_SUBINDICADORES.has(indicatorSlug))
+        );
+        if (forcedEmpty) {
+          rowItem.children = [];
+        } else if (hasStructure) {
+          rowItem.children = alignChildrenToDefinition(
+            structureDefs,
+            existingChildren,
+            rowItem.metric || match?.metric || "valor",
+            { allowOrphans: false }
+          );
+        } else if (existingChildren.length) {
+          rowItem.children = existingChildren.map(child => ({
+            ...child,
+            children: Array.isArray(child.children)
+              ? child.children.map(grand => normalizeNodeMetrics(grand, child.metric || rowItem.metric || "valor"))
+              : []
+          }));
+        } else {
+          rowItem.children = alignChildrenToDefinition([], [], rowItem.metric || match?.metric || "valor");
+        }
+
+        const pontosMeta = Number(rowItem.pontosMeta ?? rowItem.peso ?? 0) || 0;
+        const pontosBrutos = Number(rowItem.pontosBrutos ?? rowItem.pontos ?? 0) || 0;
+        const pontosReal = Math.max(0, Math.min(pontosMeta, pontosBrutos));
+        const metaVal = Number(rowItem.meta) || 0;
+        const realVal = Number(rowItem.realizado) || 0;
+        const variavelMetaVal = Number(rowItem.variavelMeta) || 0;
+        const variavelRealVal = Number(rowItem.variavelReal) || 0;
+
+        famMeta += metaVal;
+        famReal += realVal;
+        famPontosMeta += pontosMeta;
+        famPontos += pontosReal;
+        famVariavelMeta += variavelMetaVal;
+        famVariavelReal += variavelRealVal;
+
+        const currentISO = toISODate(rowItem.ultimaAtualizacao);
+        if (currentISO && (!famUltimaISO || currentISO > famUltimaISO)) {
+          famUltimaISO = currentISO;
+        }
+
+        familyIndicators.push(rowItem);
+      });
+
+      if (!familyIndicators.length) return;
+
+      let familyDisplayChildren = familyIndicators;
+      if (secDef.id === "financeiro" || secDef.id === "captacao") {
+        const familiaKeyRaw = famDef.id || famDef.nome || "";
+        const familiaIdNormalized = limparTexto(familiaKeyRaw).toLowerCase();
+        const familiaSlug = simplificarTexto(familiaKeyRaw);
+        const familiaNameSlug = simplificarTexto(famDef.nome || "");
+        const familiaAliases = new Set([
+          familiaIdNormalized,
+          familiaSlug,
+          familiaNameSlug
+        ].filter(Boolean));
+        const familiaMatches = (...candidates) => candidates.some(candidate => familiaAliases.has(candidate));
+        if (familyIndicators.length === 1) {
+          const indicatorChildren = Array.isArray(familyIndicators[0].children)
+            ? familyIndicators[0].children
+            : [];
+          if (secDef.id === "financeiro") {
+            if (
+              familiaMatches(
+                "financeiro_recuperacao_ate59",
+                "financeiro recuperacao ate59",
+                "financeiro recuperacao ate 59",
+                "recuperacao de vencidos ate 59 dias"
+              ) ||
+              familiaMatches(
+                "financeiro_recuperacao_acima59",
+                "financeiro recuperacao acima59",
+                "financeiro recuperacao acima 59",
+                "recuperacao de vencidos acima de 59 dias"
+              )
+            ) {
+              familyDisplayChildren = [];
+            } else if (
+              familiaMatches(
+                "financeiro_recuperacao_credito",
+                "financeiro recuperacao credito",
+                "recuperacao de credito"
+              ) &&
+              indicatorChildren.length
+            ) {
+              familyDisplayChildren = indicatorChildren.map(child => {
+                const promoted = {
+                  ...child,
+                  __legacyDepth: 2,
+                  type: child.type || "lp"
+                };
+                if (Array.isArray(child.children) && child.children.length) {
+                  promoted.children = child.children.map(grand => ({
+                    ...grand,
+                    __legacyDepth: 3,
+                    type: grand.type || "lp"
+                  }));
+                }
+                return promoted;
+              });
+            }
+          } else if (secDef.id === "captacao") {
+            if (
+              familiaMatches(
+                "captacao_cap_bruta",
+                "captacao bruta",
+                "captacao bruta cdb"
+              ) ||
+              familiaMatches(
+                "captacao_cap_bruta_total",
+                "captacao bruta total"
+              )
+            ) {
+              familyDisplayChildren = [];
+            } else if (
+              familiaMatches(
+                "captacao_cap_liquida",
+                "captacao liquida",
+                "captacao liquida todos os produtos"
+              ) &&
+              indicatorChildren.length
+            ) {
+              familyDisplayChildren = indicatorChildren.map(child => ({
+                ...child,
+                __legacyDepth: 2,
+                type: child.type || "lp",
+                children: []
+              }));
+            }
+          }
+        }
+      }
+
+      const primaryMetric = familyIndicators.every(child => child.metric === familyIndicators[0].metric)
+        ? (familyIndicators[0].metric || "valor")
+        : "mix";
+      const famMetaDiaria = diasTotais > 0 ? famMeta / diasTotais : 0;
+      const famReferenciaHoje = diasDecorridos > 0 ? Math.min(famMeta, famMetaDiaria * diasDecorridos) : 0;
+      const famMetaDiariaNecessaria = diasRestantes > 0 ? Math.max(0, (famMeta - famReal) / diasRestantes) : 0;
+      const famProjecao = diasDecorridos > 0 ? (famReal / Math.max(diasDecorridos, 1)) * diasTotais : famReal;
+      const familiaRow = {
+        id: famDef.id,
+        nome: famDef.nome,
+        metric: primaryMetric,
+        meta: famMeta,
+        realizado: famReal,
+        variavelMeta: famVariavelMeta,
+        variavelReal: famVariavelReal,
+        pontosMeta: famPontosMeta,
+        pontosBrutos: famPontos,
+        pontos: famPontos,
+        peso: famPontosMeta,
+        metaDiaria: famMetaDiaria,
+        referenciaHoje: famReferenciaHoje,
+        metaDiariaNecessaria: famMetaDiariaNecessaria,
+        projecao: famProjecao,
+        ating: famMeta ? famReal / famMeta : 0,
+        atingVariavel: famVariavelMeta ? famVariavelReal / famVariavelMeta : 0,
+        atingido: famMeta ? famReal >= famMeta : false,
+        ultimaAtualizacao: famUltimaISO ? formatBRDate(famUltimaISO) : "",
+        familiaId: famDef.id,
+        familiaNome: famDef.nome,
+        secaoId: secDef.id,
+        secaoLabel: secDef.label,
+        children: familyDisplayChildren,
+        indicators: familyIndicators,
+        type: "family"
+      };
+
+      sectionItems.push(familiaRow);
+
+      secMeta += famMeta;
+      secReal += famReal;
+      secPontosMeta += famPontosMeta;
+      secPontos += famPontos;
+      secVariavelMeta += famVariavelMeta;
+      secVariavelReal += famVariavelReal;
+    });
+
+    if (!sectionItems.length) return;
+
+    result.push({
+      id: secDef.id,
+      label: secDef.label,
+      items: sectionItems,
+      totals: {
+        metaTotal: secMeta,
+        realizadoTotal: secReal,
+        pontosTotal: secPontosMeta,
+        pontosHit: secPontos,
+        variavelMeta: secVariavelMeta,
+        variavelReal: secVariavelReal,
+        atingPct: secMeta ? (secReal / secMeta) * 100 : 0
+      }
+    });
+  });
+
+  return result;
+}
+
+function applyResumoMode(mode = "cards") {
+  const normalized = mode === "legacy" ? "legacy" : "cards";
+  const cardsView = $("#resumo-cards");
+  const legacyView = $("#resumo-legacy");
+  if (cardsView) cardsView.classList.toggle("hidden", normalized !== "cards");
+  if (legacyView) legacyView.classList.toggle("hidden", normalized !== "legacy");
+
+  const toggle = $("#resumo-mode-toggle");
+  if (toggle) {
+    toggle.querySelectorAll(".seg-btn").forEach(btn => {
+      const btnMode = btn.dataset.mode === "legacy" ? "legacy" : "cards";
+      const isActive = btnMode === normalized;
+      btn.classList.toggle("is-active", isActive);
+      btn.setAttribute("aria-pressed", String(isActive));
+    });
+  }
+}
+
+function setResumoMode(mode, { persist = true } = {}) {
+  const normalized = mode === "legacy" ? "legacy" : "cards";
+  if (state.resumoMode !== normalized) {
+    state.resumoMode = normalized;
+    if (persist) writeLocalStorageItem(RESUMO_MODE_STORAGE_KEY, normalized);
+  }
+  applyResumoMode(normalized);
+}
+
+function setupResumoModeToggle() {
+  const container = $("#resumo-mode-toggle");
+  if (!container || container.dataset.bound) return;
+  container.dataset.bound = "1";
+  container.querySelectorAll(".seg-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const mode = btn.dataset.mode === "legacy" ? "legacy" : "cards";
+      setResumoMode(mode);
+    });
+  });
+  applyResumoMode(state.resumoMode || "cards");
 }
 /* ===== Aqui eu cuido do tooltip dos cards para explicar cada indicador ===== */
 function buildCardTooltipHTML(item) {
@@ -6453,6 +8271,7 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
         icon: meta.icon || "ti ti-dots",
         metric: meta.metric || row.metric || "valor",
         peso: meta.peso || row.peso || 1,
+        hiddenInCards: !!meta.hiddenInCards,
         secaoId,
         secaoLabel,
         familiaId,
@@ -6514,12 +8333,110 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
       agg.aliases.add(texto);
       registrarAliasIndicador(agg.id, texto);
     });
-    const subprodutoTexto = limparTexto(row.subproduto || row.subProduto || "");
-    if (subprodutoTexto) {
-      if (!agg.subProdutos) agg.subProdutos = new Set();
-      agg.subProdutos.add(subprodutoTexto);
-      registrarAliasIndicador(agg.id, subprodutoTexto);
-      SUBPRODUTO_TO_INDICADOR.set(simplificarTexto(subprodutoTexto), agg.id);
+    const subIndicadorOriginal = row.subIndicadorId || row.subIndicador || row.subindicadorId || row.subindicador || "";
+    const subIndicadorNome = row.subIndicadorNome || row.subIndicador || row.subindicadorNome || subIndicadorOriginal;
+    const subIndicadorSlug = simplificarTexto(subIndicadorOriginal || subIndicadorNome);
+    const lpOriginal = row.linhaProdutoId || row.linhaProduto || row.lpId || row.subproduto || "";
+    const lpNome = row.linhaProdutoNome || row.lpNome || row.subproduto || lpOriginal;
+    const lpSlug = simplificarTexto(lpOriginal || lpNome);
+
+    if (subIndicadorSlug) {
+      if (!agg.subIndicators) agg.subIndicators = new Map();
+      let subEntry = agg.subIndicators.get(subIndicadorSlug);
+      if (!subEntry) {
+        subEntry = {
+          id: limparTexto(subIndicadorOriginal) || subIndicadorSlug,
+          label: limparTexto(subIndicadorNome) || subIndicadorSlug,
+          metric: typeof row.metric === "string" ? row.metric.toLowerCase() : (typeof agg.metric === "string" ? agg.metric.toLowerCase() : "valor"),
+          meta: 0,
+          realizado: 0,
+          variavelMeta: 0,
+          variavelReal: 0,
+          peso: 0,
+          pontos: 0,
+          ultimaAtualizacao: "",
+          children: new Map()
+        };
+        agg.subIndicators.set(subIndicadorSlug, subEntry);
+      }
+      if (!subEntry.metric && row.metric) subEntry.metric = String(row.metric).toLowerCase();
+      subEntry.meta += metaValor;
+      subEntry.realizado += realizadoValor;
+      subEntry.variavelMeta += Number(row.variavelMeta) || 0;
+      subEntry.variavelReal += Number(row.variavelReal) || 0;
+      subEntry.peso += pesoLinha;
+      subEntry.pontos += Number(row.pontos) || 0;
+      if (row.data && row.data > subEntry.ultimaAtualizacao) {
+        subEntry.ultimaAtualizacao = row.data;
+      }
+
+      if (lpSlug) {
+        const childMap = subEntry.children instanceof Map ? subEntry.children : new Map();
+        if (!(subEntry.children instanceof Map)) subEntry.children = childMap;
+        let childEntry = childMap.get(lpSlug);
+        if (!childEntry) {
+          childEntry = {
+            id: limparTexto(lpOriginal) || lpSlug,
+            label: limparTexto(lpNome) || lpSlug,
+            metric: typeof row.metric === "string" ? row.metric.toLowerCase() : (subEntry.metric || agg.metric || "valor"),
+            meta: 0,
+            realizado: 0,
+            variavelMeta: 0,
+            variavelReal: 0,
+            peso: 0,
+            pontos: 0,
+            ultimaAtualizacao: ""
+          };
+          childMap.set(lpSlug, childEntry);
+        }
+        if (!childEntry.metric && row.metric) childEntry.metric = String(row.metric).toLowerCase();
+        childEntry.meta += metaValor;
+        childEntry.realizado += realizadoValor;
+        childEntry.variavelMeta += Number(row.variavelMeta) || 0;
+        childEntry.variavelReal += Number(row.variavelReal) || 0;
+        childEntry.peso += pesoLinha;
+        childEntry.pontos += Number(row.pontos) || 0;
+        if (row.data && row.data > childEntry.ultimaAtualizacao) {
+          childEntry.ultimaAtualizacao = row.data;
+        }
+      }
+    } else {
+      const subprodutoOriginal = row.subproduto || row.subProduto || "";
+      const subprodutoTexto = limparTexto(subprodutoOriginal);
+      if (subprodutoTexto) {
+        if (!agg.subProdutos) agg.subProdutos = new Set();
+        agg.subProdutos.add(subprodutoTexto);
+        registrarAliasIndicador(agg.id, subprodutoTexto);
+        SUBPRODUTO_TO_INDICADOR.set(simplificarTexto(subprodutoTexto), agg.id);
+        if (!agg.children) agg.children = new Map();
+        const childKey = simplificarTexto(subprodutoTexto) || subprodutoTexto.toLowerCase();
+        let child = agg.children.get(childKey);
+        if (!child) {
+          child = {
+            id: childKey || subprodutoTexto,
+            label: limparTexto(subprodutoOriginal) || subprodutoTexto,
+            metric: typeof row.metric === "string" ? row.metric.toLowerCase() : (typeof agg.metric === "string" ? agg.metric.toLowerCase() : "valor"),
+            meta: 0,
+            realizado: 0,
+            variavelMeta: 0,
+            variavelReal: 0,
+            peso: 0,
+            pontos: 0,
+            ultimaAtualizacao: ""
+          };
+          agg.children.set(childKey, child);
+        }
+        if (!child.metric && row.metric) child.metric = String(row.metric).toLowerCase();
+        child.meta += metaValor;
+        child.realizado += realizadoValor;
+        child.variavelMeta += Number(row.variavelMeta) || 0;
+        child.variavelReal += Number(row.variavelReal) || 0;
+        child.peso += pesoLinha;
+        child.pontos += Number(row.pontos) || 0;
+        if (row.data && row.data > child.ultimaAtualizacao) {
+          child.ultimaAtualizacao = row.data;
+        }
+      }
     }
   });
 
@@ -6561,6 +8478,55 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
       cardBase.prodOrSub = agg.produtoNome || agg.nome || agg.id;
       if (agg.aliases) cardBase.aliases = Array.from(agg.aliases);
       if (agg.subProdutos) cardBase.subProdutos = Array.from(agg.subProdutos);
+      if (agg.subIndicators && agg.subIndicators.size) {
+        cardBase.children = Array.from(agg.subIndicators.values()).map(sub => {
+          const childList = sub.children instanceof Map
+            ? Array.from(sub.children.values())
+            : Array.isArray(sub.children) ? sub.children : [];
+          return {
+            id: sub.id,
+            nome: sub.label,
+            label: sub.label,
+            metric: sub.metric || agg.metric,
+            meta: sub.meta,
+            realizado: sub.realizado,
+            variavelMeta: sub.variavelMeta,
+            variavelReal: sub.variavelReal,
+            peso: sub.peso,
+            pontos: sub.pontos,
+            ultimaAtualizacao: sub.ultimaAtualizacao,
+            children: childList.map(child => ({
+              id: child.id,
+              nome: child.label,
+              label: child.label,
+              metric: child.metric || sub.metric || agg.metric,
+              meta: child.meta,
+              realizado: child.realizado,
+              variavelMeta: child.variavelMeta,
+              variavelReal: child.variavelReal,
+              peso: child.peso,
+              pontos: child.pontos,
+              ultimaAtualizacao: child.ultimaAtualizacao,
+              children: []
+            }))
+          };
+        });
+      } else if (agg.children && agg.children.size) {
+        cardBase.children = Array.from(agg.children.values()).map(child => ({
+          id: child.id,
+          nome: child.label,
+          label: child.label,
+          metric: child.metric || agg.metric,
+          meta: child.meta,
+          realizado: child.realizado,
+          variavelMeta: child.variavelMeta,
+          variavelReal: child.variavelReal,
+          peso: child.peso,
+          pontos: child.pontos,
+          ultimaAtualizacao: child.ultimaAtualizacao,
+          children: []
+        }));
+      }
       return cardBase;
     }).filter(Boolean);
     if (items.length) {
@@ -6620,6 +8586,8 @@ function renderFamilias(sections, summary){
   const prevVarRatios = resumoAnim?.varRatios instanceof Map ? resumoAnim.varRatios : new Map();
   const nextVarRatios = new Map();
 
+  const visibleSections = [];
+
   const status = getStatusFilter();
   const secaoFilterId = $("#f-secao")?.value || "Todas";
   const familiaFilterId = $("#f-familia")?.value || "Todas";
@@ -6632,11 +8600,6 @@ function renderFamilias(sections, summary){
   let varMetaVisiveis = 0;
   let varRealVisiveis = 0;
   let hasVisibleVar = false;
-
-  const kpiHolder = document.createElement("div");
-  kpiHolder.id = "kpi-summary";
-  kpiHolder.className = "kpi-summary";
-  host.appendChild(kpiHolder);
 
   sections.forEach(sec=>{
     const familiaFilterIsSection = familiaFilterId !== "Todas" && SECTION_IDS.has(familiaFilterId);
@@ -6662,12 +8625,31 @@ function renderFamilias(sections, summary){
     });
     if (!itemsFiltered.length) return;
 
-    const sectionTotalPoints = itemsFiltered.reduce((acc,i)=> acc + (i.pontosMeta ?? i.peso ?? 0), 0);
-    const sectionPointsHit   = itemsFiltered.reduce((acc,i)=> acc + Math.max(0, Number(i.pontos ?? 0)), 0);
+    const cardItems = itemsFiltered.filter(item => !item.hiddenInCards);
+
+    const sectionTotalPoints = cardItems.reduce((acc,i)=> acc + (i.pontosMeta ?? i.peso ?? 0), 0);
+    const sectionPointsHit   = cardItems.reduce((acc,i)=> acc + Math.max(0, Number(i.pontos ?? 0)), 0);
     const sectionPointsHitDisp = formatPoints(sectionPointsHit);
     const sectionPointsTotalDisp = formatPoints(sectionTotalPoints);
     const sectionPointsHitFull = formatPoints(sectionPointsHit, { withUnit: true });
     const sectionPointsTotalFull = formatPoints(sectionTotalPoints, { withUnit: true });
+
+    const sectionMetaTotal = cardItems.reduce((acc, item) => acc + (Number(item.meta) || 0), 0);
+    const sectionRealizadoTotal = cardItems.reduce((acc, item) => acc + (Number(item.realizado) || 0), 0);
+    const sectionAtingPct = sectionMetaTotal ? (sectionRealizadoTotal / sectionMetaTotal) * 100 : 0;
+
+    visibleSections.push({
+      id: sec.id,
+      label: sec.label,
+      items: itemsFiltered,
+      totals: {
+        pontosTotal: sectionTotalPoints,
+        pontosHit: sectionPointsHit,
+        metaTotal: sectionMetaTotal,
+        realizadoTotal: sectionRealizadoTotal,
+        atingPct: sectionAtingPct
+      }
+    });
 
     const sectionEl = document.createElement("section");
     sectionEl.className = "fam-section";
@@ -6684,7 +8666,7 @@ function renderFamilias(sections, summary){
       <div class="fam-section__grid"></div>`;
     const grid = sectionEl.querySelector(".fam-section__grid");
 
-    itemsFiltered.forEach(f=>{
+    cardItems.forEach(f=>{
       if (f.atingido){ atingidosVisiveis += 1; }
       const pontosMetaItem = Number(f.pontosMeta ?? f.peso) || 0;
       const pontosRealItem = Math.max(0, Number(f.pontos ?? 0));
@@ -6796,6 +8778,13 @@ function renderFamilias(sections, summary){
     visibleVarMeta: hasVisibleVar ? varMetaVisiveis : null
   });
 
+  const legacySections = buildResumoLegacySections(visibleSections);
+  const sectionsForLegacy = legacySections.length ? legacySections : visibleSections;
+  state.dashboardVisibleSections = sectionsForLegacy;
+  renderResumoLegacyTable(sectionsForLegacy, summary, visibleSections);
+
+  applyResumoMode(state.resumoMode || "cards");
+
   $$(".prod-card").forEach(card=>{
     const tip = card.querySelector(".kpi-tip");
     const badge = card.querySelector(".badge");
@@ -6841,6 +8830,357 @@ function renderFamilias(sections, summary){
       renderAppliedFilters();
     });
   });
+}
+
+function renderResumoLegacyTable(sections = [], summary = {}, rawSections = null) {
+  const host = $("#resumo-legacy");
+  if (!host) return;
+
+  host.innerHTML = "";
+
+  const showAnnualMatrix = (state.accumulatedView || "mensal") === "anual";
+  host.classList.toggle("resumo-legacy--annual", showAnnualMatrix);
+
+  const activeSections = showAnnualMatrix
+    ? (Array.isArray(rawSections) && rawSections.length ? rawSections : sections)
+    : sections;
+
+  if (!Array.isArray(activeSections) || !activeSections.length) {
+    host.innerHTML = `<div class="resumo-legacy__empty">Nenhum indicador encontrado para os filtros selecionados.</div>`;
+    return;
+  }
+
+  if (showAnnualMatrix) {
+    const rendered = renderResumoLegacyAnnualMatrix(host, activeSections, summary);
+    if (!rendered) {
+      host.innerHTML = `<div class="resumo-legacy__empty">Nenhum indicador encontrado para os filtros selecionados.</div>`;
+    }
+    return;
+  }
+
+  const metricInfo = {
+    valor: { label: "Valor", title: "Indicador financeiro" },
+    qtd:   { label: "Quantidade", title: "Indicador por quantidade" },
+    perc:  { label: "Percentual", title: "Indicador percentual" }
+  };
+
+  sections.forEach(section => {
+    const items = Array.isArray(section.items) ? section.items : [];
+    if (!items.length) return;
+
+    const totals = section.totals || {};
+    const pontosTotal = Number(totals.pontosTotal) || items.reduce((acc, item) => acc + (Number(item.pontosMeta ?? item.peso) || 0), 0);
+    const pontosHit = Number(totals.pontosHit) || items.reduce((acc, item) => acc + Math.min(Number(item.pontos ?? 0) || 0, Number(item.pontosMeta ?? item.peso) || 0), 0);
+    const metaTotal = Number(totals.metaTotal) || items.reduce((acc, item) => acc + (Number(item.meta) || 0), 0);
+    const realizadoTotal = Number(totals.realizadoTotal) || items.reduce((acc, item) => acc + (Number(item.realizado) || 0), 0);
+
+    const atingPctBase = Number.isFinite(totals.atingPct) ? totals.atingPct : (metaTotal ? (realizadoTotal / metaTotal) * 100 : 0);
+    const hasMeta = metaTotal > 0;
+    const atingSectionClamped = hasMeta ? Math.max(0, Math.min(200, atingPctBase)) : 0;
+    const atingSectionLabel = hasMeta ? `${atingSectionClamped.toFixed(1)}%` : "—";
+
+    const uniqueMetrics = new Set(items.map(item => item.metric));
+    const singleMetric = uniqueMetrics.size === 1 ? (uniqueMetrics.values().next().value || "") : "";
+    const normalizedMetric = typeof singleMetric === "string" ? singleMetric.toLowerCase() : "";
+    const canAggregateMetric = normalizedMetric === "valor" || normalizedMetric === "qtd";
+    const aggregatedLabel = normalizedMetric === "qtd" ? "Quantidade" : (normalizedMetric === "valor" ? "Realizado" : "");
+    const aggregatedValue = canAggregateMetric ? formatByMetric(normalizedMetric, realizadoTotal) : "";
+
+    const sectionEl = document.createElement("section");
+    sectionEl.className = "resumo-legacy__section card card--legacy";
+    const safeLabel = escapeHTML(section.label || "Indicadores");
+    const chipPointsTitle = `Pontos: ${formatPoints(pontosHit, { withUnit: true })} / ${formatPoints(pontosTotal, { withUnit: true })}`;
+    const pontosHitLabel = escapeHTML(fmtINT.format(Math.round(pontosHit || 0)));
+    const pontosTotalLabel = escapeHTML(fmtINT.format(Math.round(pontosTotal || 0)));
+    const sectionHasExpandableRows = items.some(item => Array.isArray(item.children) && item.children.length);
+    const sectionToggleClass = `resumo-legacy__section-toggle${sectionHasExpandableRows ? "" : " is-disabled"}`;
+    const sectionToggleAttrs = sectionHasExpandableRows ? "" : " disabled aria-disabled=\"true\"";
+
+    const statsPieces = [
+      `<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">Peso total</span><strong class=\"resumo-legacy__stat-value\">${escapeHTML(fmtINT.format(Math.round(pontosTotal || 0)))}</strong></div>`
+    ];
+    if (canAggregateMetric && aggregatedLabel) {
+      statsPieces.push(`<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">${aggregatedLabel}</span><strong class=\"resumo-legacy__stat-value\">${escapeHTML(aggregatedValue)}</strong></div>`);
+    }
+    statsPieces.push(`<div class=\"resumo-legacy__stat\"><span class=\"resumo-legacy__stat-label\">Atingimento</span><strong class=\"resumo-legacy__stat-value\">${atingSectionLabel}</strong></div>`);
+
+    sectionEl.innerHTML = `
+      <header class="resumo-legacy__head">
+        <div class="resumo-legacy__heading">
+          <div class="resumo-legacy__title-row">
+            <span class="resumo-legacy__name">${safeLabel}</span>
+            <div class="resumo-legacy__section-actions">
+              <button type="button" class="${sectionToggleClass}" data-expanded="false"${sectionToggleAttrs}>
+                <i class="ti ti-filter" aria-hidden="true"></i>
+                <span class="resumo-legacy__section-toggle-label">Abrir todos os filtros</span>
+              </button>
+            </div>
+          </div>
+          <div class="resumo-legacy__chips">
+            <span class="resumo-legacy__chip"><i class="ti ti-box-multiple" aria-hidden="true"></i>${escapeHTML(fmtINT.format(items.length))} indicadores</span>
+            <span class="resumo-legacy__chip" title="${escapeHTML(chipPointsTitle)}">Pontos ${pontosHitLabel} / ${pontosTotalLabel}</span>
+          </div>
+        </div>
+        <div class="resumo-legacy__stats">
+          ${statsPieces.join("")}
+        </div>
+      </header>
+      <div class="resumo-legacy__table-wrapper">
+        <table class="resumo-legacy__table">
+          <thead>
+            <tr>
+              <th scope="col">Produto</th>
+              <th scope="col" class="resumo-legacy__col--peso">Peso</th>
+              <th scope="col">Métrica</th>
+              <th scope="col" class="resumo-legacy__col--meta">Meta</th>
+              <th scope="col" class="resumo-legacy__col--real">Realizado</th>
+              <th scope="col" class="resumo-legacy__col--ref">Ref. do dia</th>
+              <th scope="col" class="resumo-legacy__col--forecast">Forecast</th>
+              <th scope="col" class="resumo-legacy__col--meta-dia">Meta diária nec.</th>
+              <th scope="col" class="resumo-legacy__col--pontos">Pontos</th>
+              <th scope="col" class="resumo-legacy__col--ating">Ating.</th>
+              <th scope="col" class="resumo-legacy__col--update">Atualização</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    `;
+
+    const tbody = sectionEl.querySelector("tbody");
+    if (!tbody) return;
+
+    let rowAutoId = 0;
+    const rowToggleHandlers = new Map();
+    const sectionToggle = sectionEl.querySelector(".resumo-legacy__section-toggle");
+    const sectionToggleLabel = sectionEl.querySelector(".resumo-legacy__section-toggle-label");
+
+    const syncSectionToggleState = () => {
+      if (!sectionToggle) return;
+      if (!rowToggleHandlers.size) {
+        sectionToggle.setAttribute("data-expanded", "false");
+        sectionToggle.classList.remove("is-expanded");
+        if (!sectionHasExpandableRows) {
+          sectionToggle.classList.add("is-disabled");
+          sectionToggle.setAttribute("aria-disabled", "true");
+          sectionToggle.setAttribute("disabled", "true");
+        }
+        if (sectionToggleLabel) sectionToggleLabel.textContent = "Abrir todos os filtros";
+        return;
+      }
+      sectionToggle.classList.remove("is-disabled");
+      sectionToggle.removeAttribute("aria-disabled");
+      sectionToggle.removeAttribute("disabled");
+      let expandedCount = 0;
+      rowToggleHandlers.forEach((_, rowId) => {
+        const rowEl = tbody.querySelector(`tr[data-row-id="${rowId}"]`);
+        if (rowEl?.classList.contains("is-expanded")) expandedCount += 1;
+      });
+      const allExpanded = expandedCount > 0 && expandedCount === rowToggleHandlers.size;
+      sectionToggle.setAttribute("data-expanded", String(allExpanded));
+      sectionToggle.classList.toggle("is-expanded", allExpanded);
+      if (sectionToggleLabel) sectionToggleLabel.textContent = allExpanded ? "Recolher filtros" : "Abrir todos os filtros";
+    };
+
+    const rows = [];
+
+    const buildRow = (item, depth = 0, parentId = "") => {
+      if (!item) return null;
+
+      const rowId = `legacy-${section.id || "sec"}-${rowAutoId++}`;
+      const hasChildren = Array.isArray(item.children) && item.children.length > 0;
+      const visualDepth = typeof item.__legacyDepth === "number" ? item.__legacyDepth : depth;
+      const metricKeyRaw = typeof item.metric === "string" ? item.metric.toLowerCase() : "";
+      const metricEntry = metricInfo[metricKeyRaw] || null;
+      const isKnownMetric = metricKeyRaw === "valor" || metricKeyRaw === "qtd" || metricKeyRaw === "perc";
+      const metricLabelRaw = metricEntry ? metricEntry.label : "—";
+      const metricTitleRaw = metricEntry ? metricEntry.title : "Métrica do indicador";
+      const metricClasses = ["resumo-legacy__metric"];
+      if (isKnownMetric) {
+        metricClasses.push(`resumo-legacy__metric--${metricKeyRaw}`);
+      }
+
+      const pesoValor = Number(item.pontosMeta ?? item.peso ?? 0) || 0;
+      const pesoLabelRaw = fmtINT.format(Math.round(pesoValor));
+
+      let metaCellRaw = "—";
+      let metaTitleRaw = "Sem meta agregada";
+      let realizadoCellRaw = "—";
+      let realizadoTitleRaw = "Sem realizado agregado";
+      let referenciaCellRaw = "—";
+      let referenciaTitleRaw = "Sem referência do dia";
+      let forecastCellRaw = "—";
+      let forecastTitleRaw = "Sem forecast calculado";
+      let metaNecCellRaw = "—";
+      let metaNecTitleRaw = "Sem meta diária necessária";
+      if (isKnownMetric) {
+        metaCellRaw = formatByMetric(metricKeyRaw, item.meta);
+        metaTitleRaw = formatMetricFull(metricKeyRaw, item.meta);
+        realizadoCellRaw = formatByMetric(metricKeyRaw, item.realizado);
+        realizadoTitleRaw = formatMetricFull(metricKeyRaw, item.realizado);
+        referenciaCellRaw = formatByMetric(metricKeyRaw, item.referenciaHoje);
+        referenciaTitleRaw = formatMetricFull(metricKeyRaw, item.referenciaHoje);
+        forecastCellRaw = formatByMetric(metricKeyRaw, item.projecao);
+        forecastTitleRaw = formatMetricFull(metricKeyRaw, item.projecao);
+        metaNecCellRaw = formatByMetric(metricKeyRaw, item.metaDiariaNecessaria);
+        metaNecTitleRaw = formatMetricFull(metricKeyRaw, item.metaDiariaNecessaria);
+      }
+
+      const atingPct = Math.max(0, Math.min(200, toNumber(item.ating) * 100));
+      const atingFill = Math.max(0, Math.min(1, atingPct / 100));
+      const atingLabelRaw = `${atingPct.toFixed(1)}%`;
+      const atingMeterClass = atingPct >= 100 ? "is-ok" : (atingPct >= 50 ? "is-warn" : "is-low");
+
+      const pontosValor = Number(item.pontos ?? item.pontosBrutos ?? item.peso ?? 0) || 0;
+      const pontosLabelRaw = formatPoints(pontosValor, { withUnit: true });
+      const pontosTitleRaw = formatPoints(pontosValor, { withUnit: true });
+
+      const updateRaw = item.ultimaAtualizacao || "";
+      const updateLabelRaw = updateRaw
+        ? (/^\d{4}-\d{2}-\d{2}$/.test(updateRaw) ? formatBRDate(updateRaw) : updateRaw)
+        : "—";
+
+      const prodClasses = ["resumo-legacy__prod"];
+      if (visualDepth === 1) prodClasses.push("resumo-legacy__prod--child");
+      if (visualDepth >= 2) prodClasses.push("resumo-legacy__prod--grandchild");
+
+      const rowClasses = ["resumo-legacy__row"];
+      if (hasChildren) rowClasses.push("has-children");
+      if (visualDepth === 0) rowClasses.push("resumo-legacy__row--family");
+      if (visualDepth === 1) rowClasses.push("resumo-legacy__row--indicator", "resumo-legacy__row--child");
+      if (visualDepth >= 2) rowClasses.push("resumo-legacy__row--lp", "resumo-legacy__child-row", "resumo-legacy__row--grandchild");
+
+      const attrParts = [`class="${rowClasses.join(" ")}"`, `data-row-id="${rowId}"`, `data-depth="${visualDepth}"`];
+      if (parentId) attrParts.push(`data-parent-id="${parentId}"`);
+      const hiddenAttr = parentId ? " hidden" : "";
+
+      const nomeSafe = escapeHTML(item.nome || item.label || "—");
+      const produtoCellHtml = hasChildren
+        ? `<div class="${prodClasses.join(" ")}"><button type="button" class="resumo-legacy__prod-toggle" aria-expanded="false"><i class="ti ti-chevron-right resumo-legacy__prod-toggle-icon" aria-hidden="true"></i><span class="resumo-legacy__prod-name" title="${nomeSafe}">${nomeSafe}</span></button></div>`
+        : `<div class="${prodClasses.join(" ")}"><span class="resumo-legacy__prod-name" title="${nomeSafe}">${nomeSafe}</span></div>`;
+
+      const rowHtml = `
+        <tr ${attrParts.join(" ")}${hiddenAttr}>
+          <th scope="row">
+            ${produtoCellHtml}
+          </th>
+          <td class="resumo-legacy__col--peso" title="Peso do indicador">${escapeHTML(pesoLabelRaw)}</td>
+          <td>
+            <span class="${metricClasses.join(" ")}" title="${escapeHTML(metricTitleRaw)}">${escapeHTML(metricLabelRaw || "—")}</span>
+          </td>
+          <td class="resumo-legacy__col--meta" title="${escapeHTML(metaTitleRaw)}">${escapeHTML(metaCellRaw)}</td>
+          <td class="resumo-legacy__col--real" title="${escapeHTML(realizadoTitleRaw)}">${escapeHTML(realizadoCellRaw)}</td>
+          <td class="resumo-legacy__col--ref" title="${escapeHTML(referenciaTitleRaw)}">${escapeHTML(referenciaCellRaw)}</td>
+          <td class="resumo-legacy__col--forecast" title="${escapeHTML(forecastTitleRaw)}">${escapeHTML(forecastCellRaw)}</td>
+          <td class="resumo-legacy__col--meta-dia" title="${escapeHTML(metaNecTitleRaw)}">${escapeHTML(metaNecCellRaw)}</td>
+          <td class="resumo-legacy__col--pontos" title="${escapeHTML(pontosTitleRaw)}">${escapeHTML(pontosLabelRaw)}</td>
+          <td class="resumo-legacy__col--ating">
+            <div class="resumo-legacy__ating" title="Atingimento">
+              <div class="resumo-legacy__ating-meter ${atingMeterClass}" style="--fill:${atingFill.toFixed(4)};" role="progressbar" aria-valuemin="0" aria-valuemax="200" aria-valuenow="${atingPct.toFixed(1)}" aria-valuetext="${escapeHTML(atingLabelRaw)}">
+                <span class="resumo-legacy__ating-value">${escapeHTML(atingLabelRaw)}</span>
+              </div>
+            </div>
+          </td>
+          <td class="resumo-legacy__col--update">${escapeHTML(updateLabelRaw)}</td>
+        </tr>
+      `;
+
+      const rowConfig = { rowId, parentId, depth, hasChildren, childrenIds: [], html: rowHtml };
+      rows.push(rowConfig);
+
+      if (hasChildren) {
+        item.children.forEach(child => {
+          const childId = buildRow(child, depth + 1, rowId);
+          if (childId) rowConfig.childrenIds.push(childId);
+        });
+      }
+
+      return rowId;
+    };
+
+    items.forEach(item => buildRow(item, 0, ""));
+
+    if (!rows.length) return;
+
+    tbody.innerHTML = rows.map(row => row.html).join("");
+
+    rows.forEach(row => {
+      const rowEl = tbody.querySelector(`tr[data-row-id="${row.rowId}"]`);
+      if (!rowEl) return;
+      row.element = rowEl;
+      if (row.parentId) {
+        rowEl.hidden = true;
+      }
+    });
+
+    rows.forEach(row => {
+      if (!row.hasChildren) return;
+      const rowEl = row.element;
+      if (!rowEl) return;
+      const toggleBtn = rowEl.querySelector(".resumo-legacy__prod-toggle");
+      if (!toggleBtn) return;
+      toggleBtn.setAttribute("aria-expanded", "false");
+
+      const toggleChildren = (expand) => {
+        const current = rowEl.classList.contains("is-expanded");
+        const nextState = typeof expand === "boolean" ? expand : !current;
+        rowEl.classList.toggle("is-expanded", nextState);
+        toggleBtn.setAttribute("aria-expanded", String(nextState));
+        row.childrenIds.forEach(childId => {
+          const childRow = tbody.querySelector(`tr[data-row-id="${childId}"]`);
+          if (!childRow) return;
+          childRow.hidden = !nextState;
+        });
+        if (!nextState) {
+          row.childrenIds.forEach(childId => {
+            const childToggle = rowToggleHandlers.get(childId);
+            if (childToggle) childToggle(false);
+          });
+        }
+        syncSectionToggleState();
+      };
+
+      toggleBtn.addEventListener("click", ev => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        toggleChildren();
+      });
+
+      rowEl.addEventListener("click", ev => {
+        if (ev.target.closest(".resumo-legacy__prod-toggle")) return;
+        toggleChildren();
+      });
+
+      rowToggleHandlers.set(row.rowId, toggleChildren);
+    });
+
+    if (sectionToggle) {
+      if (sectionHasExpandableRows) {
+        sectionToggle.addEventListener("click", ev => {
+          ev.preventDefault();
+          const targetState = sectionToggle.getAttribute("data-expanded") !== "true";
+          rowToggleHandlers.forEach(toggleFn => {
+            toggleFn(targetState);
+          });
+          sectionToggle.setAttribute("data-expanded", String(targetState));
+          sectionToggle.classList.toggle("is-expanded", targetState);
+          if (sectionToggleLabel) sectionToggleLabel.textContent = targetState ? "Recolher filtros" : "Abrir todos os filtros";
+        });
+      } else {
+        sectionToggle.classList.add("is-disabled");
+        sectionToggle.setAttribute("aria-disabled", "true");
+        sectionToggle.setAttribute("disabled", "true");
+      }
+    }
+
+    syncSectionToggleState();
+
+    host.appendChild(sectionEl);
+  });
+
+  if (!host.children.length) {
+    host.innerHTML = `<div class="resumo-legacy__empty">Nenhum indicador encontrado para os filtros selecionados.</div>`;
+  }
 }
 /* ===== Aqui eu preparo comportamentos extras das abas quando surgirem novas ===== */
 function ensureExtraTabs(){
@@ -7052,6 +9392,16 @@ function monthKeyLabel(key){
   return dt.toLocaleDateString("pt-BR", { month: "short", year: "numeric" }).replace(".", "");
 }
 
+function monthKeyShortLabel(key){
+  if (!key) return "";
+  const [y, m] = key.split('-');
+  const year = Number(y);
+  const month = Number(m);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return key;
+  const dt = new Date(Date.UTC(year, month - 1, 1));
+  return dt.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "").toUpperCase();
+}
+
 function monthKeyFromDate(dt){
   if (!(dt instanceof Date) || Number.isNaN(dt)) return "";
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}`;
@@ -7066,6 +9416,18 @@ function normalizeMonthKey(value){
     if (match) return `${match[1]}-${match[2]}`;
   }
   return "";
+}
+
+function extractYearFromValue(value){
+  if (!value) return "";
+  if (value instanceof Date && Number.isFinite(value.getUTCFullYear())) {
+    return String(value.getUTCFullYear());
+  }
+  const normalized = normalizeMonthKey(value);
+  if (normalized) return normalized.slice(0, 4);
+  const asString = String(value);
+  const match = asString.match(/(\d{4})/);
+  return match ? match[1] : "";
 }
 
 function buildMonthlyAxis(period){
@@ -7167,7 +9529,86 @@ function makeMonthlySectionSeries(rows, period){
   };
 }
 
-function buildExecMonthlyLines(container, dataset){
+function makeAnnualSectionSeries(rows){
+  if (!Array.isArray(rows) || !rows.length) {
+    return { keys: [], labels: [], series: [] };
+  }
+
+  const sectionOrder = new Map(CARD_SECTIONS_DEF.map((sec, idx) => [sec.id, idx]));
+  const yearsSet = new Set();
+  rows.forEach(r => {
+    const rawDate = r?.competencia || r?.mes || r?.data || r?.dataReferencia || r?.dt;
+    const year = extractYearFromValue(rawDate);
+    if (year) yearsSet.add(year);
+  });
+
+  const years = Array.from(yearsSet).sort((a, b) => {
+    const na = Number(a);
+    const nb = Number(b);
+    if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+    return a.localeCompare(b);
+  });
+  if (!years.length) {
+    return { keys: [], labels: [], series: [] };
+  }
+
+  const yearIndex = new Map(years.map((year, idx) => [year, idx]));
+  const sections = new Map();
+
+  rows.forEach(r => {
+    const rawDate = r?.competencia || r?.mes || r?.data || r?.dataReferencia || r?.dt;
+    const year = extractYearFromValue(rawDate);
+    if (!yearIndex.has(year)) return;
+    const idx = yearIndex.get(year);
+    const section = resolveSectionMetaFromRow(r);
+    if (!section.id) return;
+
+    let entry = sections.get(section.id);
+    if (!entry) {
+      entry = {
+        id: section.id,
+        label: section.label || getSectionLabel(section.id) || section.id,
+        meta: Array(years.length).fill(0),
+        real: Array(years.length).fill(0)
+      };
+      sections.set(section.id, entry);
+    } else if (!entry.label && section.label) {
+      entry.label = section.label;
+    }
+
+    entry.meta[idx] += toNumber(r.meta_mens ?? r.meta ?? 0);
+    entry.real[idx] += toNumber(r.real_mens ?? r.realizado ?? 0);
+  });
+
+  const series = [...sections.values()].map(entry => {
+    const values = entry.meta.map((meta, idx) => {
+      if (!Number.isFinite(meta) || meta <= 0) return null;
+      const realVal = entry.real[idx] ?? 0;
+      return (realVal / meta) * 100;
+    });
+    if (!values.some(v => Number.isFinite(v))) return null;
+    return {
+      id: entry.id,
+      label: entry.label || getSectionLabel(entry.id) || entry.id,
+      values,
+      color: ensureExecSeriesColor(entry.id)
+    };
+  }).filter(Boolean).sort((a, b) => {
+    const ai = sectionOrder.has(a.id) ? sectionOrder.get(a.id) : Number.MAX_SAFE_INTEGER;
+    const bi = sectionOrder.has(b.id) ? sectionOrder.get(b.id) : Number.MAX_SAFE_INTEGER;
+    if (ai !== bi) return ai - bi;
+    return a.label.localeCompare(b.label, 'pt-BR', { sensitivity: 'base' });
+  });
+
+  return {
+    keys: years,
+    labels: years,
+    series
+  };
+}
+
+function buildExecMonthlyLines(container, dataset, options = {}){
+  const ariaLabel = options?.ariaLabel || "Linhas de atingimento mensal por seção";
   if (!dataset || !dataset.series?.length) {
     container.innerHTML = `<div class="muted">Sem dados para exibir.</div>`;
     return;
@@ -7230,8 +9671,9 @@ function buildExecMonthlyLines(container, dataset){
     `<text x="${x(idx)}" y="${H - 10}" font-size="10" text-anchor="middle" fill="#6b7280">${escapeHTML(lab)}</text>`
   ).join('');
 
+  const safeAria = escapeHTML(ariaLabel);
   container.innerHTML = `
-    <svg class="exec-chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Linhas de atingimento mensal por família">
+    <svg class="exec-chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${safeAria}">
       <rect x="0" y="0" width="${W}" height="${H}" fill="white"/>
       ${gridY}
       ${paths}
@@ -7364,24 +9806,26 @@ function renderExecutiveView(){
   // Gráfico
   if (chartC){
     const monthlySeries = makeMonthlySectionSeries(rowsMonthly, execMonthlyPeriod);
-    chartC.setAttribute("aria-label", "Linhas mensais de atingimento por seção");
+    const ariaLabel = "Linhas mensais de atingimento por seção";
+    chartC.setAttribute("aria-label", ariaLabel);
     if (chartTitleEl) chartTitleEl.textContent = "Evolução mensal por seção";
+
     if (chartLegend){
-      if (monthlySeries.series.length){
-        chartLegend.innerHTML = monthlySeries.series.map(serie => `
+      const seriesList = monthlySeries.series || [];
+      if (seriesList.length){
+        chartLegend.innerHTML = seriesList.map(serie => `
           <span class="legend-item">
-            <span class="legend-swatch legend-swatch--line" style="--swatch:${serie.color}"></span>${escapeHTML(serie.label)}
+            <span class="legend-swatch legend-swatch--line" style="background:${serie.color};border-color:${serie.color};"></span>${escapeHTML(serie.label)}
           </span>`).join("");
       } else {
         chartLegend.innerHTML = `<span class="legend-item muted">Sem seções para exibir.</span>`;
       }
     }
 
+    const renderChart = () => buildExecMonthlyLines(chartC, monthlySeries, { ariaLabel });
     host.__execChartDataset = monthlySeries;
-    const renderChart = () => buildExecMonthlyLines(chartC, host.__execChartDataset);
-
-    renderChart();
     host.__execChartRender = renderChart;
+    renderChart();
 
     if (!host.__execResize){
       let raf = null;
@@ -8468,7 +10912,6 @@ function renderCampanhasView(){
   });
 }
 
-
 function createRankingView(){
   const main = document.querySelector(".container"); 
   if(!main) return;
@@ -9491,8 +11934,6 @@ async function refresh(){
   }
 }
 
-
-
 /* ===== Aqui eu escrevi um loader de CSV que aguenta diferentes codificações e separadores ===== */
 async function loadCSVAuto(url) {
   // Busca como binário para poder detectar a codificação.
@@ -9551,8 +11992,6 @@ async function loadCSVAuto(url) {
     return normalized;
   });
 }
-
-
 
 /* ===== Aqui eu disparo o boot do painel assim que a página carrega ===== */
 (async function(){

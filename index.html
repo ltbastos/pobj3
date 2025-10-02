@@ -196,7 +196,7 @@
       </button>
       <button class="tab" data-view="exec" aria-label="Visão executiva">
         <span class="tab-icon"><i class="ti ti-chart-line" aria-hidden="true"></i></span>
-        <span class="tab-label">V. Exec.</span>
+        <span class="tab-label">Visão executiva</span>
       </button>
       <button class="tab" data-view="campanhas" aria-label="Campanhas">
         <span class="tab-icon"><i class="ti ti-speakerphone" aria-hidden="true"></i></span>
@@ -207,9 +207,26 @@
       </div>
     </section>
 
-    <!-- Aqui eu apresento a visão de resumo só com cards -->
+    <!-- Aqui eu apresento a visão de resumo com opção de cards ou tabela clássica -->
     <section id="view-cards">
-      <div id="grid-familias" class="cards-grid"></div>
+      <div class="resumo-mode">
+        <div class="resumo-mode__toggle" id="resumo-mode-toggle" role="group" aria-label="Alterar visão do resumo">
+          <div class="segmented">
+            <button type="button" class="seg-btn is-active" data-mode="cards" aria-pressed="true">Visão por cards</button>
+            <button type="button" class="seg-btn" data-mode="legacy" aria-pressed="false">Visão clássica</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="resumo-summary" class="resumo-summary">
+        <div id="kpi-summary" class="kpi-summary"></div>
+      </div>
+
+      <div id="resumo-cards" class="resumo-mode__view">
+        <div id="grid-familias" class="cards-grid"></div>
+      </div>
+
+      <div id="resumo-legacy" class="resumo-mode__view hidden" aria-live="polite"></div>
     </section>
 
     <!-- Aqui eu apresento a visão de detalhamento com a tabela em árvore -->
@@ -247,7 +264,7 @@
         <div id="exec-kpis" class="exec-kpis"></div>
 
         <section class="exec-panel exec-chart">
-          <div class="exec-h">
+          <div class="exec-h exec-h--chart">
             <span id="exec-chart-title">Evolução mensal por seção</span>
           </div>
           <div id="exec-chart" class="chart" role="img" aria-label="Linhas mensais de atingimento por seção"></div>
@@ -415,6 +432,7 @@
   </footer>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
+  <script src="legacy-structure.js"></script>
   <script src="script.js"></script>
   <script src="leads.js"></script>
   <script src="omega.js"></script>
