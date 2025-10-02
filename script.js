@@ -1984,6 +1984,9 @@ const INDICATOR_STRUCTURE_OVERRIDES = {
   captacao_bruta: {
     subIndicators: []
   },
+  captacao_bruta_total: {
+    subIndicators: []
+  },
   captacao_liquida: {
     subIndicators: [
       { id: "captacao_liquida_grupo_a", nome: "Captação Líquida - Grupo A", peso: 1 },

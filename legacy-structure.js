@@ -15,13 +15,24 @@ const LEGACY_RESUMO_STRUCTURE = [
         ]
       },
       {
+        id: "captacao_cap_bruta_total",
+        nome: "Captação Bruta Total",
+        indicadores: [
+          {
+            id: "captacao_bruta_total",
+            cardId: "captacao_bruta_total",
+            nome: "Captação Bruta Total"
+          }
+        ]
+      },
+      {
         id: "captacao_cap_liquida",
-        nome: "Captação Líquida",
+        nome: "Captação Líquida (Todos os Produtos)",
         indicadores: [
           {
             id: "captacao_liquida",
             cardId: "captacao_liquida",
-            nome: "Captação Líquida",
+            nome: "Captação Líquida (Todos os Produtos)",
             subindicadores: [
               { id: "captacao_liquida_grupo_a", nome: "Captação Líquida - Grupo A" },
               { id: "captacao_liquida_isentos_aplicacao", nome: "Isentos - Aplicação" },
@@ -32,42 +43,6 @@ const LEGACY_RESUMO_STRUCTURE = [
               { id: "captacao_liquida_portab_previdencia_aplicacao", nome: "Portabilidade de Previdência Privada - Aplicação" },
               { id: "captacao_liquida_previdencia_resgate", nome: "Previdência Privada - Resgate" },
               { id: "captacao_liquida_portab_previdencia_resgate", nome: "Portabilidade de Previdência Privada - Resgate" }
-            ]
-          }
-        ]
-      },
-      {
-        id: "captacao_portab_prev",
-        nome: "Portabilidade de Previdência Privada",
-        indicadores: [
-          {
-            id: "portab_prev",
-            cardId: "portab_prev",
-            nome: "Portabilidade de Previdência Privada",
-            subindicadores: [
-              { id: "portab_prev_aplicacao", nome: "Portabilidade de Previdência Privada - Aplicação" },
-              { id: "portab_prev_resgate", nome: "Portabilidade de Previdência Privada - Resgate" }
-            ]
-          }
-        ]
-      },
-      {
-        id: "captacao_centralizacao",
-        nome: "Centralização de Caixa (Cash)",
-        indicadores: [
-          {
-            id: "centralizacao",
-            cardId: "centralizacao",
-            nome: "Centralização de Caixa (Cash)",
-            subindicadores: [
-              { id: "centralizacao_receber", nome: "Contas a Receber (vol)" },
-              {
-                id: "centralizacao_pagar",
-                nome: "Contas a pagar (vol)",
-                children: [
-                  { id: "centralizacao_pf_qtd", nome: "Centralização de Caixa PF (Qtd)", metric: "qtd" }
-                ]
-              }
             ]
           }
         ]
