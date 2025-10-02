@@ -2118,6 +2118,177 @@ const LEGACY_RESUMO_STRUCTURE = [
         ]
       }
     ]
+  },
+  {
+    id: "credito",
+    label: "CRÉDITO",
+    familias: [
+      {
+        id: "credito_producao_pj",
+        nome: "Produção de Crédito PJ",
+        indicadores: [
+          {
+            id: "prod_credito_pj",
+            cardId: "prod_credito_pj",
+            nome: "Produção de Crédito PJ",
+            subindicadores: [
+              { id: "prod_credito_pj_linha", nome: "Linha PJ" },
+              { id: "prod_credito_pj_cartao", nome: "Cartão PJ" }
+            ]
+          }
+        ]
+      },
+      {
+        id: "credito_rotativo_volume",
+        nome: "Limite Rotativo PJ (Volume)",
+        indicadores: [
+          {
+            id: "rotativo_pj_vol",
+            cardId: "rotativo_pj_vol",
+            nome: "Limite Rotativo PJ (Volume)",
+            subindicadores: [
+              { id: "rotativo_pj_vol_carteira", nome: "Carteira ativa" }
+            ]
+          }
+        ]
+      },
+      {
+        id: "credito_rotativo_quantidade",
+        nome: "Limite Rotativo PJ (Quantidade)",
+        indicadores: [
+          {
+            id: "rotativo_pj_qtd",
+            cardId: "rotativo_pj_qtd",
+            nome: "Limite Rotativo PJ (Quantidade)",
+            subindicadores: [
+              { id: "rotativo_pj_qtd_carteira", nome: "Carteira ativa" }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: "ligadas",
+    label: "LIGADAS",
+    familias: [
+      {
+        id: "ligadas_cartoes",
+        nome: "Cartões",
+        indicadores: [
+          {
+            id: "cartoes",
+            cardId: "cartoes",
+            nome: "Cartões",
+            subindicadores: [
+              { id: "cartoes_pf", nome: "Cartões PF" },
+              { id: "cartoes_pj", nome: "Cartões PJ" }
+            ]
+          }
+        ]
+      },
+      {
+        id: "ligadas_consorcios",
+        nome: "Consórcios",
+        indicadores: [
+          {
+            id: "consorcios",
+            cardId: "consorcios",
+            nome: "Consórcios",
+            subindicadores: [
+              { id: "consorcios_auto", nome: "Auto" },
+              { id: "consorcios_imobiliario", nome: "Imobiliário" }
+            ]
+          }
+        ]
+      },
+      {
+        id: "ligadas_seguros",
+        nome: "Seguros",
+        indicadores: [
+          {
+            id: "seguros",
+            cardId: "seguros",
+            nome: "Seguros",
+            subindicadores: [
+              { id: "seguros_empresas", nome: "Empresas" },
+              { id: "seguros_pessoas", nome: "Pessoas" }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: "produtividade",
+    label: "PRODUTIVIDADE",
+    familias: [
+      {
+        id: "produtividade_sucesso_equipe",
+        nome: "Sucesso de Equipe Crédito",
+        indicadores: [
+          {
+            id: "sucesso_equipe_credito",
+            cardId: "sucesso_equipe_credito",
+            nome: "Sucesso de Equipe Crédito",
+            subindicadores: [
+              { id: "sucesso_equipe_credito_base", nome: "Equipes" }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: "clientes",
+    label: "CLIENTES",
+    familias: [
+      {
+        id: "clientes_conquista_qualif",
+        nome: "Conquista Qualificada Gerenciado PJ",
+        indicadores: [
+          {
+            id: "conquista_qualif_pj",
+            cardId: "conquista_qualif_pj",
+            nome: "Conquista Qualificada Gerenciado PJ",
+            subindicadores: [
+              { id: "conquista_qualif_pj_ativacao", nome: "Ativação" },
+              { id: "conquista_qualif_pj_cross", nome: "Cross-sell" }
+            ]
+          }
+        ]
+      },
+      {
+        id: "clientes_conquista_folha",
+        nome: "Conquista de Clientes Folha de Pagamento",
+        indicadores: [
+          {
+            id: "conquista_folha",
+            cardId: "conquista_folha",
+            nome: "Conquista de Clientes Folha de Pagamento",
+            subindicadores: [
+              { id: "conquista_folha_publico", nome: "Público" },
+              { id: "conquista_folha_privado", nome: "Privado" }
+            ]
+          }
+        ]
+      },
+      {
+        id: "clientes_bradesco_expresso",
+        nome: "Bradesco Expresso",
+        indicadores: [
+          {
+            id: "bradesco_expresso",
+            cardId: "bradesco_expresso",
+            nome: "Bradesco Expresso",
+            subindicadores: [
+              { id: "bradesco_expresso_agencia", nome: "Agência" },
+              { id: "bradesco_expresso_digital", nome: "Digital" }
+            ]
+          }
+        ]
+      }
+    ]
   }
 ];
 
