@@ -42,7 +42,18 @@ const LEGACY_RESUMO_STRUCTURE = [
               { id: "captacao_liquida_previdencia_aplicacao", nome: "Previdência Privada - Aplicação" },
               { id: "captacao_liquida_portab_previdencia_aplicacao", nome: "Portabilidade de Previdência Privada - Aplicação" },
               { id: "captacao_liquida_previdencia_resgate", nome: "Previdência Privada - Resgate" },
-              { id: "captacao_liquida_portab_previdencia_resgate", nome: "Portabilidade de Previdência Privada - Resgate" }
+              { id: "captacao_liquida_portab_previdencia_resgate", nome: "Portabilidade de Previdência Privada - Resgate" },
+              { id: "captacao_liquida_coe_aplicacao", nome: "Coe - Aplicação" },
+              { id: "captacao_liquida_coe_resgate", nome: "Coe - Resgate" },
+              { id: "captacao_liquida_deposito_prazo_aplicacao", nome: "Depósito à Prazo - Aplicação" },
+              { id: "captacao_liquida_deposito_prazo_resgate", nome: "Depósito à Prazo - Resgate" },
+              { id: "captacao_liquida_grupo_b", nome: "Captação Líquida - Grupo B" },
+              { id: "captacao_liquida_investfacil", nome: "Investfácil" },
+              { id: "captacao_liquida_investfacil_aplicacao", nome: "Investfácil - Aplicação" },
+              { id: "captacao_liquida_investfacil_resgate", nome: "Investfácil - Resgate" },
+              { id: "captacao_liquida_poupanca", nome: "Poupança" },
+              { id: "captacao_liquida_poupanca_aplicacao", nome: "Poupança - Aplicação" },
+              { id: "captacao_liquida_poupanca_resgate", nome: "Poupança - Resgate" }
             ]
           }
         ]

@@ -1997,7 +1997,18 @@ const INDICATOR_STRUCTURE_OVERRIDES = {
       { id: "captacao_liquida_previdencia_aplicacao", nome: "Previdência Privada - Aplicação", peso: 1 },
       { id: "captacao_liquida_portab_previdencia_aplicacao", nome: "Portabilidade de Previdência Privada - Aplicação", peso: 1 },
       { id: "captacao_liquida_previdencia_resgate", nome: "Previdência Privada - Resgate", peso: 1 },
-      { id: "captacao_liquida_portab_previdencia_resgate", nome: "Portabilidade de Previdência Privada - Resgate", peso: 1 }
+      { id: "captacao_liquida_portab_previdencia_resgate", nome: "Portabilidade de Previdência Privada - Resgate", peso: 1 },
+      { id: "captacao_liquida_coe_aplicacao", nome: "Coe - Aplicação", peso: 1 },
+      { id: "captacao_liquida_coe_resgate", nome: "Coe - Resgate", peso: 1 },
+      { id: "captacao_liquida_deposito_prazo_aplicacao", nome: "Depósito à Prazo - Aplicação", peso: 1 },
+      { id: "captacao_liquida_deposito_prazo_resgate", nome: "Depósito à Prazo - Resgate", peso: 1 },
+      { id: "captacao_liquida_grupo_b", nome: "Captação Líquida - Grupo B", peso: 1 },
+      { id: "captacao_liquida_investfacil", nome: "Investfácil", peso: 1 },
+      { id: "captacao_liquida_investfacil_aplicacao", nome: "Investfácil - Aplicação", peso: 1 },
+      { id: "captacao_liquida_investfacil_resgate", nome: "Investfácil - Resgate", peso: 1 },
+      { id: "captacao_liquida_poupanca", nome: "Poupança", peso: 1 },
+      { id: "captacao_liquida_poupanca_aplicacao", nome: "Poupança - Aplicação", peso: 1 },
+      { id: "captacao_liquida_poupanca_resgate", nome: "Poupança - Resgate", peso: 1 }
     ]
   },
   portab_prev: {
