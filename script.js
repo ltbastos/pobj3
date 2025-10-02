@@ -1929,97 +1929,12 @@ const LEGACY_RESUMO_STRUCTURE = [
     familias: [
       {
         id: "captacao_cap_bruta",
-        nome: "Captação Bruta",
+        nome: "Captação Bruta (CDB, Isentos, Corretora e Previdência)",
         indicadores: [
           {
             id: "captacao_bruta",
             cardId: "captacao_bruta",
-            nome: "Captação Bruta",
-            subindicadores: [
-              {
-                id: "captacao_bruta_deposito_prazo",
-                nome: "Depósito a Prazo",
-                children: [
-                  { id: "captacao_bruta_deposito_prazo_aplicacao", nome: "Depósito a Prazo - Aplicação" },
-                  { id: "captacao_bruta_deposito_prazo_resgate", nome: "Depósito a Prazo - Resgate" }
-                ]
-              },
-              {
-                id: "captacao_bruta_deposito_vista",
-                nome: "Depósito à Vista",
-                children: [
-                  { id: "captacao_bruta_deposito_vista_aplicacao", nome: "Depósito à Vista - Aplicação" },
-                  { id: "captacao_bruta_deposito_vista_resgate", nome: "Depósito à Vista - Resgate" }
-                ]
-              },
-              {
-                id: "captacao_bruta_poupanca",
-                nome: "Poupança",
-                children: [
-                  { id: "captacao_bruta_poupanca_aplicacao", nome: "Poupança - Aplicação" },
-                  { id: "captacao_bruta_poupanca_resgate", nome: "Poupança - Resgate" }
-                ]
-              },
-              {
-                id: "captacao_bruta_investfacil",
-                nome: "Investfácil",
-                children: [
-                  { id: "captacao_bruta_investfacil_aplicacao", nome: "InvestFacil - Aplicação" },
-                  { id: "captacao_bruta_investfacil_resgate", nome: "InvestFacil - Resgate" }
-                ]
-              },
-              {
-                id: "captacao_bruta_isentos",
-                nome: "Isentos",
-                children: [
-                  { id: "captacao_bruta_isentos_aplicacao", nome: "Isentos - Aplicação" },
-                  { id: "captacao_bruta_isentos_resgate", nome: "Isentos - Resgate" }
-                ]
-              },
-              {
-                id: "captacao_bruta_fundos",
-                nome: "Fundos",
-                children: [
-                  { id: "captacao_bruta_fundos_aplicacao", nome: "Fundos - Aplicação" },
-                  { id: "captacao_bruta_fundos_resgate", nome: "Fundos - Resgate" }
-                ]
-              },
-              {
-                id: "captacao_bruta_corretora",
-                nome: "Corretora",
-                children: [
-                  { id: "captacao_bruta_corretora_aplicacao", nome: "Corretora - Aplicação" },
-                  { id: "captacao_bruta_corretora_resgate", nome: "Corretora - Resgate" }
-                ]
-              },
-              {
-                id: "captacao_bruta_previdencia",
-                nome: "Previdência Privada",
-                children: [
-                  { id: "captacao_bruta_previdencia_aplicacao", nome: "Previdência Privada - Aplicação" },
-                  { id: "captacao_bruta_previdencia_resgate", nome: "Previdência Privada - Resgate" }
-                ]
-              },
-              {
-                id: "captacao_bruta_coe",
-                nome: "COE",
-                children: [
-                  { id: "captacao_bruta_coe_aplicacao", nome: "Coe - Aplicação" },
-                  { id: "captacao_bruta_coe_resgate", nome: "Coe - Resgate" }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      {
-        id: "captacao_cap_bruta_total",
-        nome: "Captação Bruta - Total",
-        indicadores: [
-          {
-            id: "captacao_bruta_total",
-            cardId: "captacao_bruta_total",
-            nome: "Captação Bruta - Total"
+            nome: "Captação Bruta (CDB, Isentos, Corretora e Previdência)"
           }
         ]
       },
@@ -2033,7 +1948,14 @@ const LEGACY_RESUMO_STRUCTURE = [
             nome: "Captação Líquida",
             subindicadores: [
               { id: "captacao_liquida_grupo_a", nome: "Captação Líquida - Grupo A" },
-              { id: "captacao_liquida_grupo_b", nome: "Captação Líquida - Grupo B" }
+              { id: "captacao_liquida_isentos_aplicacao", nome: "Isentos - Aplicação" },
+              { id: "captacao_liquida_isentos_resgate", nome: "Isentos - Resgate" },
+              { id: "captacao_liquida_fundos_aplicacao", nome: "Fundos - Aplicação" },
+              { id: "captacao_liquida_fundos_resgate", nome: "Fundos - Resgate" },
+              { id: "captacao_liquida_previdencia_aplicacao", nome: "Previdência Privada - Aplicação" },
+              { id: "captacao_liquida_portab_previdencia_aplicacao", nome: "Portabilidade de Previdência Privada - Aplicação" },
+              { id: "captacao_liquida_previdencia_resgate", nome: "Previdência Privada - Resgate" },
+              { id: "captacao_liquida_portab_previdencia_resgate", nome: "Portabilidade de Previdência Privada - Resgate" }
             ]
           }
         ]
@@ -2352,94 +2274,19 @@ const INDICATOR_STRUCTURE_OVERRIDES = {
     ]
   },
   captacao_bruta: {
-    subIndicators: [
-      {
-        id: "captacao_bruta_deposito_prazo",
-        nome: "Depósito a Prazo",
-        peso: 1,
-        children: [
-          { id: "captacao_bruta_deposito_prazo_aplicacao", nome: "Depósito a Prazo - Aplicação", peso: 0.6 },
-          { id: "captacao_bruta_deposito_prazo_resgate", nome: "Depósito a Prazo - Resgate", peso: 0.4 }
-        ]
-      },
-      {
-        id: "captacao_bruta_deposito_vista",
-        nome: "Depósito à Vista",
-        peso: 1,
-        children: [
-          { id: "captacao_bruta_deposito_vista_aplicacao", nome: "Depósito à Vista - Aplicação", peso: 0.6 },
-          { id: "captacao_bruta_deposito_vista_resgate", nome: "Depósito à Vista - Resgate", peso: 0.4 }
-        ]
-      },
-      {
-        id: "captacao_bruta_poupanca",
-        nome: "Poupança",
-        peso: 1,
-        children: [
-          { id: "captacao_bruta_poupanca_aplicacao", nome: "Poupança - Aplicação", peso: 0.6 },
-          { id: "captacao_bruta_poupanca_resgate", nome: "Poupança - Resgate", peso: 0.4 }
-        ]
-      },
-      {
-        id: "captacao_bruta_investfacil",
-        nome: "Investfácil",
-        peso: 1,
-        children: [
-          { id: "captacao_bruta_investfacil_aplicacao", nome: "InvestFacil - Aplicação", peso: 0.6 },
-          { id: "captacao_bruta_investfacil_resgate", nome: "InvestFacil - Resgate", peso: 0.4 }
-        ]
-      },
-      {
-        id: "captacao_bruta_isentos",
-        nome: "Isentos",
-        peso: 1,
-        children: [
-          { id: "captacao_bruta_isentos_aplicacao", nome: "Isentos - Aplicação", peso: 0.6 },
-          { id: "captacao_bruta_isentos_resgate", nome: "Isentos - Resgate", peso: 0.4 }
-        ]
-      },
-      {
-        id: "captacao_bruta_fundos",
-        nome: "Fundos",
-        peso: 1,
-        children: [
-          { id: "captacao_bruta_fundos_aplicacao", nome: "Fundos - Aplicação", peso: 0.6 },
-          { id: "captacao_bruta_fundos_resgate", nome: "Fundos - Resgate", peso: 0.4 }
-        ]
-      },
-      {
-        id: "captacao_bruta_corretora",
-        nome: "Corretora",
-        peso: 1,
-        children: [
-          { id: "captacao_bruta_corretora_aplicacao", nome: "Corretora - Aplicação", peso: 0.6 },
-          { id: "captacao_bruta_corretora_resgate", nome: "Corretora - Resgate", peso: 0.4 }
-        ]
-      },
-      {
-        id: "captacao_bruta_previdencia",
-        nome: "Previdência Privada",
-        peso: 1,
-        children: [
-          { id: "captacao_bruta_previdencia_aplicacao", nome: "Previdência Privada - Aplicação", peso: 0.6 },
-          { id: "captacao_bruta_previdencia_resgate", nome: "Previdência Privada - Resgate", peso: 0.4 }
-        ]
-      },
-      {
-        id: "captacao_bruta_coe",
-        nome: "COE",
-        peso: 1,
-        children: [
-          { id: "captacao_bruta_coe_aplicacao", nome: "Coe - Aplicação", peso: 0.6 },
-          { id: "captacao_bruta_coe_resgate", nome: "Coe - Resgate", peso: 0.4 }
-        ]
-      }
-    ]
+    subIndicators: []
   },
   captacao_liquida: {
     subIndicators: [
-      { id: "captacao_liquida_grupo_a", nome: "Captação Líquida - Grupo A", peso: 0.5 },
-      { id: "captacao_liquida_grupo_b", nome: "Captação Líquida - Grupo B", peso: 0.5 }
+      { id: "captacao_liquida_grupo_a", nome: "Captação Líquida - Grupo A", peso: 1 },
+      { id: "captacao_liquida_isentos_aplicacao", nome: "Isentos - Aplicação", peso: 1 },
+      { id: "captacao_liquida_isentos_resgate", nome: "Isentos - Resgate", peso: 1 },
+      { id: "captacao_liquida_fundos_aplicacao", nome: "Fundos - Aplicação", peso: 1 },
+      { id: "captacao_liquida_fundos_resgate", nome: "Fundos - Resgate", peso: 1 },
+      { id: "captacao_liquida_previdencia_aplicacao", nome: "Previdência Privada - Aplicação", peso: 1 },
+      { id: "captacao_liquida_portab_previdencia_aplicacao", nome: "Portabilidade de Previdência Privada - Aplicação", peso: 1 },
+      { id: "captacao_liquida_previdencia_resgate", nome: "Previdência Privada - Resgate", peso: 1 },
+      { id: "captacao_liquida_portab_previdencia_resgate", nome: "Portabilidade de Previdência Privada - Resgate", peso: 1 }
     ]
   },
   portab_prev: {
