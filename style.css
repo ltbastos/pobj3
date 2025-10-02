@@ -764,7 +764,7 @@ select.input{
 .resumo-legacy__table thead th{ position:sticky; top:0; background:#f9fafb; padding:12px 16px; text-align:center; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#6b7280; border-bottom:1px solid var(--stroke); font-weight:800; white-space:nowrap; }
 .resumo-legacy__table thead th:first-child{ text-align:left; }
 .resumo-legacy__table tbody th,
-.resumo-legacy__table tbody td{ padding:14px 16px; border-bottom:1px solid var(--stroke); font-size:13px; color:#111827; vertical-align:middle; text-align:center; }
+.resumo-legacy__table tbody td{ padding:14px 16px; border-bottom:1px solid var(--stroke); font-size:12px; color:#111827; vertical-align:middle; text-align:center; }
 .resumo-legacy__table tbody tr:nth-child(odd){ background:rgba(248,250,252,.65); }
 .resumo-legacy__table tbody tr:last-child th,
 .resumo-legacy__table tbody tr:last-child td{ border-bottom:none; }

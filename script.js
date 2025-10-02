@@ -7926,7 +7926,7 @@ function buildResumoLegacySections(sections = []) {
       if (!familyIndicators.length) return;
 
       let familyDisplayChildren = familyIndicators;
-      if (secDef.id === "financeiro") {
+      if (secDef.id === "financeiro" || secDef.id === "captacao") {
         const familiaKeyRaw = famDef.id || famDef.nome || "";
         const familiaIdNormalized = limparTexto(familiaKeyRaw).toLowerCase();
         const familiaSlug = simplificarTexto(familiaKeyRaw);
@@ -7941,44 +7941,74 @@ function buildResumoLegacySections(sections = []) {
           const indicatorChildren = Array.isArray(familyIndicators[0].children)
             ? familyIndicators[0].children
             : [];
-          if (
-            familiaMatches(
-              "financeiro_recuperacao_ate59",
-              "financeiro recuperacao ate59",
-              "financeiro recuperacao ate 59",
-              "recuperacao de vencidos ate 59 dias"
-            ) ||
-            familiaMatches(
-              "financeiro_recuperacao_acima59",
-              "financeiro recuperacao acima59",
-              "financeiro recuperacao acima 59",
-              "recuperacao de vencidos acima de 59 dias"
-            )
-          ) {
-            familyDisplayChildren = [];
-          } else if (
-            familiaMatches(
-              "financeiro_recuperacao_credito",
-              "financeiro recuperacao credito",
-              "recuperacao de credito"
-            ) &&
-            indicatorChildren.length
-          ) {
-            familyDisplayChildren = indicatorChildren.map(child => {
-              const promoted = {
+          if (secDef.id === "financeiro") {
+            if (
+              familiaMatches(
+                "financeiro_recuperacao_ate59",
+                "financeiro recuperacao ate59",
+                "financeiro recuperacao ate 59",
+                "recuperacao de vencidos ate 59 dias"
+              ) ||
+              familiaMatches(
+                "financeiro_recuperacao_acima59",
+                "financeiro recuperacao acima59",
+                "financeiro recuperacao acima 59",
+                "recuperacao de vencidos acima de 59 dias"
+              )
+            ) {
+              familyDisplayChildren = [];
+            } else if (
+              familiaMatches(
+                "financeiro_recuperacao_credito",
+                "financeiro recuperacao credito",
+                "recuperacao de credito"
+              ) &&
+              indicatorChildren.length
+            ) {
+              familyDisplayChildren = indicatorChildren.map(child => {
+                const promoted = {
+                  ...child,
+                  __legacyDepth: 2,
+                  type: child.type || "lp"
+                };
+                if (Array.isArray(child.children) && child.children.length) {
+                  promoted.children = child.children.map(grand => ({
+                    ...grand,
+                    __legacyDepth: 3,
+                    type: grand.type || "lp"
+                  }));
+                }
+                return promoted;
+              });
+            }
+          } else if (secDef.id === "captacao") {
+            if (
+              familiaMatches(
+                "captacao_cap_bruta",
+                "captacao bruta",
+                "captacao bruta cdb"
+              ) ||
+              familiaMatches(
+                "captacao_cap_bruta_total",
+                "captacao bruta total"
+              )
+            ) {
+              familyDisplayChildren = [];
+            } else if (
+              familiaMatches(
+                "captacao_cap_liquida",
+                "captacao liquida",
+                "captacao liquida todos os produtos"
+              ) &&
+              indicatorChildren.length
+            ) {
+              familyDisplayChildren = indicatorChildren.map(child => ({
                 ...child,
                 __legacyDepth: 2,
-                type: child.type || "lp"
-              };
-              if (Array.isArray(child.children) && child.children.length) {
-                promoted.children = child.children.map(grand => ({
-                  ...grand,
-                  __legacyDepth: 3,
-                  type: grand.type || "lp"
-                }));
-              }
-              return promoted;
-            });
+                type: child.type || "lp",
+                children: []
+              }));
+            }
           }
         }
       }
