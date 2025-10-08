@@ -4,12 +4,12 @@
    (com fixes: svh/topbar, z-index, listeners únicos, a11y)
    ========================================================= */
 
-/* ===== Config ===== */
+/* ===== Aqui eu organizo as configurações base do painel ===== */
 const DATA_SOURCE = "csv";
 const API_URL = "/api";
 const TICKET_URL = "https://botpj.com/index.php?class=LoginForm";
 
-/* ===== Chat Config ===== */
+/* ===== Aqui eu deixo separado tudo que envolve o chat embutido ===== */
 // MODO 1 (recomendado): "iframe" — cole a URL do seu agente (Copilot Studio / SharePoint)
 // MODO 2 (alternativo): "http"  — envia para um endpoint seu que responde { answer }
 const CHAT_MODE = "iframe";  // "iframe" | "http"
@@ -17,11 +17,14 @@ const CHAT_IFRAME_URL = "";  // cole aqui a URL do canal "Website" do seu agente
 const AGENT_ENDPOINT = "/api/agent"; // seu endpoint (se usar http)
 
 
+// Aqui eu criei atalhos para querySelector e querySelectorAll porque uso isso o tempo todo.
 const $  = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
+// Aqui eu preparo alguns formatadores (moeda, inteiro, número com 1 casa) para reaproveitar sem recalcular.
 const fmtBRL = new Intl.NumberFormat("pt-BR", { style:"currency", currency:"BRL" });
 const fmtINT = new Intl.NumberFormat("pt-BR");
 const fmtONE = new Intl.NumberFormat("pt-BR", { minimumFractionDigits:1, maximumFractionDigits:1 });
+// Aqui eu defino as cores padrão da visão executiva para manter identidade visual.
 const EXEC_BAR_FILL = "#93c5fd";
 const EXEC_BAR_STROKE = "#60a5fa";
 const EXEC_META_COLOR = "#fca5a5";
@@ -29,7 +32,8 @@ const EXEC_SERIES_PALETTE = [
   "#2563eb", "#9333ea", "#0ea5e9", "#16a34a", "#f97316",
   "#ef4444", "#14b8a6", "#d946ef", "#f59e0b", "#22d3ee"
 ];
-const setActiveTab = (viewId = "cards") => {
+// Aqui eu deixo claro para mim que essa função só serve para trocar a aba visível e manter o botão certo destacado.
+const definirAbaAtiva = (viewId = "cards") => {
   const tabs = Array.from($$(".tab"));
   const target = tabs.some(tab => (tab.dataset.view || "") === viewId) ? viewId : "cards";
   tabs.forEach(tab => {
@@ -37,15 +41,18 @@ const setActiveTab = (viewId = "cards") => {
     tab.classList.toggle("is-active", expected === target);
   });
 };
+// Aqui eu extraio o símbolo da moeda para usar em componentes customizados.
 const fmtBRLParts = fmtBRL.formatToParts(1);
 const CURRENCY_SYMBOL = fmtBRLParts.find(p => p.type === "currency")?.value || "R$";
 const CURRENCY_LITERAL = fmtBRLParts.find(p => p.type === "literal")?.value || " ";
+// Aqui eu defino as regras de sufixo (mil, milhão...) para simplificar valores grandes.
 const SUFFIX_RULES = [
   { value: 1_000_000_000_000, singular: "trilhão", plural: "trilhões" },
   { value: 1_000_000_000,     singular: "bilhão",  plural: "bilhões" },
   { value: 1_000_000,         singular: "milhão",  plural: "milhões" },
   { value: 1_000,             singular: "mil",     plural: "mil" }
 ];
+// Aqui eu deixo uma lista padrão de motivos para simulação de cancelamento quando a base não traz o detalhe.
 const MOTIVOS_CANCELAMENTO = [
   "Solicitação do cliente",
   "Inadimplência",
@@ -56,11 +63,13 @@ const MOTIVOS_CANCELAMENTO = [
 
 let MESU_DATA = [];
 let PRODUTOS_DATA = [];
+// Aqui eu mapeio as chaves de status para nomes amigáveis que vão aparecer nos filtros e cards.
 const STATUS_LABELS = {
   todos: "Todos",
   atingidos: "Atingidos",
   nao: "Não atingidos",
 };
+// Aqui eu defino uma ordem padrão de status caso o CSV não traga essa informação.
 const DEFAULT_STATUS_ORDER = ["todos", "atingidos", "nao"];
 const DEFAULT_STATUS_INDICADORES = DEFAULT_STATUS_ORDER.map((key, idx) => ({
   id: key,
@@ -70,8 +79,10 @@ const DEFAULT_STATUS_INDICADORES = DEFAULT_STATUS_ORDER.map((key, idx) => ({
   ordem: idx,
 }));
 let STATUS_INDICADORES_DATA = DEFAULT_STATUS_INDICADORES.map(item => ({ ...item }));
+// Aqui eu mantenho um Map para buscar status pelo código sem precisar ficar percorrendo arrays.
 let STATUS_BY_KEY = new Map(DEFAULT_STATUS_INDICADORES.map(entry => [entry.key, { ...entry }]));
 
+// Aqui eu preparo vários mapas auxiliares para navegar na hierarquia (diretoria → gerente) sem sofrimento.
 let MESU_BY_AGENCIA = new Map();
 let MESU_FALLBACK_ROWS = [];
 let DIRETORIA_INDEX = new Map();
@@ -83,7 +94,19 @@ let GERENCIAS_BY_DIRETORIA = new Map();
 let AGENCIAS_BY_GERENCIA = new Map();
 let GGESTAO_BY_AGENCIA = new Map();
 let GERENTES_BY_AGENCIA = new Map();
+let DIRETORIA_LABEL_INDEX = new Map();
+let GERENCIA_LABEL_INDEX = new Map();
+let AGENCIA_LABEL_INDEX = new Map();
+let GGESTAO_LABEL_INDEX = new Map();
+let GERENTE_LABEL_INDEX = new Map();
+let SEGMENTO_INDEX = new Map();
+let SEGMENTO_LABEL_INDEX = new Map();
 
+const SELECT_SEARCH_DATA = new WeakMap();
+const SELECT_SEARCH_REGISTRY = new Set();
+let SELECT_SEARCH_GLOBAL_LISTENERS = false;
+
+// Aqui eu guardo os dados calculados de ranking para não refazer o trabalho sempre que a tela muda.
 let RANKING_DIRECTORIAS = [];
 let RANKING_GERENCIAS = [];
 let RANKING_AGENCIAS = [];
@@ -91,11 +114,13 @@ let RANKING_GERENTES = [];
 let GERENTES_GESTAO = [];
 let SEGMENTOS_DATA = [];
 
+// Aqui eu tenho mapas auxiliares para ligar produto, família e seção.
 let PRODUTOS_BY_FAMILIA = new Map();
 let FAMILIA_DATA = [];
 let FAMILIA_BY_ID = new Map();
 let PRODUTO_TO_FAMILIA = new Map();
 
+// Aqui eu deixo caches das bases fact/dim para usar em várias telas.
 let fDados = [];
 let fCampanhas = [];
 let fVariavel = [];
@@ -106,6 +131,7 @@ let FACT_CAMPANHAS = [];
 let DIM_CALENDARIO = [];
 let AVAILABLE_DATE_MAX = "";
 
+// Aqui eu guardo qual recorte o usuário escolheu para conseguir lembrar quando mudar de aba.
 let CURRENT_USER_CONTEXT = {
   diretoria: "",
   gerencia: "",
@@ -114,27 +140,159 @@ let CURRENT_USER_CONTEXT = {
   gerente: ""
 };
 
+// Aqui eu aponto onde normalmente ficam os CSVs e guardo a Promise de carregamento para evitar múltiplos downloads.
 const BASE_CSV_PATH = "Base";
 let baseDataPromise = null;
 
-function sanitizeText(value){
+// Aqui eu limpo qualquer valor que vem das bases porque sei que sempre chega com espaços e formatos diferentes.
+function limparTexto(value){
   if (value == null) return "";
   return String(value).trim();
 }
 
-function readCell(raw, keys){
+function simplificarTexto(value){
+  const texto = limparTexto(value);
+  if (!texto) return "";
+  const semAcento = texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const comConectivo = semAcento.replace(/&/g, " e ");
+  return comConectivo
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+const DEFAULT_SELECTION_MARKERS = new Set(["", "todos", "todas", "todes", "all"]);
+
+// Aqui eu vou manter um catálogo de aliases dos indicadores para conseguir resolver filtros por nome, código ou subproduto.
+const CARD_ALIAS_INDEX = new Map(); // cardId -> Set(alias)
+const CARD_SLUG_TO_ID = new Map();  // slug -> cardId
+const CARD_ID_SET = new Set();      // conjunto rápido dos ids oficiais
+const SUBPRODUTO_TO_INDICADOR = new Map(); // slug do subproduto -> cardId
+
+function registrarAliasIndicador(cardId, alias){
+  const seguroId = limparTexto(cardId);
+  if (!seguroId) return;
+  CARD_ID_SET.add(seguroId);
+  const slug = simplificarTexto(alias);
+  if (!slug) return;
+  let aliases = CARD_ALIAS_INDEX.get(seguroId);
+  if (!aliases){
+    aliases = new Set();
+    CARD_ALIAS_INDEX.set(seguroId, aliases);
+  }
+  if (!aliases.has(slug)) aliases.add(slug);
+  CARD_SLUG_TO_ID.set(slug, seguroId);
+}
+
+function resolverIndicadorPorAlias(valor){
+  const texto = limparTexto(valor);
+  if (!texto) return "";
+  if (CARD_ID_SET.has(texto)) return texto;
+  const slug = simplificarTexto(texto);
+  if (CARD_SLUG_TO_ID.has(slug)) return CARD_SLUG_TO_ID.get(slug);
+  return "";
+}
+
+function selecaoPadrao(value){
+  return DEFAULT_SELECTION_MARKERS.has(simplificarTexto(value));
+}
+
+function matchesSelection(filterValue, ...candidates){
+  const esperado = limparTexto(filterValue);
+  if (!esperado) return false;
+  const esperadoSimple = simplificarTexto(esperado);
+  const lista = [];
+  candidates.forEach(item => {
+    if (Array.isArray(item)) lista.push(...item);
+    else lista.push(item);
+  });
+  return lista.some(candidate => {
+    const valor = limparTexto(candidate);
+    if (!valor) return false;
+    if (valor === esperado) return true;
+    return simplificarTexto(valor) === esperadoSimple;
+  });
+}
+
+function optionMatchesValue(option, desired){
+  const alvo = limparTexto(desired);
+  if (!alvo) return false;
+  const candidatos = [option.value];
+  if (Array.isArray(option.aliases)) candidatos.push(...option.aliases);
+  return candidatos.some(candidate => {
+    const valor = limparTexto(candidate);
+    if (!valor) return false;
+    if (valor === alvo) return true;
+    return simplificarTexto(valor) === simplificarTexto(alvo);
+  });
+}
+
+function registerLabelIndexEntry(map, entry, ...values){
+  values.forEach(value => {
+    const normal = simplificarTexto(value);
+    if (!normal) return;
+    if (!map.has(normal)) map.set(normal, entry);
+  });
+}
+
+function findEntryInIndexes(idMap, labelMap, value){
+  const direto = limparTexto(value);
+  if (direto && idMap?.has(direto)) return idMap.get(direto);
+  const simples = simplificarTexto(value);
+  if (simples && labelMap?.has(simples)) return labelMap.get(simples);
+  return null;
+}
+
+function findSegmentoMeta(value){
+  return findEntryInIndexes(SEGMENTO_INDEX, SEGMENTO_LABEL_INDEX, value);
+}
+
+function findDiretoriaMeta(value){
+  return findEntryInIndexes(DIRETORIA_INDEX, DIRETORIA_LABEL_INDEX, value);
+}
+
+function findGerenciaMeta(value){
+  return findEntryInIndexes(GERENCIA_INDEX, GERENCIA_LABEL_INDEX, value);
+}
+
+function findGerenteGestaoMeta(value){
+  return findEntryInIndexes(GGESTAO_INDEX, GGESTAO_LABEL_INDEX, value);
+}
+
+function findGerenteMeta(value){
+  return findEntryInIndexes(GERENTE_INDEX, GERENTE_LABEL_INDEX, value);
+}
+
+function findAgenciaMeta(value){
+  const direto = findEntryInIndexes(AGENCIA_INDEX, AGENCIA_LABEL_INDEX, value);
+  if (direto) return direto;
+  const chave = limparTexto(value);
+  if (chave && MESU_BY_AGENCIA.has(chave)) return MESU_BY_AGENCIA.get(chave);
+  const simples = simplificarTexto(value);
+  if (!simples) return null;
+  for (const meta of MESU_BY_AGENCIA.values()){
+    if (simplificarTexto(meta.agenciaId) === simples) return meta;
+    if (simplificarTexto(meta.agenciaNome) === simples) return meta;
+    if (simplificarTexto(meta.agenciaCodigo) === simples) return meta;
+  }
+  return null;
+}
+
+// Aqui eu tento ler uma célula usando várias chaves possíveis porque cada base vem com um nome diferente.
+function lerCelula(raw, keys){
   if (!raw) return "";
   for (const key of keys){
     if (Object.prototype.hasOwnProperty.call(raw, key)){
-      const val = sanitizeText(raw[key]);
+      const val = limparTexto(raw[key]);
       if (val !== "") return val;
     }
   }
   return "";
 }
 
-function parseISODate(value) {
-  const text = sanitizeText(value);
+// Aqui eu garanto que qualquer data vira formato ISO (aaaa-mm-dd) porque isso evita dor de cabeça com ordenação.
+function converterDataISO(value) {
+  const text = limparTexto(value);
   if (!text) return "";
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(text)) {
@@ -144,15 +302,17 @@ function parseISODate(value) {
   return text;
 }
 
-function parseBoolean(value, fallback = false) {
-  const text = sanitizeText(value).toLowerCase();
+// Aqui eu transformo valores variados (1, sim, true...) em booleanos para padronizar as checagens depois.
+function converterBooleano(value, fallback = false) {
+  const text = limparTexto(value).toLowerCase();
   if (!text) return fallback;
   if (/^(?:1|true|sim|yes|ativo|active|on)$/i.test(text)) return true;
   if (/^(?:0|false|nao|não|inativo|inactive|off)$/i.test(text)) return false;
   return fallback;
 }
 
-function pickFirstFilled(...values) {
+// Aqui eu pego o primeiro valor que realmente veio preenchido porque as bases mandam duplicado em várias colunas.
+function pegarPrimeiroPreenchido(...values) {
   for (const val of values) {
     if (val !== undefined && val !== null && val !== "") {
       return val;
@@ -160,9 +320,35 @@ function pickFirstFilled(...values) {
   }
   return "";
 }
+// Aqui eu garanto que todos os objetos usem o novo padrão id_indicador/ds_indicador e mantenham compatibilidade com produtoId.
+function aplicarIndicadorAliases(target = {}, idBruto = "", nomeBruto = "") {
+  const idTexto = limparTexto(idBruto || "");
+  const nomeTexto = limparTexto(nomeBruto || "");
+  const resolvedCard = resolverIndicadorPorAlias(idTexto) || resolverIndicadorPorAlias(nomeTexto);
+  if (resolvedCard) {
+    registrarAliasIndicador(resolvedCard, idTexto);
+    registrarAliasIndicador(resolvedCard, nomeTexto);
+  }
+  const indicadorCodigo = idTexto || resolvedCard || nomeTexto;
+  const indicadorNome = nomeTexto || resolvedCard || indicadorCodigo;
+  if (resolvedCard && !idTexto) {
+    registrarAliasIndicador(resolvedCard, indicadorCodigo);
+  }
+  target.id_indicador = indicadorCodigo;
+  target.ds_indicador = indicadorNome;
+  target.indicadorId = indicadorCodigo;
+  target.indicadorNome = indicadorNome;
+  target.produtoId = resolvedCard || indicadorCodigo;
+  target.produtoNome = indicadorNome;
+  if (resolvedCard && indicadorCodigo && indicadorCodigo !== resolvedCard) {
+    target.indicadorCodigo = indicadorCodigo;
+  }
+  return target;
+}
 
-function normalizeStatusKey(value) {
-  const text = sanitizeText(value);
+// Aqui eu converto o texto do status para um formato previsível (sem acento e em minúsculas) para montar os filtros.
+function normalizarChaveStatus(value) {
+  const text = limparTexto(value);
   if (!text) return "";
   const ascii = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const lower = ascii.toLowerCase().replace(/\s+/g, " ").trim();
@@ -178,20 +364,22 @@ function normalizeStatusKey(value) {
   return slug;
 }
 
-function getStatusLabelFromKey(key, fallback = "") {
-  const normalized = normalizeStatusKey(key);
+// Aqui eu traduzo a chave do status para o rótulo certo exibido na tela, sempre tentando usar as descrições oficiais.
+function obterRotuloStatus(key, fallback = "") {
+  const normalized = normalizarChaveStatus(key);
   if (normalized && STATUS_BY_KEY.has(normalized)) {
     const entry = STATUS_BY_KEY.get(normalized);
     if (entry?.nome) return entry.nome;
   }
   if (normalized && STATUS_LABELS[normalized]) return STATUS_LABELS[normalized];
   if (STATUS_LABELS[key]) return STATUS_LABELS[key];
-  const fallbackText = sanitizeText(fallback);
+  const fallbackText = limparTexto(fallback);
   if (fallbackText) return fallbackText;
   return normalized || key;
 }
 
-function detectCsvDelimiter(headerLine, sampleLines = []){
+// Aqui eu faço uma gambiarra controlada para descobrir qual separador o CSV está usando (vírgula, ponto e vírgula, tab...).
+function descobrirDelimitadorCsv(headerLine, sampleLines = []){
   const lines = [headerLine].concat(Array.isArray(sampleLines) ? sampleLines.slice(0, 5) : []).filter(Boolean);
   if (!lines.length) return ",";
   const candidates = [",", ";", "\t", "|"];
@@ -218,7 +406,8 @@ function detectCsvDelimiter(headerLine, sampleLines = []){
   return best;
 }
 
-function splitCsvLine(line, delimiter){
+// Aqui eu separo uma linha de CSV respeitando aspas duplas porque algumas colunas trazem vírgula dentro do texto.
+function dividirLinhaCsv(line, delimiter){
   const cols = [];
   let current = "";
   let insideQuotes = false;
@@ -242,22 +431,23 @@ function splitCsvLine(line, delimiter){
   return cols;
 }
 
-function parseCSV(text){
+// Aqui eu transformo o texto cru do CSV em uma lista de objetos bonitinha, sempre limpando a sujeira de BOM e quebras.
+function converterCSV(text){
   if (!text) return [];
   const normalized = text.replace(/\uFEFF/g, "").replace(/\r\n?/g, "\n");
   const lines = normalized.split("\n").filter(line => line.trim() !== "");
   if (!lines.length) return [];
   const header = lines.shift();
   if (!header) return [];
-  const delimiter = detectCsvDelimiter(header, lines);
-  const headers = splitCsvLine(header, delimiter).map(h => sanitizeText(h));
+  const delimiter = descobrirDelimitadorCsv(header, lines);
+  const headers = dividirLinhaCsv(header, delimiter).map(h => limparTexto(h));
   const rows = [];
   for (const line of lines){
-    const cols = splitCsvLine(line, delimiter);
+    const cols = dividirLinhaCsv(line, delimiter);
     if (!cols.length) continue;
     const obj = {};
     headers.forEach((key, idx) => {
-      obj[key] = sanitizeText(idx < cols.length ? cols[idx] : "");
+      obj[key] = limparTexto(idx < cols.length ? cols[idx] : "");
     });
     rows.push(obj);
   }
@@ -289,7 +479,8 @@ const PAGE_PATH_DEPTH = (() => {
   }
 })();
 
-function buildCsvUrlAttempts(path){
+// Aqui eu gero uma lista de caminhos alternativos porque cada ambiente hospeda os CSVs em pastas diferentes.
+function montarTentativasCsvUrl(path){
   if (!path) return [];
   if (/^(?:https?|data|blob):/i.test(path)) {
     return [path];
@@ -347,7 +538,7 @@ function buildCsvUrlAttempts(path){
 }
 
 async function loadCsvFile(path){
-  const attempts = buildCsvUrlAttempts(path);
+  const attempts = montarTentativasCsvUrl(path);
   let lastError = null;
   for (const attempt of attempts){
     try {
@@ -357,7 +548,7 @@ async function loadCsvFile(path){
         continue;
       }
       const text = await response.text();
-      return parseCSV(text);
+      return converterCSV(text);
     } catch (err) {
       lastError = err;
     }
@@ -371,20 +562,21 @@ async function loadCsvFile(path){
   return [];
 }
 
-function normalizeMesuRows(rows){
+// Aqui eu pego os dados MESU brutos e padronizo os campos para facilitar os filtros hierárquicos depois.
+function normalizarLinhasMesu(rows){
   return rows.map(raw => {
-    const segmentoNome = readCell(raw, ["Segmento", "segmento"]);
-    const segmentoId = readCell(raw, ["Id Segmento", "ID Segmento", "id segmento", "Id segmento", "segmento_id"]) || segmentoNome;
-    const diretoriaNome = readCell(raw, ["Diretoria", "Diretoria Regional", "diretoria", "Diretoria regional"]);
-    const diretoriaId = readCell(raw, ["Id Diretoria", "ID Diretoria", "Diretoria ID", "Id Diretoria Regional", "id diretoria"]) || diretoriaNome;
-    const regionalNome = readCell(raw, ["Regional", "Gerencia Regional", "Gerência Regional", "Gerencia regional", "Regional Nome"]);
-    const regionalId = readCell(raw, ["Id Regional", "ID Regional", "Id Gerencia Regional", "Id Gerência Regional", "Gerencia ID"]) || regionalNome;
-    const agenciaNome = readCell(raw, ["Agencia", "Agência", "Agencia Nome", "Agência Nome"]);
-    const agenciaId = readCell(raw, ["Id Agencia", "ID Agencia", "Id Agência", "Agencia ID", "Agência ID"]) || agenciaNome;
-    const gerenteGestaoNome = readCell(raw, ["Gerente de Gestao", "Gerente de Gestão", "Gerente Gestao", "Gerente Geral", "Gerente geral"]);
-    const gerenteGestaoId = readCell(raw, ["Id Gerente de Gestao", "ID Gerente de Gestao", "Id Gerente de Gestão", "Gerente de Gestao Id", "gerenteGestaoId"]) || gerenteGestaoNome;
-    const gerenteNome = readCell(raw, ["Gerente", "Gerente Nome", "Nome Gerente"]);
-    const gerenteId = readCell(raw, ["Id Gerente", "ID Gerente", "Gerente Id"]) || gerenteNome;
+    const segmentoNome = lerCelula(raw, ["Segmento", "segmento"]);
+    const segmentoId = lerCelula(raw, ["Id Segmento", "ID Segmento", "id segmento", "Id segmento", "segmento_id"]) || segmentoNome;
+    const diretoriaNome = lerCelula(raw, ["Diretoria", "Diretoria Regional", "diretoria", "Diretoria regional"]);
+    const diretoriaId = lerCelula(raw, ["Id Diretoria", "ID Diretoria", "Diretoria ID", "Id Diretoria Regional", "id diretoria"]) || diretoriaNome;
+    const regionalNome = lerCelula(raw, ["Regional", "Gerencia Regional", "Gerência Regional", "Gerencia regional", "Regional Nome"]);
+    const regionalId = lerCelula(raw, ["Id Regional", "ID Regional", "Id Gerencia Regional", "Id Gerência Regional", "Gerencia ID"]) || regionalNome;
+    const agenciaNome = lerCelula(raw, ["Agencia", "Agência", "Agencia Nome", "Agência Nome"]);
+    const agenciaId = lerCelula(raw, ["Id Agencia", "ID Agencia", "Id Agência", "Agencia ID", "Agência ID"]) || agenciaNome;
+    const gerenteGestaoNome = lerCelula(raw, ["Gerente de Gestao", "Gerente de Gestão", "Gerente Gestao", "Gerente Geral", "Gerente geral"]);
+    const gerenteGestaoId = lerCelula(raw, ["Id Gerente de Gestao", "ID Gerente de Gestao", "Id Gerente de Gestão", "Gerente de Gestao Id", "gerenteGestaoId"]) || gerenteGestaoNome;
+    const gerenteNome = lerCelula(raw, ["Gerente", "Gerente Nome", "Nome Gerente"]);
+    const gerenteId = lerCelula(raw, ["Id Gerente", "ID Gerente", "Gerente Id"]) || gerenteNome;
 
     return {
       segmentoNome,
@@ -403,7 +595,8 @@ function normalizeMesuRows(rows){
   }).filter(row => row.diretoriaId || row.regionalId || row.agenciaId);
 }
 
-function buildHierarchyFromMesu(rows){
+// Aqui eu aproveito os dados MESU já limpos para montar índices (diretoria → gerência → agência...) e acelerar os combos.
+function montarHierarquiaMesu(rows){
   const dirMap = new Map();
   const regMap = new Map();
   const agMap = new Map();
@@ -420,129 +613,164 @@ function buildHierarchyFromMesu(rows){
   GERENTES_BY_AGENCIA = new Map();
 
   rows.forEach(row => {
-    if (row.segmentoNome){
-      const key = row.segmentoId || row.segmentoNome;
-      if (!segMap.has(key)) {
-        segMap.set(key, { id: row.segmentoId || row.segmentoNome, nome: row.segmentoNome || row.segmentoId || "Segmento" });
-      }
-    }
-    if (row.diretoriaId){
-      const dirEntry = dirMap.get(row.diretoriaId) || {
-        id: row.diretoriaId,
-        nome: row.diretoriaNome || row.diretoriaId,
-        segmento: row.segmentoId || ""
-      };
-      if (!dirEntry.nome && row.diretoriaNome) dirEntry.nome = row.diretoriaNome;
-      if (!dirEntry.segmento && row.segmentoId) dirEntry.segmento = row.segmentoId;
-      dirMap.set(row.diretoriaId, dirEntry);
-    }
-    if (row.regionalId){
-      const regEntry = regMap.get(row.regionalId) || {
-        id: row.regionalId,
-        nome: row.regionalNome || row.regionalId,
-        diretoria: row.diretoriaId || "",
-        segmentoId: row.segmentoId || ""
-      };
-      if (!regEntry.nome && row.regionalNome) regEntry.nome = row.regionalNome;
-      if (!regEntry.diretoria && row.diretoriaId) regEntry.diretoria = row.diretoriaId;
-      if (!regEntry.segmentoId && row.segmentoId) regEntry.segmentoId = row.segmentoId;
-      regMap.set(row.regionalId, regEntry);
-      if (row.diretoriaId){
-        if (!GERENCIAS_BY_DIRETORIA.has(row.diretoriaId)) GERENCIAS_BY_DIRETORIA.set(row.diretoriaId, new Set());
-        GERENCIAS_BY_DIRETORIA.get(row.diretoriaId).add(row.regionalId);
-      }
-    }
-    if (row.agenciaId){
-      const agEntry = agMap.get(row.agenciaId) || {
-        id: row.agenciaId,
-        nome: row.agenciaNome || row.agenciaId,
-        gerencia: row.regionalId || "",
-        diretoria: row.diretoriaId || "",
-        segmento: row.segmentoId || ""
-      };
-      if (!agEntry.nome && row.agenciaNome) agEntry.nome = row.agenciaNome;
-      if (!agEntry.gerencia && row.regionalId) agEntry.gerencia = row.regionalId;
-      if (!agEntry.diretoria && row.diretoriaId) agEntry.diretoria = row.diretoriaId;
-      if (!agEntry.segmento && row.segmentoId) agEntry.segmento = row.segmentoId;
-      agMap.set(row.agenciaId, agEntry);
+    const segmentoId = limparTexto(row.segmentoId);
+    const segmentoNome = limparTexto(row.segmentoNome) || segmentoId;
+    const diretoriaId = limparTexto(row.diretoriaId);
+    const diretoriaNome = limparTexto(row.diretoriaNome) || diretoriaId;
+    const regionalId = limparTexto(row.regionalId);
+    const regionalNome = limparTexto(row.regionalNome) || regionalId;
+    const agenciaId = limparTexto(row.agenciaId);
+    const agenciaNome = limparTexto(row.agenciaNome) || agenciaId;
+    const agenciaCodigo = limparTexto(row.agenciaCodigo || row.agencia);
+    const gerenteGestaoId = limparTexto(row.gerenteGestaoId);
+    const gerenteGestaoNome = limparTexto(row.gerenteGestaoNome) || gerenteGestaoId;
+    const gerenteId = limparTexto(row.gerenteId);
+    const gerenteNome = limparTexto(row.gerenteNome) || gerenteId;
 
-      if (!MESU_BY_AGENCIA.has(row.agenciaId)){
-        MESU_BY_AGENCIA.set(row.agenciaId, {
-          segmentoId: row.segmentoId,
-          segmentoNome: row.segmentoNome,
-          diretoriaId: row.diretoriaId,
-          diretoriaNome: row.diretoriaNome,
-          regionalId: row.regionalId,
-          regionalNome: row.regionalNome,
-          agenciaId: row.agenciaId,
-          agenciaNome: row.agenciaNome,
-          gerenteGestaoId: row.gerenteGestaoId,
-          gerenteGestaoNome: row.gerenteGestaoNome,
-          gerenteId: row.gerenteId,
-          gerenteNome: row.gerenteNome,
+    row.segmentoId = segmentoId;
+    row.segmentoNome = segmentoNome;
+    row.diretoriaId = diretoriaId;
+    row.diretoriaNome = diretoriaNome;
+    row.regionalId = regionalId;
+    row.regionalNome = regionalNome;
+    row.agenciaId = agenciaId;
+    row.agenciaNome = agenciaNome;
+    row.gerenteGestaoId = gerenteGestaoId;
+    row.gerenteGestaoNome = gerenteGestaoNome;
+    row.gerenteId = gerenteId;
+    row.gerenteNome = gerenteNome;
+
+    if (segmentoNome){
+      const key = segmentoId || segmentoNome;
+      if (!segMap.has(key)) {
+        segMap.set(key, { id: segmentoId || segmentoNome, nome: segmentoNome || segmentoId || 'Segmento' });
+      }
+    }
+
+    if (diretoriaId){
+      const dirEntry = dirMap.get(diretoriaId) || {
+        id: diretoriaId,
+        nome: diretoriaNome || diretoriaId,
+        segmento: segmentoId || ''
+      };
+      if (!dirEntry.nome && diretoriaNome) dirEntry.nome = diretoriaNome;
+      if (!dirEntry.segmento && segmentoId) dirEntry.segmento = segmentoId;
+      dirMap.set(diretoriaId, dirEntry);
+    }
+
+    if (regionalId){
+      const regEntry = regMap.get(regionalId) || {
+        id: regionalId,
+        nome: regionalNome || regionalId,
+        diretoria: diretoriaId || '',
+        segmentoId: segmentoId || ''
+      };
+      if (!regEntry.nome && regionalNome) regEntry.nome = regionalNome;
+      if (!regEntry.diretoria && diretoriaId) regEntry.diretoria = diretoriaId;
+      if (!regEntry.segmentoId && segmentoId) regEntry.segmentoId = segmentoId;
+      regMap.set(regionalId, regEntry);
+      if (diretoriaId){
+        if (!GERENCIAS_BY_DIRETORIA.has(diretoriaId)) GERENCIAS_BY_DIRETORIA.set(diretoriaId, new Set());
+        GERENCIAS_BY_DIRETORIA.get(diretoriaId).add(regionalId);
+      }
+    }
+
+    if (agenciaId){
+      const agEntry = agMap.get(agenciaId) || {
+        id: agenciaId,
+        nome: agenciaNome || agenciaId,
+        gerencia: regionalId || '',
+        diretoria: diretoriaId || '',
+        segmento: segmentoId || '',
+        codigo: agenciaCodigo || agenciaId
+      };
+      if (!agEntry.nome && agenciaNome) agEntry.nome = agenciaNome;
+      if (!agEntry.gerencia && regionalId) agEntry.gerencia = regionalId;
+      if (!agEntry.diretoria && diretoriaId) agEntry.diretoria = diretoriaId;
+      if (!agEntry.segmento && segmentoId) agEntry.segmento = segmentoId;
+      if (!agEntry.codigo && agenciaCodigo) agEntry.codigo = agenciaCodigo;
+      agMap.set(agenciaId, agEntry);
+
+      if (!MESU_BY_AGENCIA.has(agenciaId)){
+        MESU_BY_AGENCIA.set(agenciaId, {
+          segmentoId,
+          segmentoNome,
+          diretoriaId,
+          diretoriaNome,
+          regionalId,
+          regionalNome,
+          agenciaId,
+          agenciaNome,
+          agenciaCodigo,
+          gerenteGestaoId,
+          gerenteGestaoNome,
+          gerenteId,
+          gerenteNome,
           gerenteGestaoIds: new Set(),
           gerenteIds: new Set()
         });
       }
-      const agencyMeta = MESU_BY_AGENCIA.get(row.agenciaId);
-      if (row.gerenteGestaoId){
-        agencyMeta.gerenteGestaoId = agencyMeta.gerenteGestaoId || row.gerenteGestaoId;
-        agencyMeta.gerenteGestaoNome = agencyMeta.gerenteGestaoNome || row.gerenteGestaoNome;
-        agencyMeta.gerenteGestaoIds.add(row.gerenteGestaoId);
+      const agencyMeta = MESU_BY_AGENCIA.get(agenciaId);
+      if (segmentoId && !agencyMeta.segmentoId) agencyMeta.segmentoId = segmentoId;
+      if (segmentoNome && !agencyMeta.segmentoNome) agencyMeta.segmentoNome = segmentoNome;
+      if (diretoriaId && !agencyMeta.diretoriaId) agencyMeta.diretoriaId = diretoriaId;
+      if (diretoriaNome && !agencyMeta.diretoriaNome) agencyMeta.diretoriaNome = diretoriaNome;
+      if (regionalId && !agencyMeta.regionalId) agencyMeta.regionalId = regionalId;
+      if (regionalNome && !agencyMeta.regionalNome) agencyMeta.regionalNome = regionalNome;
+      if (agenciaCodigo && !agencyMeta.agenciaCodigo) agencyMeta.agenciaCodigo = agenciaCodigo;
+      if (gerenteGestaoId){
+        agencyMeta.gerenteGestaoId = agencyMeta.gerenteGestaoId || gerenteGestaoId;
+        agencyMeta.gerenteGestaoNome = agencyMeta.gerenteGestaoNome || gerenteGestaoNome;
+        agencyMeta.gerenteGestaoIds.add(gerenteGestaoId);
       }
-      if (row.gerenteId){
-        agencyMeta.gerenteId = agencyMeta.gerenteId || row.gerenteId;
-        agencyMeta.gerenteNome = agencyMeta.gerenteNome || row.gerenteNome;
-        agencyMeta.gerenteIds.add(row.gerenteId);
+      if (gerenteId){
+        agencyMeta.gerenteId = agencyMeta.gerenteId || gerenteId;
+        agencyMeta.gerenteNome = agencyMeta.gerenteNome || gerenteNome;
+        agencyMeta.gerenteIds.add(gerenteId);
       }
-      if (row.segmentoId && !agencyMeta.segmentoId) agencyMeta.segmentoId = row.segmentoId;
-      if (row.segmentoNome && !agencyMeta.segmentoNome) agencyMeta.segmentoNome = row.segmentoNome;
-      if (row.diretoriaId && !agencyMeta.diretoriaId) agencyMeta.diretoriaId = row.diretoriaId;
-      if (row.diretoriaNome && !agencyMeta.diretoriaNome) agencyMeta.diretoriaNome = row.diretoriaNome;
-      if (row.regionalId && !agencyMeta.regionalId) agencyMeta.regionalId = row.regionalId;
-      if (row.regionalNome && !agencyMeta.regionalNome) agencyMeta.regionalNome = row.regionalNome;
-
-      if (row.regionalId){
-        if (!AGENCIAS_BY_GERENCIA.has(row.regionalId)) AGENCIAS_BY_GERENCIA.set(row.regionalId, new Set());
-        AGENCIAS_BY_GERENCIA.get(row.regionalId).add(row.agenciaId);
-      }
-    }
-    if (row.gerenteGestaoId){
-      const ggEntry = ggMap.get(row.gerenteGestaoId) || {
-        id: row.gerenteGestaoId,
-        nome: row.gerenteGestaoNome || row.gerenteGestaoId,
-        agencia: row.agenciaId || "",
-        gerencia: row.regionalId || "",
-        diretoria: row.diretoriaId || ""
-      };
-      if (!ggEntry.nome && row.gerenteGestaoNome) ggEntry.nome = row.gerenteGestaoNome;
-      if (!ggEntry.agencia && row.agenciaId) ggEntry.agencia = row.agenciaId;
-      if (!ggEntry.gerencia && row.regionalId) ggEntry.gerencia = row.regionalId;
-      if (!ggEntry.diretoria && row.diretoriaId) ggEntry.diretoria = row.diretoriaId;
-      ggMap.set(row.gerenteGestaoId, ggEntry);
-
-      if (row.agenciaId){
-        if (!GGESTAO_BY_AGENCIA.has(row.agenciaId)) GGESTAO_BY_AGENCIA.set(row.agenciaId, new Set());
-        GGESTAO_BY_AGENCIA.get(row.agenciaId).add(row.gerenteGestaoId);
+      if (regionalId){
+        if (!AGENCIAS_BY_GERENCIA.has(regionalId)) AGENCIAS_BY_GERENCIA.set(regionalId, new Set());
+        AGENCIAS_BY_GERENCIA.get(regionalId).add(agenciaId);
       }
     }
-    if (row.gerenteId){
-      const gerEntry = gerMap.get(row.gerenteId) || {
-        id: row.gerenteId,
-        nome: row.gerenteNome || row.gerenteId,
-        agencia: row.agenciaId || "",
-        gerencia: row.regionalId || "",
-        diretoria: row.diretoriaId || ""
-      };
-      if (!gerEntry.nome && row.gerenteNome) gerEntry.nome = row.gerenteNome;
-      if (!gerEntry.agencia && row.agenciaId) gerEntry.agencia = row.agenciaId;
-      if (!gerEntry.gerencia && row.regionalId) gerEntry.gerencia = row.regionalId;
-      if (!gerEntry.diretoria && row.diretoriaId) gerEntry.diretoria = row.diretoriaId;
-      gerMap.set(row.gerenteId, gerEntry);
 
-      if (row.agenciaId){
-        if (!GERENTES_BY_AGENCIA.has(row.agenciaId)) GERENTES_BY_AGENCIA.set(row.agenciaId, new Set());
-        GERENTES_BY_AGENCIA.get(row.agenciaId).add(row.gerenteId);
+    if (gerenteGestaoId){
+      const ggEntry = ggMap.get(gerenteGestaoId) || {
+        id: gerenteGestaoId,
+        nome: gerenteGestaoNome || gerenteGestaoId,
+        agencia: agenciaId || '',
+        gerencia: regionalId || '',
+        diretoria: diretoriaId || ''
+      };
+      if (!ggEntry.nome && gerenteGestaoNome) ggEntry.nome = gerenteGestaoNome;
+      if (!ggEntry.agencia && agenciaId) ggEntry.agencia = agenciaId;
+      if (!ggEntry.gerencia && regionalId) ggEntry.gerencia = regionalId;
+      if (!ggEntry.diretoria && diretoriaId) ggEntry.diretoria = diretoriaId;
+      ggMap.set(gerenteGestaoId, ggEntry);
+
+      if (agenciaId){
+        if (!GGESTAO_BY_AGENCIA.has(agenciaId)) GGESTAO_BY_AGENCIA.set(agenciaId, new Set());
+        GGESTAO_BY_AGENCIA.get(agenciaId).add(gerenteGestaoId);
+      }
+    }
+
+    if (gerenteId){
+      const gerenteEntry = gerMap.get(gerenteId) || {
+        id: gerenteId,
+        nome: gerenteNome || gerenteId,
+        agencia: agenciaId || '',
+        gerencia: regionalId || '',
+        diretoria: diretoriaId || ''
+      };
+      if (!gerenteEntry.nome && gerenteNome) gerenteEntry.nome = gerenteNome;
+      if (!gerenteEntry.agencia && agenciaId) gerenteEntry.agencia = agenciaId;
+      if (!gerenteEntry.gerencia && regionalId) gerenteEntry.gerencia = regionalId;
+      if (!gerenteEntry.diretoria && diretoriaId) gerenteEntry.diretoria = diretoriaId;
+      gerMap.set(gerenteId, gerenteEntry);
+
+      if (agenciaId){
+        if (!GERENTES_BY_AGENCIA.has(agenciaId)) GERENTES_BY_AGENCIA.set(agenciaId, new Set());
+        GERENTES_BY_AGENCIA.get(agenciaId).add(gerenteId);
       }
     }
   });
@@ -565,7 +793,7 @@ function buildHierarchyFromMesu(rows){
     }
   });
 
-  const localeCompare = (a, b) => String(a).localeCompare(String(b), "pt-BR", { sensitivity: "base" });
+  const localeCompare = (a, b) => String(a).localeCompare(String(b), 'pt-BR', { sensitivity: 'base' });
 
   RANKING_DIRECTORIAS.sort((a,b) => localeCompare(a.nome, b.nome));
   RANKING_GERENCIAS.sort((a,b) => localeCompare(a.nome, b.nome));
@@ -574,44 +802,84 @@ function buildHierarchyFromMesu(rows){
   RANKING_GERENTES.sort((a,b) => localeCompare(a.nome, b.nome));
   SEGMENTOS_DATA.sort((a,b) => localeCompare(a.nome, b.nome));
 
-  DIRETORIA_INDEX = new Map(RANKING_DIRECTORIAS.map(dir => [dir.id, dir]));
-  GERENCIA_INDEX = new Map(RANKING_GERENCIAS.map(gr => [gr.id, gr]));
-  AGENCIA_INDEX = new Map(RANKING_AGENCIAS.map(ag => [ag.id, ag]));
-  GGESTAO_INDEX = new Map(GERENTES_GESTAO.map(gg => [gg.id, gg]));
-  GERENTE_INDEX = new Map(RANKING_GERENTES.map(ger => [ger.id, ger]));
+  DIRETORIA_INDEX = new Map();
+  RANKING_DIRECTORIAS.forEach(dir => {
+    const key = limparTexto(dir.id || dir.nome);
+    if (key) DIRETORIA_INDEX.set(key, dir);
+  });
+  GERENCIA_INDEX = new Map();
+  RANKING_GERENCIAS.forEach(ger => {
+    const key = limparTexto(ger.id || ger.nome);
+    if (key) GERENCIA_INDEX.set(key, ger);
+  });
+  AGENCIA_INDEX = new Map();
+  RANKING_AGENCIAS.forEach(ag => {
+    const key = limparTexto(ag.id || ag.nome);
+    if (key) AGENCIA_INDEX.set(key, ag);
+  });
+  GGESTAO_INDEX = new Map();
+  GERENTES_GESTAO.forEach(gg => {
+    const key = limparTexto(gg.id || gg.nome);
+    if (key) GGESTAO_INDEX.set(key, gg);
+  });
+  GERENTE_INDEX = new Map();
+  RANKING_GERENTES.forEach(ge => {
+    const key = limparTexto(ge.id || ge.nome);
+    if (key) GERENTE_INDEX.set(key, ge);
+  });
+  SEGMENTO_INDEX = new Map();
+  SEGMENTOS_DATA.forEach(seg => {
+    const key = limparTexto(seg.id || seg.nome);
+    if (key) SEGMENTO_INDEX.set(key, seg);
+  });
+
+  DIRETORIA_LABEL_INDEX = new Map();
+  RANKING_DIRECTORIAS.forEach(dir => registerLabelIndexEntry(DIRETORIA_LABEL_INDEX, dir, dir.id, dir.nome));
+  GERENCIA_LABEL_INDEX = new Map();
+  RANKING_GERENCIAS.forEach(ger => registerLabelIndexEntry(GERENCIA_LABEL_INDEX, ger, ger.id, ger.nome));
+  AGENCIA_LABEL_INDEX = new Map();
+  RANKING_AGENCIAS.forEach(ag => registerLabelIndexEntry(AGENCIA_LABEL_INDEX, ag, ag.id, ag.nome, ag.codigo));
+  MESU_BY_AGENCIA.forEach(meta => {
+    registerLabelIndexEntry(AGENCIA_LABEL_INDEX, meta, meta.agenciaId, meta.agenciaNome, meta.agenciaCodigo);
+  });
+  GGESTAO_LABEL_INDEX = new Map();
+  GERENTES_GESTAO.forEach(gg => registerLabelIndexEntry(GGESTAO_LABEL_INDEX, gg, gg.id, gg.nome));
+  GERENTE_LABEL_INDEX = new Map();
+  RANKING_GERENTES.forEach(ger => registerLabelIndexEntry(GERENTE_LABEL_INDEX, ger, ger.id, ger.nome));
+  SEGMENTO_LABEL_INDEX = new Map();
+  SEGMENTOS_DATA.forEach(seg => registerLabelIndexEntry(SEGMENTO_LABEL_INDEX, seg, seg.id, seg.nome));
 
   if (!CURRENT_USER_CONTEXT.diretoria && rows.length){
     const first = rows[0];
     CURRENT_USER_CONTEXT = {
-      diretoria: first.diretoriaId || "",
-      gerencia: first.regionalId || "",
-      agencia: first.agenciaId || "",
-      gerenteGestao: first.gerenteGestaoId || "",
-      gerente: first.gerenteId || ""
+      diretoria: first.diretoriaId || '',
+      gerencia: first.regionalId || '',
+      agencia: first.agenciaId || '',
+      gerenteGestao: first.gerenteGestaoId || '',
+      gerente: first.gerenteId || ''
     };
   }
 }
-
-function normalizeProdutosRows(rows){
+function normalizarLinhasProdutos(rows){
   return rows.map(raw => {
-    const secaoId = readCell(raw, ["id_secao", "Id secao", "ID secao", "Seção ID", "secao_id", "secaoId"]);
-    const secaoNome = readCell(raw, ["secao", "Seção", "Nome secao", "Nome seção"]) || secaoId;
-    const familiaNome = readCell(raw, ["Familia de produtos", "Família de produtos", "Familia", "família", "familia"]);
-    const familiaId = readCell(raw, ["Id familia", "ID familia", "Familia Id", "id familia"]) || familiaNome;
-    const produtoNome = readCell(raw, ["Produto", "produto", "Produto Nome"]);
-    const produtoId = readCell(raw, ["Id produto", "ID produto", "Produto Id", "id produto"]) || produtoNome;
-    return {
+    const secaoId = lerCelula(raw, ["id_secao", "Id secao", "ID secao", "Seção ID", "secao_id", "secaoId"]);
+    const secaoNome = lerCelula(raw, ["secao", "Seção", "Nome secao", "Nome seção"]) || secaoId;
+    const familiaNome = lerCelula(raw, ["Familia de produtos", "Família de produtos", "Familia", "família", "familia"]);
+    const familiaId = lerCelula(raw, ["Id familia", "ID familia", "Familia Id", "id familia"]) || familiaNome;
+    const produtoNome = lerCelula(raw, ["ds_indicador", "Produto", "produto", "Produto Nome"]);
+    const produtoId = lerCelula(raw, ["id_indicador", "Id produto", "ID produto", "Produto Id", "id produto"]) || produtoNome;
+    const base = {
       secaoId,
       secaoNome,
       familiaNome,
       familiaId,
-      produtoNome,
-      produtoId
     };
+    return aplicarIndicadorAliases(base, produtoId, produtoNome);
   }).filter(row => row.familiaId && row.produtoId);
 }
 
-function buildProdutosData(rows){
+// Aqui eu crio mapas rápidos (produto → família/seção) para não ficar caçando informação na hora de renderizar.
+function montarDadosProdutos(rows){
   const famMap = new Map();
   const byFamilia = new Map();
   PRODUTO_TO_FAMILIA = new Map();
@@ -712,49 +980,50 @@ function buildProdutosData(rows){
   });
 }
 
-function normalizeFactRealizadosRows(rows){
+// Aqui eu trato o fato de realizados para garantir que datas e números fiquem com tipos corretos.
+function normalizarLinhasFatoRealizados(rows){
   return rows.map(raw => {
-    const registroId = readCell(raw, ["Registro ID", "ID", "registro", "registro_id"]);
+    const registroId = lerCelula(raw, ["Registro ID", "ID", "registro", "registro_id"]);
     if (!registroId) return null;
 
-    const segmento = readCell(raw, ["Segmento"]);
-    const segmentoId = readCell(raw, ["Segmento ID", "Id Segmento"]);
-    const diretoria = readCell(raw, ["Diretoria ID", "Diretoria", "Id Diretoria", "Diretoria Codigo"]);
-    const diretoriaNome = readCell(raw, ["Diretoria Nome", "Diretoria Regional"]) || diretoria;
-    const gerencia = readCell(raw, ["Gerencia ID", "Gerencia Regional", "Id Gerencia Regional"]);
-    const gerenciaNome = readCell(raw, ["Gerencia Nome", "Gerencia Regional", "Regional Nome"]) || gerencia;
-    const regionalNome = readCell(raw, ["Regional Nome", "Regional"]) || gerenciaNome;
-    const agenciaId = readCell(raw, ["Agencia ID", "Id Agencia", "Agência ID", "Agencia"]);
-    const agenciaNome = readCell(raw, ["Agencia Nome", "Agência Nome", "Agencia"]);
-    const agenciaCodigo = readCell(raw, ["Agencia Codigo", "Código Agência", "Codigo Agencia"]) || agenciaId || agenciaNome;
-    const gerenteGestao = readCell(raw, ["Gerente Gestao ID", "Gerente Gestao", "Id Gerente de Gestao"]);
-    const gerenteGestaoNome = readCell(raw, ["Gerente Gestao Nome", "Gerente de Gestao", "Gerente Gestao"]) || gerenteGestao;
-    const gerente = readCell(raw, ["Gerente ID", "Gerente"]);
-    const gerenteNome = readCell(raw, ["Gerente Nome", "Gerente"]) || gerente;
-    const familiaId = readCell(raw, ["Familia ID", "Familia", "Família ID"]) || "";
-    const familiaNome = readCell(raw, ["Familia Nome", "Família", "Familia"]) || familiaId;
-    const produtoId = readCell(raw, ["Produto ID", "Produto", "Id Produto"]);
+    const segmento = lerCelula(raw, ["Segmento"]);
+    const segmentoId = lerCelula(raw, ["Segmento ID", "Id Segmento"]);
+    const diretoria = lerCelula(raw, ["Diretoria ID", "Diretoria", "Id Diretoria", "Diretoria Codigo"]);
+    const diretoriaNome = lerCelula(raw, ["Diretoria Nome", "Diretoria Regional"]) || diretoria;
+    const gerencia = lerCelula(raw, ["Gerencia ID", "Gerencia Regional", "Id Gerencia Regional"]);
+    const gerenciaNome = lerCelula(raw, ["Gerencia Nome", "Gerencia Regional", "Regional Nome"]) || gerencia;
+    const regionalNome = lerCelula(raw, ["Regional Nome", "Regional"]) || gerenciaNome;
+    const agenciaId = lerCelula(raw, ["Agencia ID", "Id Agencia", "Agência ID", "Agencia"]);
+    const agenciaNome = lerCelula(raw, ["Agencia Nome", "Agência Nome", "Agencia"]);
+    const agenciaCodigo = lerCelula(raw, ["Agencia Codigo", "Código Agência", "Codigo Agencia"]) || agenciaId || agenciaNome;
+    const gerenteGestao = lerCelula(raw, ["Gerente Gestao ID", "Gerente Gestao", "Id Gerente de Gestao"]);
+    const gerenteGestaoNome = lerCelula(raw, ["Gerente Gestao Nome", "Gerente de Gestao", "Gerente Gestao"]) || gerenteGestao;
+    const gerente = lerCelula(raw, ["Gerente ID", "Gerente"]);
+    const gerenteNome = lerCelula(raw, ["Gerente Nome", "Gerente"]) || gerente;
+    const familiaId = lerCelula(raw, ["Familia ID", "Familia", "Família ID"]) || "";
+    const familiaNome = lerCelula(raw, ["Familia Nome", "Família", "Familia"]) || familiaId;
+    const produtoId = lerCelula(raw, ["id_indicador", "Produto ID", "Produto", "Id Produto"]);
     if (!produtoId) return null;
-    const produtoNome = readCell(raw, ["Produto Nome", "Produto"]) || produtoId;
-    const subproduto = readCell(raw, ["Subproduto", "Sub produto", "Sub-Produto"]);
-    const carteira = readCell(raw, ["Carteira"]);
-    const canalVenda = readCell(raw, ["Canal Venda", "Canal"]);
-    const tipoVenda = readCell(raw, ["Tipo Venda", "Tipo"]);
-    const modalidadePagamento = readCell(raw, ["Modalidade Pagamento", "Modalidade"]);
-    let data = parseISODate(readCell(raw, ["Data", "Data Movimento", "Data Movimentacao", "Data Movimentação"]));
-    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    const produtoNome = lerCelula(raw, ["ds_indicador", "Produto Nome", "Produto"]) || produtoId;
+    const subproduto = lerCelula(raw, ["Subproduto", "Sub produto", "Sub-Produto"]);
+    const carteira = lerCelula(raw, ["Carteira"]);
+    const canalVenda = lerCelula(raw, ["Canal Venda", "Canal"]);
+    const tipoVenda = lerCelula(raw, ["Tipo Venda", "Tipo"]);
+    const modalidadePagamento = lerCelula(raw, ["Modalidade Pagamento", "Modalidade"]);
+    let data = converterDataISO(lerCelula(raw, ["Data", "Data Movimento", "Data Movimentacao", "Data Movimentação"]));
+    let competencia = converterDataISO(lerCelula(raw, ["Competencia", "Competência"]));
     if (!data && competencia) {
       data = competencia;
     }
     if (!competencia && data) {
       competencia = `${data.slice(0, 7)}-01`;
     }
-    const realizadoMens = toNumber(readCell(raw, ["Realizado Mensal", "Realizado"]));
-    const realizadoAcum = toNumber(readCell(raw, ["Realizado Acumulado", "Realizado Acum"]));
-    const quantidade = toNumber(readCell(raw, ["Quantidade", "Qtd"]));
-    const variavelReal = toNumber(readCell(raw, ["Variavel Real", "Variável Real"]));
+    const realizadoMens = toNumber(lerCelula(raw, ["Realizado Mensal", "Realizado"]));
+    const realizadoAcum = toNumber(lerCelula(raw, ["Realizado Acumulado", "Realizado Acum"]));
+    const quantidade = toNumber(lerCelula(raw, ["Quantidade", "Qtd"]));
+    const variavelReal = toNumber(lerCelula(raw, ["Variavel Real", "Variável Real"]));
 
-    return {
+    const base = {
       registroId,
       segmento,
       segmentoId,
@@ -772,9 +1041,6 @@ function normalizeFactRealizadosRows(rows){
       gerenteNome,
       familiaId,
       familiaNome,
-      produtoId,
-      produtoNome,
-      prodOrSub: subproduto || produtoNome || produtoId,
       subproduto,
       carteira,
       canalVenda,
@@ -788,51 +1054,55 @@ function normalizeFactRealizadosRows(rows){
       qtd: quantidade,
       variavelReal,
     };
+    aplicarIndicadorAliases(base, produtoId, produtoNome);
+    base.prodOrSub = subproduto || base.produtoNome || base.produtoId;
+    return base;
   }).filter(Boolean);
 }
 
-function normalizeFactMetasRows(rows){
+// Aqui eu deixo o fato de metas com os mesmos padrões de datas e chaves dos realizados para facilitar os cruzamentos.
+function normalizarLinhasFatoMetas(rows){
   return rows.map(raw => {
-    const registroId = readCell(raw, ["Registro ID", "ID", "registro"]);
+    const registroId = lerCelula(raw, ["Registro ID", "ID", "registro"]);
     if (!registroId) return null;
-    const segmento = readCell(raw, ["Segmento"]);
-    const segmentoId = readCell(raw, ["Segmento ID", "Id Segmento"]);
-    const diretoria = readCell(raw, ["Diretoria ID", "Diretoria", "Id Diretoria"]);
-    const diretoriaNome = readCell(raw, ["Diretoria Nome", "Diretoria Regional"]) || diretoria;
-    const gerencia = readCell(raw, ["Gerencia ID", "Gerencia Regional", "Id Gerencia Regional"]);
-    const gerenciaNome = readCell(raw, ["Gerencia Nome", "Gerencia Regional", "Regional Nome"]) || gerencia;
-    const regionalNome = readCell(raw, ["Regional Nome", "Regional"]) || gerenciaNome;
-    const agenciaId = readCell(raw, ["Agencia ID", "Agência ID", "Id Agencia"]);
-    const agenciaCodigo = readCell(raw, ["Agencia Codigo", "Agência Codigo", "Codigo Agencia"]);
-    const agenciaNome = readCell(raw, ["Agencia Nome", "Agência Nome", "Agencia"])
+    const segmento = lerCelula(raw, ["Segmento"]);
+    const segmentoId = lerCelula(raw, ["Segmento ID", "Id Segmento"]);
+    const diretoria = lerCelula(raw, ["Diretoria ID", "Diretoria", "Id Diretoria"]);
+    const diretoriaNome = lerCelula(raw, ["Diretoria Nome", "Diretoria Regional"]) || diretoria;
+    const gerencia = lerCelula(raw, ["Gerencia ID", "Gerencia Regional", "Id Gerencia Regional"]);
+    const gerenciaNome = lerCelula(raw, ["Gerencia Nome", "Gerencia Regional", "Regional Nome"]) || gerencia;
+    const regionalNome = lerCelula(raw, ["Regional Nome", "Regional"]) || gerenciaNome;
+    const agenciaId = lerCelula(raw, ["Agencia ID", "Agência ID", "Id Agencia"]);
+    const agenciaCodigo = lerCelula(raw, ["Agencia Codigo", "Agência Codigo", "Codigo Agencia"]);
+    const agenciaNome = lerCelula(raw, ["Agencia Nome", "Agência Nome", "Agencia"])
       || agenciaCodigo
       || agenciaId;
-    const gerenteGestao = readCell(raw, ["Gerente Gestao ID", "Gerente Gestao", "Id Gerente de Gestao"]);
-    const gerenteGestaoNome = readCell(raw, ["Gerente Gestao Nome", "Gerente de Gestao", "Gerente Gestao"]) || gerenteGestao;
-    const gerente = readCell(raw, ["Gerente ID", "Gerente"]);
-    const gerenteNome = readCell(raw, ["Gerente Nome", "Gerente"]) || gerente;
-    const familiaId = readCell(raw, ["Familia ID", "Familia", "Família ID"]);
-    const familiaNome = readCell(raw, ["Familia Nome", "Família Nome", "Familia"]) || familiaId;
-    const produtoId = readCell(raw, ["Produto ID", "Produto", "Id Produto"]);
-    const produtoNome = readCell(raw, ["Produto Nome", "Produto"]) || produtoId;
-    const subproduto = readCell(raw, ["Subproduto", "Sub produto", "Sub-Produto"]);
-    const carteira = readCell(raw, ["Carteira"]);
-    const canalVenda = readCell(raw, ["Canal Venda", "Canal"]);
-    const tipoVenda = readCell(raw, ["Tipo Venda", "Tipo"]);
-    const modalidadePagamento = readCell(raw, ["Modalidade Pagamento", "Modalidade"]);
-    const metaMens = toNumber(readCell(raw, ["Meta Mensal", "Meta"]));
-    const metaAcum = toNumber(readCell(raw, ["Meta Acumulada", "Meta Acum"]));
-    const variavelMeta = toNumber(readCell(raw, ["Variavel Meta", "Variável Meta"]));
-    const peso = toNumber(readCell(raw, ["Peso"]));
-    let data = parseISODate(readCell(raw, ["Data", "Data Competencia", "Data da Meta"]));
-    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    const gerenteGestao = lerCelula(raw, ["Gerente Gestao ID", "Gerente Gestao", "Id Gerente de Gestao"]);
+    const gerenteGestaoNome = lerCelula(raw, ["Gerente Gestao Nome", "Gerente de Gestao", "Gerente Gestao"]) || gerenteGestao;
+    const gerente = lerCelula(raw, ["Gerente ID", "Gerente"]);
+    const gerenteNome = lerCelula(raw, ["Gerente Nome", "Gerente"]) || gerente;
+    const familiaId = lerCelula(raw, ["Familia ID", "Familia", "Família ID"]);
+    const familiaNome = lerCelula(raw, ["Familia Nome", "Família Nome", "Familia"]) || familiaId;
+    const produtoId = lerCelula(raw, ["id_indicador", "Produto ID", "Produto", "Id Produto"]);
+    const produtoNome = lerCelula(raw, ["ds_indicador", "Produto Nome", "Produto"]) || produtoId;
+    const subproduto = lerCelula(raw, ["Subproduto", "Sub produto", "Sub-Produto"]);
+    const carteira = lerCelula(raw, ["Carteira"]);
+    const canalVenda = lerCelula(raw, ["Canal Venda", "Canal"]);
+    const tipoVenda = lerCelula(raw, ["Tipo Venda", "Tipo"]);
+    const modalidadePagamento = lerCelula(raw, ["Modalidade Pagamento", "Modalidade"]);
+    const metaMens = toNumber(lerCelula(raw, ["Meta Mensal", "Meta"]));
+    const metaAcum = toNumber(lerCelula(raw, ["Meta Acumulada", "Meta Acum"]));
+    const variavelMeta = toNumber(lerCelula(raw, ["Variavel Meta", "Variável Meta"]));
+    const peso = toNumber(lerCelula(raw, ["Peso"]));
+    let data = converterDataISO(lerCelula(raw, ["Data", "Data Competencia", "Data da Meta"]));
+    let competencia = converterDataISO(lerCelula(raw, ["Competencia", "Competência"]));
     if (!data && competencia) {
       data = competencia;
     }
     if (!competencia && data) {
       competencia = `${data.slice(0, 7)}-01`;
     }
-    return {
+    const base = {
       registroId,
       segmento,
       segmentoId,
@@ -850,9 +1120,6 @@ function normalizeFactMetasRows(rows){
       gerenteNome,
       familiaId,
       familiaNome,
-      produtoId,
-      produtoNome,
-      prodOrSub: subproduto || produtoNome || produtoId,
       subproduto,
       carteira,
       canalVenda,
@@ -866,31 +1133,33 @@ function normalizeFactMetasRows(rows){
       variavelMeta,
       peso,
     };
+    aplicarIndicadorAliases(base, produtoId, produtoNome);
+    base.prodOrSub = subproduto || base.produtoNome || base.produtoId;
+    return base;
   }).filter(Boolean);
 }
 
-function normalizeFactVariavelRows(rows){
+// Aqui eu trato o fato variável (pontos) porque ele vem com os nomes de colunas diferentes das outras bases.
+function normalizarLinhasFatoVariavel(rows){
   return rows.map(raw => {
-    const registroId = readCell(raw, ["Registro ID", "ID", "registro"]);
+    const registroId = lerCelula(raw, ["Registro ID", "ID", "registro"]);
     if (!registroId) return null;
-    const produtoId = readCell(raw, ["Produto ID", "Produto", "Id Produto"]);
-    const produtoNome = readCell(raw, ["Produto Nome", "Produto"]) || produtoId;
-    const familiaId = readCell(raw, ["Familia ID", "Familia", "Família ID"]);
-    const familiaNome = readCell(raw, ["Familia Nome", "Família Nome", "Familia"]) || familiaId;
-    const variavelMeta = toNumber(readCell(raw, ["Variavel Meta", "Variável Meta"]));
-    const variavelReal = toNumber(readCell(raw, ["Variavel Real", "Variável Real"]));
-    let data = parseISODate(readCell(raw, ["Data"]));
-    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    const produtoId = lerCelula(raw, ["id_indicador", "Produto ID", "Produto", "Id Produto"]);
+    const produtoNome = lerCelula(raw, ["ds_indicador", "Produto Nome", "Produto"]) || produtoId;
+    const familiaId = lerCelula(raw, ["Familia ID", "Familia", "Família ID"]);
+    const familiaNome = lerCelula(raw, ["Familia Nome", "Família Nome", "Familia"]) || familiaId;
+    const variavelMeta = toNumber(lerCelula(raw, ["Variavel Meta", "Variável Meta"]));
+    const variavelReal = toNumber(lerCelula(raw, ["Variavel Real", "Variável Real"]));
+    let data = converterDataISO(lerCelula(raw, ["Data"]));
+    let competencia = converterDataISO(lerCelula(raw, ["Competencia", "Competência"]));
     if (!data && competencia) {
       data = competencia;
     }
     if (!competencia && data) {
       competencia = `${data.slice(0, 7)}-01`;
     }
-    return {
+    const base = {
       registroId,
-      produtoId,
-      produtoNome,
       familiaId,
       familiaNome,
       data,
@@ -898,38 +1167,41 @@ function normalizeFactVariavelRows(rows){
       variavelMeta,
       variavelReal,
     };
+    aplicarIndicadorAliases(base, produtoId, produtoNome);
+    return base;
   }).filter(Boolean);
 }
 
-function normalizeFactCampanhasRows(rows){
+// Aqui eu padronizo os dados das campanhas porque preciso ligar sprint, unidade e indicadores rapidamente.
+function normalizarLinhasFatoCampanhas(rows){
   return rows.map(raw => {
-    const id = readCell(raw, ["Campanha ID", "ID"]);
+    const id = lerCelula(raw, ["Campanha ID", "ID"]);
     if (!id) return null;
-    const sprintId = readCell(raw, ["Sprint ID", "Sprint"]);
-    const diretoria = readCell(raw, ["Diretoria", "Diretoria ID", "Id Diretoria"]);
-    const diretoriaNome = readCell(raw, ["Diretoria Nome", "Diretoria Regional"]) || diretoria;
-    const gerencia = readCell(raw, ["Gerencia Regional", "Gerencia ID", "Id Gerencia"]);
-    const regionalNome = readCell(raw, ["Regional Nome", "Regional"]) || gerencia;
-    const agenciaCodigo = readCell(raw, ["Agencia Codigo", "Agencia ID", "Código Agência", "Agência Codigo"]);
-    const agenciaNome = readCell(raw, ["Agencia Nome", "Agência Nome", "Agencia"]) || agenciaCodigo;
-    const gerenteGestao = readCell(raw, ["Gerente Gestao", "Gerente Gestao ID", "Gerente de Gestao"]);
-    const gerenteGestaoNome = readCell(raw, ["Gerente Gestao Nome", "Gerente de Gestao Nome"]) || gerenteGestao;
-    const gerente = readCell(raw, ["Gerente", "Gerente ID"]);
-    const gerenteNome = readCell(raw, ["Gerente Nome"]) || gerente;
-    const segmento = readCell(raw, ["Segmento"]);
-    const familiaId = readCell(raw, ["Familia ID", "Família ID", "Familia"]);
-    const familiaNome = readCell(raw, ["Familia Nome", "Família Nome"]) || familiaId;
-    const produtoId = readCell(raw, ["Produto ID", "Produto"]);
+    const sprintId = lerCelula(raw, ["Sprint ID", "Sprint"]);
+    const diretoria = lerCelula(raw, ["Diretoria", "Diretoria ID", "Id Diretoria"]);
+    const diretoriaNome = lerCelula(raw, ["Diretoria Nome", "Diretoria Regional"]) || diretoria;
+    const gerencia = lerCelula(raw, ["Gerencia Regional", "Gerencia ID", "Id Gerencia"]);
+    const regionalNome = lerCelula(raw, ["Regional Nome", "Regional"]) || gerencia;
+    const agenciaCodigo = lerCelula(raw, ["Agencia Codigo", "Agencia ID", "Código Agência", "Agência Codigo"]);
+    const agenciaNome = lerCelula(raw, ["Agencia Nome", "Agência Nome", "Agencia"]) || agenciaCodigo;
+    const gerenteGestao = lerCelula(raw, ["Gerente Gestao", "Gerente Gestao ID", "Gerente de Gestao"]);
+    const gerenteGestaoNome = lerCelula(raw, ["Gerente Gestao Nome", "Gerente de Gestao Nome"]) || gerenteGestao;
+    const gerente = lerCelula(raw, ["Gerente", "Gerente ID"]);
+    const gerenteNome = lerCelula(raw, ["Gerente Nome"]) || gerente;
+    const segmento = lerCelula(raw, ["Segmento"]);
+    const familiaId = lerCelula(raw, ["Familia ID", "Família ID", "Familia"]);
+    const familiaNome = lerCelula(raw, ["Familia Nome", "Família Nome"]) || familiaId;
+    const produtoId = lerCelula(raw, ["id_indicador", "Produto ID", "Produto"]);
     if (!produtoId) return null;
-    const produtoNome = readCell(raw, ["Produto Nome", "Produto"]) || produtoId;
-    const subproduto = readCell(raw, ["Subproduto", "Sub produto"]);
-    const carteira = readCell(raw, ["Carteira"]);
-    const linhas = toNumber(readCell(raw, ["Linhas"]));
-    const cash = toNumber(readCell(raw, ["Cash"]));
-    const conquista = toNumber(readCell(raw, ["Conquista"]));
-    const atividade = parseBoolean(readCell(raw, ["Atividade", "Ativo", "Status"]), true);
-    let data = parseISODate(readCell(raw, ["Data"]));
-    let competencia = parseISODate(readCell(raw, ["Competencia", "Competência"]));
+    const produtoNome = lerCelula(raw, ["ds_indicador", "Produto Nome", "Produto"]) || produtoId;
+    const subproduto = lerCelula(raw, ["Subproduto", "Sub produto"]);
+    const carteira = lerCelula(raw, ["Carteira"]);
+    const linhas = toNumber(lerCelula(raw, ["Linhas"]));
+    const cash = toNumber(lerCelula(raw, ["Cash"]));
+    const conquista = toNumber(lerCelula(raw, ["Conquista"]));
+    const atividade = converterBooleano(lerCelula(raw, ["Atividade", "Ativo", "Status"]), true);
+    let data = converterDataISO(lerCelula(raw, ["Data"]));
+    let competencia = converterDataISO(lerCelula(raw, ["Competencia", "Competência"]));
     if (!data && competencia) {
       data = competencia;
     }
@@ -937,7 +1209,7 @@ function normalizeFactCampanhasRows(rows){
       competencia = `${data.slice(0, 7)}-01`;
     }
 
-    return {
+    const base = {
       id,
       sprintId,
       diretoria,
@@ -954,8 +1226,6 @@ function normalizeFactCampanhasRows(rows){
       segmento,
       familiaId,
       familiaNome,
-      produtoId,
-      produtoNome,
       subproduto,
       carteira,
       linhas,
@@ -965,28 +1235,32 @@ function normalizeFactCampanhasRows(rows){
       data,
       competencia,
     };
+    aplicarIndicadorAliases(base, produtoId, produtoNome);
+    return base;
   }).filter(Boolean);
 }
 
-function normalizeCalendarioRows(rows){
+// Aqui eu organizo o calendário corporativo (competências) para usar nas telas de período.
+function normalizarLinhasCalendario(rows){
   return rows.map(raw => {
-    const data = parseISODate(readCell(raw, ["Data"]));
+    const data = converterDataISO(lerCelula(raw, ["Data"]));
     if (!data) return null;
-    const competencia = parseISODate(readCell(raw, ["Competencia", "Competência"])) || `${data.slice(0, 7)}-01`;
-    const ano = readCell(raw, ["Ano"]) || data.slice(0, 4);
-    const mes = readCell(raw, ["Mes", "Mês"]) || data.slice(5, 7);
-    const mesNome = readCell(raw, ["Mes Nome", "Mês Nome"]);
-    const dia = readCell(raw, ["Dia"]) || data.slice(8, 10);
-    const diaSemana = readCell(raw, ["Dia da Semana"]);
-    const semana = readCell(raw, ["Semana"]);
-    const trimestre = readCell(raw, ["Trimestre"]);
-    const semestre = readCell(raw, ["Semestre"]);
-    const ehDiaUtil = parseBoolean(readCell(raw, ["Eh Dia Util", "É Dia Útil", "Dia Util"]), false) ? 1 : 0;
+    const competencia = converterDataISO(lerCelula(raw, ["Competencia", "Competência"])) || `${data.slice(0, 7)}-01`;
+    const ano = lerCelula(raw, ["Ano"]) || data.slice(0, 4);
+    const mes = lerCelula(raw, ["Mes", "Mês"]) || data.slice(5, 7);
+    const mesNome = lerCelula(raw, ["Mes Nome", "Mês Nome"]);
+    const dia = lerCelula(raw, ["Dia"]) || data.slice(8, 10);
+    const diaSemana = lerCelula(raw, ["Dia da Semana"]);
+    const semana = lerCelula(raw, ["Semana"]);
+    const trimestre = lerCelula(raw, ["Trimestre"]);
+    const semestre = lerCelula(raw, ["Semestre"]);
+    const ehDiaUtil = converterBooleano(lerCelula(raw, ["Eh Dia Util", "É Dia Útil", "Dia Util"]), false) ? 1 : 0;
     return { data, competencia, ano, mes, mesNome, dia, diaSemana, semana, trimestre, semestre, ehDiaUtil };
   }).filter(Boolean).sort((a, b) => (a.data || "").localeCompare(b.data || ""));
 }
 
-function normalizeStatusRows(rows){
+// Aqui eu trato a base de status dos indicadores para poder exibir os nomes amigáveis e a ordem certa.
+function normalizarLinhasStatus(rows){
   const normalized = [];
   const seen = new Set();
   const missing = new Set();
@@ -997,27 +1271,27 @@ function normalizeStatusRows(rows){
   }
 
   const register = (candidate = {}) => {
-    const rawKey = pickFirstFilled(
+    const rawKey = pegarPrimeiroPreenchido(
       candidate.key,
       candidate.slug,
       candidate.id,
       candidate.codigo,
       candidate.nome
     );
-    const resolvedKey = normalizeStatusKey(rawKey);
+    const resolvedKey = normalizarChaveStatus(rawKey);
     if (!resolvedKey) return false;
     if (seen.has(resolvedKey)) return true;
 
-    const codigo = sanitizeText(candidate.codigo)
-      || sanitizeText(candidate.id)
+    const codigo = limparTexto(candidate.codigo)
+      || limparTexto(candidate.id)
       || resolvedKey;
-    const nome = sanitizeText(candidate.nome)
+    const nome = limparTexto(candidate.nome)
       || STATUS_LABELS[resolvedKey]
-      || sanitizeText(candidate.label)
+      || limparTexto(candidate.label)
       || codigo
       || resolvedKey;
-    const originalId = sanitizeText(candidate.id) || codigo || resolvedKey;
-    const ordemRaw = sanitizeText(candidate.ordem);
+    const originalId = limparTexto(candidate.id) || codigo || resolvedKey;
+    const ordemRaw = limparTexto(candidate.ordem);
     const ordemNum = Number(ordemRaw);
     const ordem = ordemRaw !== "" && Number.isFinite(ordemNum) ? ordemNum : undefined;
 
@@ -1031,14 +1305,14 @@ function normalizeStatusRows(rows){
 
   list.forEach(raw => {
     if (!raw || typeof raw !== "object") return;
-    const nome = readCell(raw, ["Status Nome", "Status", "Nome", "Descrição", "Descricao"]);
-    const codigo = readCell(raw, ["Status Id", "StatusID", "id", "ID", "Codigo", "Código"]);
-    const chave = readCell(raw, ["Status Chave", "Status Key", "Chave", "Slug"]);
-    const ordem = readCell(raw, ["Ordem", "Order", "Posicao", "Posição", "Sequencia", "Sequência"]);
-    const key = pickFirstFilled(chave, codigo, nome);
+    const nome = lerCelula(raw, ["Status Nome", "Status", "Nome", "Descrição", "Descricao"]);
+    const codigo = lerCelula(raw, ["Status Id", "StatusID", "id", "ID", "Codigo", "Código"]);
+    const chave = lerCelula(raw, ["Status Chave", "Status Key", "Chave", "Slug"]);
+    const ordem = lerCelula(raw, ["Ordem", "Order", "Posicao", "Posição", "Sequencia", "Sequência"]);
+    const key = pegarPrimeiroPreenchido(chave, codigo, nome);
     const ok = register({ id: codigo || key, codigo, nome, key, ordem });
     if (!ok) {
-      const fallback = pickFirstFilled(nome, codigo, chave);
+      const fallback = pegarPrimeiroPreenchido(nome, codigo, chave);
       if (fallback) missing.add(fallback);
     }
   });
@@ -1059,9 +1333,9 @@ function rebuildStatusIndex(rows) {
 
   source.forEach(item => {
     if (!item || typeof item !== "object") return;
-    const key = item.key || normalizeStatusKey(item.id ?? item.codigo ?? item.nome);
+    const key = item.key || normalizarChaveStatus(item.id ?? item.codigo ?? item.nome);
     if (!key || map.has(key)) return;
-    const ordemRaw = sanitizeText(item.ordem);
+    const ordemRaw = limparTexto(item.ordem);
     const ordemNum = Number(ordemRaw);
     const ordem = ordemRaw !== "" && Number.isFinite(ordemNum) ? ordemNum : undefined;
     const entry = { ...item, key };
@@ -1092,7 +1366,7 @@ function rebuildStatusIndex(rows) {
 }
 
 function getStatusEntry(key) {
-  const normalized = normalizeStatusKey(key);
+  const normalized = normalizarChaveStatus(key);
   if (!normalized) return null;
   return STATUS_BY_KEY.get(normalized) || null;
 }
@@ -1100,9 +1374,9 @@ function getStatusEntry(key) {
 function buildStatusFilterEntries() {
   const base = Array.isArray(STATUS_INDICADORES_DATA) ? STATUS_INDICADORES_DATA : [];
   const entries = base.map(st => {
-    const key = st?.key || normalizeStatusKey(st?.id ?? st?.codigo ?? st?.nome);
+    const key = st?.key || normalizarChaveStatus(st?.id ?? st?.codigo ?? st?.nome);
     if (!key) return null;
-    const label = st?.nome || getStatusLabelFromKey(key, st?.codigo ?? st?.id ?? key);
+    const label = st?.nome || obterRotuloStatus(key, st?.codigo ?? st?.id ?? key);
     const codigo = st?.codigo ?? st?.id ?? key;
     let ordem = st?.ordem;
     if (typeof ordem === "string" && ordem !== "") {
@@ -1149,7 +1423,7 @@ function updateStatusFilterOptions(preserveSelection = true) {
 
   const previousOption = select.selectedOptions?.[0] || null;
   const previousKey = preserveSelection
-    ? (previousOption?.dataset.statusKey || normalizeStatusKey(select.value) || "")
+    ? (previousOption?.dataset.statusKey || normalizarChaveStatus(select.value) || "")
     : "";
 
   const entries = buildStatusFilterEntries();
@@ -1206,26 +1480,26 @@ async function loadBaseData(){
       loadCSVAuto(`${basePath}dCalendario.csv`).catch(() => []),
     ]);
 
-    const mesuRows = normalizeMesuRows(mesuRaw);
-    const produtoRows = normalizeProdutosRows(produtoRaw);
-    const statusRows = normalizeStatusRows(statusRaw);
+    const mesuRows = normalizarLinhasMesu(mesuRaw);
+    const produtoRows = normalizarLinhasProdutos(produtoRaw);
+    const statusRows = normalizarLinhasStatus(statusRaw);
     if (statusRows.length) {
       rebuildStatusIndex(statusRows);
     } else {
       rebuildStatusIndex(DEFAULT_STATUS_INDICADORES);
     }
 
-    buildProdutosData(produtoRows);
-    buildHierarchyFromMesu(mesuRows);
+    montarDadosProdutos(produtoRows);
+    montarHierarquiaMesu(mesuRows);
 
-    FACT_REALIZADOS = normalizeFactRealizadosRows(realizadosRaw);
-    FACT_METAS = normalizeFactMetasRows(metasRaw);
-    FACT_VARIAVEL = normalizeFactVariavelRows(variavelRaw);
-    FACT_CAMPANHAS = normalizeFactCampanhasRows(campanhasRaw);
+    FACT_REALIZADOS = normalizarLinhasFatoRealizados(realizadosRaw);
+    FACT_METAS = normalizarLinhasFatoMetas(metasRaw);
+    FACT_VARIAVEL = normalizarLinhasFatoVariavel(variavelRaw);
+    FACT_CAMPANHAS = normalizarLinhasFatoCampanhas(campanhasRaw);
     if (FACT_CAMPANHAS.length) {
       replaceCampaignUnitData(FACT_CAMPANHAS);
     }
-    DIM_CALENDARIO = normalizeCalendarioRows(calendarioRaw);
+    DIM_CALENDARIO = normalizarLinhasCalendario(calendarioRaw);
     updateCampaignSprintsUnits();
 
     const availableDatesSource = (DIM_CALENDARIO.length
@@ -1258,7 +1532,8 @@ async function loadBaseData(){
 
 
 
-/* ===== Ajusta altura conforme topbar (svh) ===== */
+/* ===== Aqui eu ajusto a altura da topbar para o CSS responsivo funcionar ===== */
+// Aqui eu calculo a altura real da topbar e jogo no CSS para o layout não quebrar ao abrir menus.
 const setTopbarH = () => {
   const h = document.querySelector('.topbar')?.offsetHeight || 56;
   document.documentElement.style.setProperty('--topbar-h', `${h}px`);
@@ -1267,7 +1542,8 @@ window.addEventListener('load', setTopbarH);
 window.addEventListener('resize', setTopbarH);
 setTopbarH();
 
-/* ===== Visões (chips) da tabela ===== */
+/* ===== Aqui eu defino as visões (chips) que aparecem acima da tabela detalhada ===== */
+// Aqui eu descrevo as visões possíveis da tabela para alternar entre diretoria, gerente etc.
 const TABLE_VIEWS = [
   { id:"diretoria", label:"Diretoria", key:"diretoria" },
   { id:"gerencia",  label:"Regional",  key:"gerenciaRegional" },
@@ -1276,11 +1552,12 @@ const TABLE_VIEWS = [
   { id:"gerente",   label:"Gerente",            key:"gerente" },
   { id:"secao",    label:"Seção",             key:"secao" },
   { id:"familia",   label:"Família",            key:"familia" },
-  { id:"prodsub",   label:"Produto",            key:"prodOrSub" },
+  { id:"prodsub",   label:"Indicador",          key:"prodOrSub" },
   { id:"contrato",  label:"Contratos",          key:"contrato" },
 ];
 
 /* === Seções e cards === */
+// Aqui eu defino os grupos de indicadores que viram cards no resumo.
 const CARD_SECTIONS_DEF = [
   { id:"captacao", label:"CAPTAÇÃO", items:[
     { id:"captacao_bruta",   nome:"Captação Bruta",                           icon:"ti ti-pig-money",       peso:4, metric:"valor" },
@@ -1313,14 +1590,31 @@ const CARD_SECTIONS_DEF = [
   ]},
 ];
 
+CARD_SECTIONS_DEF.forEach(sec => {
+  sec.items.forEach(item => {
+    registrarAliasIndicador(item.id, item.id);
+    registrarAliasIndicador(item.id, item.nome);
+  });
+});
+
 const SECTION_IDS = new Set(CARD_SECTIONS_DEF.map(sec => sec.id));
 const SECTION_BY_ID = new Map(CARD_SECTIONS_DEF.map(sec => [sec.id, sec]));
 
+// Aqui eu deixo prontas as opções de visão acumulada para mudar o período sem ter que mexer no calendário manualmente.
+const ACCUMULATED_VIEW_OPTIONS = [
+  { value: "mensal",      label: "Mensal",      monthsBack: 0 },
+  { value: "trimestral",  label: "Trimestral",  monthsBack: 2 },
+  { value: "semestral",   label: "Semestral",   monthsBack: 5 },
+  { value: "anual",       label: "Anual",       monthsBack: 11 },
+];
+
+// Aqui eu busco o nome bonitinho da seção pelo id.
 function getSectionLabel(id) {
   if (!id) return "";
   return SECTION_BY_ID.get(id)?.label || id;
 }
 
+// Aqui eu tento descobrir a seção de um indicador olhando tanto a linha quanto a relação produto → seção.
 function resolveSectionMetaFromRow(row) {
   if (!row) return { id: "", label: "" };
   const prodMeta = row.produtoId ? PRODUTO_TO_FAMILIA.get(row.produtoId) : null;
@@ -1334,6 +1628,7 @@ function resolveSectionMetaFromRow(row) {
   return { id: sectionId, label: label || sectionId };
 }
 
+// Aqui eu garanto que cada linha tenha uma família associada, buscando informações extras quando necessário.
 function resolveFamilyMetaFromRow(row) {
   if (!row) return { id: "", label: "" };
   const prodMeta = row.produtoId ? PRODUTO_TO_FAMILIA.get(row.produtoId) : null;
@@ -1356,7 +1651,7 @@ function resolveFamilyMetaFromRow(row) {
   return { id: familiaId, label: familiaLabel };
 }
 
-/* Índice produto → seção/meta */
+/* Aqui eu monto um índice de produto para descobrir família/seção sem ficar recalculando */
 const PRODUCT_INDEX = (() => {
   const map = new Map();
   CARD_SECTIONS_DEF.forEach(sec => {
@@ -1380,6 +1675,7 @@ const DEFAULT_CAMPAIGN_UNIT_DATA = [
   { id: "sc-litoral", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 04", regional: "Regional Curitiba", gerenteGestao: "GG 02", agenciaCodigo: "Ag 1003", agencia: "Agência 1003 • Curitiba Batel", segmento: "MEI", produtoId: "bradesco_expresso", subproduto: "Resgate", gerente: "Gerente 5", gerenteNome: "Carla Menezes", carteira: "Carteira Litoral", linhas: 95.4, cash: 90.1, conquista: 92.8, atividade: true, data: "2025-09-07" },
   { id: "sc-vale", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 04", regional: "Regional Curitiba", gerenteGestao: "GG 02", agenciaCodigo: "Ag 1003", agencia: "Agência 1003 • Curitiba Batel", segmento: "MEI", produtoId: "rec_credito", subproduto: "À vista", gerente: "Gerente 5", gerenteNome: "Carla Menezes", carteira: "Carteira Vale", linhas: 120.2, cash: 115.6, conquista: 110.4, atividade: true, data: "2025-09-17" }
 ];
+DEFAULT_CAMPAIGN_UNIT_DATA.forEach(unit => aplicarIndicadorAliases(unit, unit.produtoId, unit.produtoNome || unit.produtoId));
 
 const CAMPAIGN_UNIT_DATA = [];
 
@@ -1387,8 +1683,8 @@ function replaceCampaignUnitData(rows = []) {
   CAMPAIGN_UNIT_DATA.length = 0;
   const source = Array.isArray(rows) && rows.length ? rows : DEFAULT_CAMPAIGN_UNIT_DATA;
   source.forEach(item => {
-    const dataISO = parseISODate(item.data);
-    let competencia = parseISODate(item.competencia);
+    const dataISO = converterDataISO(item.data);
+    let competencia = converterDataISO(item.competencia);
     const resolvedData = dataISO || "";
     if (!competencia && resolvedData) {
       competencia = `${resolvedData.slice(0, 7)}-01`;
@@ -1417,20 +1713,21 @@ CAMPAIGN_UNIT_DATA.forEach(unit => {
     if (!unit.secaoNome) unit.secaoNome = meta.sectionLabel || meta.sectionId;
     if (!unit.familiaNome) unit.familiaNome = meta.sectionLabel || meta.sectionId;
   }
-  if (!unit.produtoNome) unit.produtoNome = meta?.name || unit.produto || unit.produtoId || "Produto";
+  if (!unit.produtoNome) unit.produtoNome = meta?.name || unit.produto || unit.produtoId || "Indicador";
   if (!unit.gerenteGestaoNome) {
     const numeric = (unit.gerenteGestao || "").replace(/[^0-9]/g, "");
     unit.gerenteGestaoNome = numeric ? `Gerente geral ${numeric}` : "Gerente geral";
   }
   if (!unit.familiaNome && unit.familia) unit.familiaNome = unit.familia;
   if (!unit.subproduto) unit.subproduto = "";
+  if (unit.subproduto) registrarAliasIndicador(unit.produtoId, unit.subproduto);
 });
 const CAMPAIGN_SPRINTS = [
   {
     id: "sprint-pj-2025",
     label: "Sprint PJ 2025",
-    cycle: "Sprint PJ • Setembro 2025",
-    period: { start: "2025-09-01", end: "2025-09-20" },
+    cycle: "Sprint PJ • Setembro a Dezembro 2025",
+    period: { start: "2025-09-01", end: "2025-12-31" },
     note: "Projete cenários e acompanhe apenas as unidades visíveis nos filtros atuais.",
     headStats: [
       { label: "Meta mínima", value: "100 pts" },
@@ -1573,7 +1870,7 @@ const CAMPAIGN_LEVEL_META = {
   agencia:       { groupField: "agenciaCodigo", displayField: "agencia", singular: "Agência", plural: "agências" },
   gerenteGestao: { groupField: "gerenteGestao", displayField: "gerenteGestaoNome", singular: "Gerente geral", plural: "gerentes gerais" },
   gerente:       { groupField: "gerente", displayField: "gerenteNome", singular: "Gerente", plural: "gerentes" },
-  produto:       { groupField: "produtoId", displayField: "produtoNome", singular: "Produto", plural: "produtos" },
+  produto:       { groupField: "produtoId", displayField: "produtoNome", singular: "Indicador", plural: "indicadores" },
   carteira:      { groupField: "carteira", displayField: "carteira", singular: "Carteira", plural: "carteiras" }
 };
 
@@ -1633,7 +1930,7 @@ function filterCampaignUnits(sprint, filters = getFilterValues()) {
 }
 
 function campaignStatusMatches(score, statusFilter = "todos") {
-  const normalized = normalizeStatusKey(statusFilter) || "todos";
+  const normalized = normalizarChaveStatus(statusFilter) || "todos";
   if (normalized === "todos") return true;
   const elegivel = score.finalStatus === "Parabéns" || score.finalStatus === "Elegível";
   if (normalized === "atingidos") return elegivel;
@@ -1740,16 +2037,116 @@ function buildCampaignRankingContext(sprint) {
   return { unitResults, aggregated, levelInfo };
 }
 
-/* ===== Datas (UTC) ===== */
+/* ===== Aqui eu concentro tudo que mexe com datas e horários em UTC ===== */
+// Aqui eu gero o primeiro dia do mês atual em formato ISO.
 function firstDayOfMonthISO(d=new Date()){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`; }
+// Aqui eu gero a data de hoje em ISO (aaaa-mm-dd).
 function todayISO(d=new Date()){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+// Aqui eu defino o período padrão que uso ao abrir o painel.
 function getDefaultPeriodRange(){
-  const now = new Date();
+  const capISO = AVAILABLE_DATE_MAX || todayISO();
+  const bounds = getMonthBoundsForISO(capISO);
   return {
-    start: firstDayOfMonthISO(now),
-    end: todayISO(now),
+    start: bounds.start,
+    end: capISO,
   };
 }
+// Aqui eu descubro os limites (início e fim) do mês referente a uma data ISO qualquer.
+function getMonthBoundsForISO(baseISO){
+  const fallbackToday = todayISO();
+  const iso = baseISO || fallbackToday;
+  const ref = dateUTCFromISO(iso);
+  if (!(ref instanceof Date) || Number.isNaN(ref?.getTime?.())) {
+    const todayRef = dateUTCFromISO(fallbackToday);
+    const startFallback = `${todayRef.getUTCFullYear()}-${String(todayRef.getUTCMonth()+1).padStart(2,"0")}-01`;
+    const endFallbackDate = new Date(Date.UTC(todayRef.getUTCFullYear(), todayRef.getUTCMonth()+1, 0));
+    return { start:startFallback, end: isoFromUTCDate(endFallbackDate) };
+  }
+  const start = `${ref.getUTCFullYear()}-${String(ref.getUTCMonth()+1).padStart(2,"0")}-01`;
+  const endDate = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth()+1, 0));
+  const end = isoFromUTCDate(endDate);
+  return { start, end };
+}
+// Aqui eu calculo um panorama rápido de dias úteis do mês corrente usando o calendário completo.
+function getCurrentMonthBusinessSnapshot(){
+  const today = todayISO();
+  const { start: monthStart, end: monthEnd } = getMonthBoundsForISO(today);
+  const monthKey = today.slice(0,7);
+  let total = 0;
+  let elapsed = 0;
+  if (Array.isArray(DIM_CALENDARIO) && DIM_CALENDARIO.length) {
+    const entries = DIM_CALENDARIO.filter(entry => {
+      const data = entry.data || entry.dt || "";
+      return typeof data === "string" && data.startsWith(monthKey);
+    });
+    const businessEntries = entries.filter(entry => {
+      const utilFlag = entry.ehDiaUtil ?? entry.util ?? entry.diaUtil ?? "";
+      const value = typeof utilFlag === "string" ? utilFlag.trim() : utilFlag;
+      if (value === true || value === 1 || value === "1") return true;
+      if (typeof value === "string" && value.toLowerCase() === "sim") return true;
+      return false;
+    });
+    total = businessEntries.length;
+    const todayFiltered = businessEntries.filter(entry => (entry.data || entry.dt || "") <= today);
+    elapsed = todayFiltered.length;
+  }
+  if (!total) {
+    total = businessDaysBetweenInclusive(monthStart, monthEnd);
+    const cappedToday = today < monthStart ? monthStart : (today > monthEnd ? monthEnd : today);
+    elapsed = businessDaysBetweenInclusive(monthStart, cappedToday);
+  }
+  const remaining = Math.max(0, total - elapsed);
+  return { total, elapsed, remaining, monthStart, monthEnd };
+}
+// Aqui eu descubro rapidamente quantos meses devo voltar em cada visão acumulada.
+function getAccumulatedViewMonths(view){
+  const match = ACCUMULATED_VIEW_OPTIONS.find(opt => opt.value === view);
+  return match ? match.monthsBack : 0;
+}
+// Aqui eu calculo o período inicial/final com base na visão acumulada escolhida.
+function computeAccumulatedPeriod(view = state.accumulatedView || "mensal", referenceEndISO = ""){
+  const today = todayISO();
+  const datasetMax = AVAILABLE_DATE_MAX || "";
+  const cap = datasetMax || today;
+  let endISO = referenceEndISO || state.period?.end || cap;
+  if (!endISO) endISO = cap;
+  if (datasetMax && endISO > datasetMax) {
+    endISO = datasetMax;
+  } else if (!datasetMax && endISO > today) {
+    endISO = today;
+  }
+  let endDate = dateUTCFromISO(endISO);
+  if (!(endDate instanceof Date) || Number.isNaN(endDate?.getTime?.())) {
+    endDate = dateUTCFromISO(cap);
+    endISO = isoFromUTCDate(endDate);
+  }
+  const monthsBack = getAccumulatedViewMonths(view);
+  let startDate;
+  if (view === "anual") {
+    startDate = new Date(Date.UTC(endDate.getUTCFullYear(), 0, 1));
+  } else {
+    startDate = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth() - monthsBack, 1));
+  }
+  const startISO = isoFromUTCDate(startDate);
+  const endIsoFinal = isoFromUTCDate(endDate);
+  return { start: startISO, end: endIsoFinal };
+}
+// Aqui eu aplico a visão acumulada escolhida direto no estado e atualizo o rótulo do período.
+function syncPeriodFromAccumulatedView(view = state.accumulatedView || "mensal", referenceEndISO = ""){
+  const period = computeAccumulatedPeriod(view, referenceEndISO);
+  state.period.start = period.start;
+  state.period.end = period.end;
+  updatePeriodLabels();
+  return period;
+}
+// Aqui eu atualizo os textos "De xx/xx/xxxx até yy/yy/yyyy" sempre que o período mudar.
+function updatePeriodLabels(){
+  const startEl = document.getElementById("lbl-periodo-inicio");
+  const endEl = document.getElementById("lbl-periodo-fim");
+  if (startEl) startEl.textContent = formatBRDate(state.period.start);
+  if (endEl) endEl.textContent = formatBRDate(state.period.end);
+}
+// Aqui eu calculo o período que alimenta os gráficos mensais da visão executiva.
 function getExecutiveMonthlyPeriod(){
   const today = todayISO();
   const datasetMax = AVAILABLE_DATE_MAX || "";
@@ -1765,9 +2162,170 @@ function getExecutiveMonthlyPeriod(){
   }
   return { start, end };
 }
+// Aqui eu formato uma data ISO para o padrão BR.
 function formatBRDate(iso){ if(!iso) return ""; const [y,m,day]=iso.split("-"); return `${day}/${m}/${y}`; }
+// Aqui eu converto uma data ISO para um Date em UTC.
 function dateUTCFromISO(iso){ const [y,m,d]=iso.split("-").map(Number); return new Date(Date.UTC(y,m-1,d)); }
+// Aqui eu faço o caminho inverso: Date UTC para string ISO.
 function isoFromUTCDate(d){ return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`; }
+// Aqui eu mantenho um conjunto fixo de colunas que aparecem quando o usuário abre o detalhe de um contrato.
+const DETAIL_SUBTABLE_COLUMNS = [
+  { id: "canal",       label: "Canal da venda",         render: (group = {}) => escapeHTML(group.canal || "—") },
+  { id: "tipo",        label: "Tipo da venda",          render: (group = {}) => escapeHTML(group.tipo || "—") },
+  { id: "gerente",     label: "Gerente",                render: (group = {}) => escapeHTML(group.gerente || "—") },
+  { id: "modalidade",  label: "Condição de pagamento",  render: (group = {}) => escapeHTML(group.modalidade || "—") },
+  { id: "vencimento",  label: "Data de vencimento",     render: (group = {}) => renderDetailDateCell(group.dataVencimento) },
+  { id: "cancelamento",label: "Data de cancelamento",   render: (group = {}) => renderDetailDateCell(group.dataCancelamento) },
+  { id: "motivo",      label: "Motivo do cancelamento", render: (group = {}) => escapeHTML(group.motivoCancelamento || "—") },
+];
+
+// Aqui eu montei os metadados das colunas da tabela principal para poder ligar/desligar conforme a visão escolhida.
+const DETAIL_COLUMNS = [
+  { id: "quantidade",    label: "Quantidade",       cellClass: "",        render: renderDetailQtyCell },
+  { id: "realizado",     label: "Realizado (R$)",   cellClass: "",        render: renderDetailRealizadoCell },
+  { id: "meta",          label: "Meta (R$)",        cellClass: "",        render: renderDetailMetaCell },
+  { id: "atingimento_v", label: "Atingimento (R$)", cellClass: "",        render: renderDetailAchievementValueCell },
+  { id: "atingimento_p", label: "Atingimento (%)",  cellClass: "",        render: renderDetailAchievementPercentCell },
+  { id: "data",          label: "Data",             cellClass: "",        render: renderDetailDateCellFromNode },
+];
+const DETAIL_DEFAULT_VIEW = {
+  id: "default",
+  name: "Visão padrão",
+  columns: DETAIL_COLUMNS.map(col => col.id),
+};
+const DETAIL_MAX_CUSTOM_VIEWS = 5;
+const DETAIL_VIEW_STORAGE_KEY = "pobj3:detailViews";
+const DETAIL_VIEW_ACTIVE_KEY = "pobj3:detailActiveView";
+const DETAIL_VIEW_CUSTOM_KEY = "pobj3:detailCustomView";
+const DETAIL_CUSTOM_DEFAULT_LABEL = "Visão atual";
+
+function renderDetailDateCell(iso){
+  if (!iso) return "—";
+  const label = formatBRDate(iso);
+  if (!label) return "—";
+  const safe = escapeHTML(label);
+  return `<span class="detail-date" title="${safe}">${safe}</span>`;
+}
+
+function renderDetailQtyCell(node = {}){
+  const qty = toNumber(node.qtd);
+  const rounded = Math.round(qty);
+  const full = fmtINT.format(rounded);
+  const display = formatIntReadable(qty);
+  return `<span title="${full}">${display}</span>`;
+}
+
+function renderDetailRealizadoCell(node = {}){
+  const value = toNumber(node.realizado);
+  const rounded = Math.round(value);
+  const full = fmtBRL.format(rounded);
+  const display = formatBRLReadable(value);
+  return `<span title="${full}">${display}</span>`;
+}
+
+function renderDetailMetaCell(node = {}){
+  const value = toNumber(node.meta);
+  const rounded = Math.round(value);
+  const full = fmtBRL.format(rounded);
+  const display = formatBRLReadable(value);
+  return `<span title="${full}">${display}</span>`;
+}
+
+function renderDetailAchievementValueCell(node = {}){
+  return renderDetailAchievementCurrency(node.realizado, node.meta);
+}
+
+function renderDetailAchievementPercentCell(node = {}){
+  const ratio = Number(node.ating || 0);
+  return renderDetailAchievementPercent(ratio);
+}
+
+function renderDetailDateCellFromNode(node = {}){
+  return renderDetailDateCell(node.data);
+}
+
+function renderDetailAchievementCurrency(realizado, meta){
+  const r = toNumber(realizado);
+  const m = toNumber(meta);
+  const hasMeta = m > 0;
+  const achieved = hasMeta ? Math.max(0, Math.min(r, m)) : Math.max(0, r);
+  const cls = hasMeta ? (r >= m ? "def-pos" : "def-neg") : "def-pos";
+  const full = fmtBRL.format(Math.round(achieved));
+  const display = formatBRLReadable(achieved);
+  return `<span class="def-badge ${cls}" title="${full}">${display}</span>`;
+}
+
+function renderDetailAchievementPercent(ratio){
+  const pct = Number.isFinite(ratio) ? ratio * 100 : 0;
+  const safe = Math.max(0, pct);
+  const cls = safe < 50 ? "att-low" : (safe < 100 ? "att-warn" : "att-ok");
+  return `<span class="att-badge ${cls}">${safe.toFixed(1)}%</span>`;
+}
+function getDetailColumnMeta(id){
+  return DETAIL_COLUMNS.find(col => col.id === id) || null;
+}
+function sanitizeDetailColumns(columns = []){
+  const valid = [];
+  columns.forEach(id => {
+    const meta = getDetailColumnMeta(id);
+    if (!meta) return;
+    if (!valid.includes(meta.id)) valid.push(meta.id);
+  });
+  return valid.length ? valid : [...DETAIL_DEFAULT_VIEW.columns];
+}
+function detailColumnsEqual(a = [], b = []){
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+function normalizeDetailViewPayload(payload){
+  if (!payload || typeof payload !== "object") return null;
+  const rawId = typeof payload.id === "string" ? payload.id.trim() : payload.id;
+  const id = rawId || null;
+  if (!id) return null;
+  const name = limparTexto(payload.name || "");
+  const columns = sanitizeDetailColumns(Array.isArray(payload.columns) ? payload.columns : []);
+  return { id, name: name || "Visão personalizada", columns };
+}
+function readLocalStorageItem(key){
+  try{
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    return window.localStorage.getItem(key);
+  }catch(err){
+    console.warn("Não consegui ler preferências de coluna:", err);
+    return null;
+  }
+}
+function writeLocalStorageItem(key, value){
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try{
+    if (value == null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, value);
+  }catch(err){
+    console.warn("Não consegui salvar preferências de coluna:", err);
+  }
+}
+function readLocalStorageJSON(key){
+  const raw = readLocalStorageItem(key);
+  if (!raw) return null;
+  try{
+    return JSON.parse(raw);
+  }catch(err){
+    console.warn("JSON inválido para", key, err);
+    return null;
+  }
+}
+function writeLocalStorageJSON(key, value){
+  if (value == null) writeLocalStorageItem(key, null);
+  else writeLocalStorageItem(key, JSON.stringify(value));
+}
+function generateDetailViewId(){
+  return `view-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;
+}
+// Aqui eu conto quantos dias úteis existem entre duas datas (inclusive).
 function businessDaysBetweenInclusive(startISO,endISO){
   if(!startISO || !endISO) return 0;
   let s = dateUTCFromISO(startISO), e = dateUTCFromISO(endISO);
@@ -1778,22 +2336,32 @@ function businessDaysBetweenInclusive(startISO,endISO){
   }
   return cnt;
 }
+// Aqui eu calculo quantos dias úteis já se passaram dentro do intervalo até hoje (incluindo hoje).
+function businessDaysElapsedUntilToday(startISO,endISO){
+  if(!startISO || !endISO) return 0;
+  const todayISOValue = todayISO();
+  let start = dateUTCFromISO(startISO), end = dateUTCFromISO(endISO), today = dateUTCFromISO(todayISOValue);
+  if(!start || !end || !today) return 0;
+  if(today < start) return 0;
+  if(today > end) today = end;
+  return businessDaysBetweenInclusive(startISO, isoFromUTCDate(today));
+}
+// Aqui eu calculo quantos dias úteis ainda faltam a partir de hoje até o fim de um período.
 function businessDaysRemainingFromToday(startISO,endISO){
   if(!startISO || !endISO) return 0;
-  const today = todayISO();
-  let t = dateUTCFromISO(today), s=dateUTCFromISO(startISO), e=dateUTCFromISO(endISO);
-  if(t >= e) return 0;
-  let startCount = new Date(t); startCount.setUTCDate(startCount.getUTCDate()+1);
-  if(startCount < s) startCount = s;
-  return businessDaysBetweenInclusive(isoFromUTCDate(startCount), endISO);
+  const total = businessDaysBetweenInclusive(startISO, endISO);
+  const elapsed = businessDaysElapsedUntilToday(startISO, endISO);
+  return Math.max(0, total - elapsed);
 }
 
-/* ===== Helpers de métrica ===== */
+/* ===== Aqui eu deixo funções auxiliares para métricas e números ===== */
+// Aqui eu converto qualquer valor para número sem deixar NaN escapar.
 function toNumber(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 }
 
+// Aqui eu fujo de problemas de XSS escapando HTML sempre que crio strings manualmente.
 const escapeHTML = (value = "") => String(value).replace(/[&<>"']/g, (ch) => ({
   "&":"&amp;",
   "<":"&lt;",
@@ -1802,6 +2370,7 @@ const escapeHTML = (value = "") => String(value).replace(/[&<>"']/g, (ch) => ({
   "'":"&#39;"
 }[ch]));
 
+// Aqui eu deixo um formatador genérico para exibir números grandes com sufixo (mil, milhão...).
 function formatNumberWithSuffix(value, { currency = false } = {}) {
   const n = toNumber(value);
   if (!Number.isFinite(n)) return currency ? fmtBRL.format(0) : fmtINT.format(0);
@@ -1831,6 +2400,7 @@ function formatNumberWithSuffix(value, { currency = false } = {}) {
   return `${sign}${formatted} ${label}`;
 }
 
+// Aqui eu reaproveito o formatador para mostrar números grandes sem estourar layout.
 function formatIntReadable(value){
   return formatNumberWithSuffix(value, { currency: false });
 }
@@ -1839,9 +2409,8 @@ function formatBRLReadable(value){
 }
 
 function formatPoints(value, { withUnit = false } = {}) {
-  const n = toNumber(value);
-  const nearInteger = Math.abs(n - Math.round(n)) < 0.05;
-  const formatted = nearInteger ? fmtINT.format(Math.round(n)) : fmtONE.format(n);
+  const n = Math.round(toNumber(value));
+  const formatted = fmtINT.format(n);
   return withUnit ? `${formatted} pts` : formatted;
 }
 
@@ -1878,18 +2447,21 @@ function makeRandomForMetric(metric){
   return { meta, realizado, variavelMeta };
 }
 
-/* ===== API / MOCK ===== */
+/* ===== Aqui eu centralizo o carregamento de dados (API ou CSV local) ===== */
+// Aqui eu faço uma chamada GET simples contra a API com tratamento básico de erro.
 async function apiGet(path, params){
   const qs = params ? `?${new URLSearchParams(params).toString()}` : "";
   const r = await fetch(`${API_URL}${path}${qs}`); if(!r.ok) throw new Error("Falha ao carregar dados");
   return r.json();
 }
+// Aqui eu faço todo o processo de montar os dados consolidados (fatos + metas + campanhas) usados nas telas.
 async function getData(){
   const period = state.period || { start:firstDayOfMonthISO(), end: todayISO() };
 
   const calendarioByDate = new Map(DIM_CALENDARIO.map(entry => [entry.data, entry]));
   const calendarioByCompetencia = new Map(DIM_CALENDARIO.map(entry => [entry.competencia, entry]));
 
+  // Aqui eu gero linhas sintéticas das campanhas para reaproveitar no ranking e nos simuladores.
   const buildCampanhaFacts = () => {
     const campanhaFacts = [];
     CAMPAIGN_SPRINTS.forEach(sprint => {
@@ -1925,7 +2497,7 @@ async function getData(){
     const metasMap = new Map(FACT_METAS.map(entry => [entry.registroId, entry]));
     const variavelMap = new Map(FACT_VARIAVEL.map(entry => [entry.registroId, entry]));
 
-    const factRows = FACT_REALIZADOS.map(row => {
+    let factRows = FACT_REALIZADOS.map(row => {
       const meta = metasMap.get(row.registroId) || {};
       const variavel = variavelMap.get(row.registroId) || {};
       const produtoMeta = PRODUCT_INDEX.get(row.produtoId) || {};
@@ -1962,7 +2534,7 @@ async function getData(){
       }
       const calendario = calendarioByDate.get(dataISO) || calendarioByCompetencia.get(competencia);
       const ating = metaMens ? (realizadoMens / metaMens) : 0;
-      const pontos = peso * Math.max(0, Math.min(1.25, ating));
+      const pontos = Math.round(Math.max(0, ating) * peso);
 
       const base = {
         registroId: row.registroId,
@@ -1986,9 +2558,6 @@ async function getData(){
         familiaId: resolvedFamiliaId,
         familia: resolvedFamiliaNome,
         familiaNome: resolvedFamiliaNome,
-        produtoId: row.produtoId,
-        produto: row.produtoNome || row.produtoId,
-        produtoNome: row.produtoNome || row.produtoId,
         prodOrSub: row.prodOrSub || row.subproduto || row.produtoNome || row.produtoId,
         subproduto: row.subproduto || "",
         carteira: row.carteira,
@@ -2012,6 +2581,8 @@ async function getData(){
         atingVariavel: variavelMeta ? variavelReal / variavelMeta : 0,
       };
 
+      aplicarIndicadorAliases(base, row.produtoId, row.produtoNome || row.produtoId);
+
       if (calendario) {
         base.ano = calendario.ano;
         base.mes = calendario.mes;
@@ -2024,14 +2595,33 @@ async function getData(){
       return base;
     });
 
+    if (FACT_VARIAVEL.length) {
+      const variavelIds = new Set(FACT_VARIAVEL.map(row => row?.registroId || row?.registroid));
+      const novosVariavel = factRows.filter(row => row?.registroId && !variavelIds.has(row.registroId)).map(row => ({
+        registroId: row.registroId,
+        produtoId: row.produtoId,
+        produtoNome: row.produtoNome,
+        familiaId: row.familiaId,
+        familiaNome: row.familiaNome,
+        variavelMeta: row.variavelMeta,
+        variavelReal: row.variavelReal,
+        data: row.data,
+        competencia: row.competencia,
+      }));
+      if (novosVariavel.length) {
+        novosVariavel.forEach(item => aplicarIndicadorAliases(item, item.produtoId, item.produtoNome));
+        FACT_VARIAVEL.push(...novosVariavel);
+      }
+    }
+
     const baseByRegistro = new Map(factRows.map(row => [row.registroId, row]));
     const variavelFacts = (FACT_VARIAVEL.length ? FACT_VARIAVEL : factRows).map(source => {
       const registroId = source.registroId || source.registroid;
       const base = baseByRegistro.get(registroId) || {};
       if (!registroId || !base.registroId) return null;
 
-      let dataISO = pickFirstFilled(source.data, base.data, source.competencia, base.competencia);
-      let competencia = pickFirstFilled(source.competencia, base.competencia);
+      let dataISO = pegarPrimeiroPreenchido(source.data, base.data, source.competencia, base.competencia);
+      let competencia = pegarPrimeiroPreenchido(source.competencia, base.competencia);
       if (!competencia && dataISO) {
         competencia = `${String(dataISO).slice(0, 7)}-01`;
       }
@@ -2083,6 +2673,8 @@ async function getData(){
         pontos: base.pontos,
         ating,
       };
+
+      aplicarIndicadorAliases(item, base.produtoId, base.produtoNome);
 
       if (calendario) {
         item.ano = calendario.ano;
@@ -2215,7 +2807,7 @@ async function getData(){
         const ating = metaMens ? (realMens / metaMens) : 0;
         const variavelReal = Math.max(0, Math.round((variavelMeta || 0) * Math.max(0.6, Math.min(1.25, ating))));
         const peso = prod.peso || 1;
-        const pontos = peso * Math.max(0, Math.min(1.25, ating));
+        const pontos = Math.round(Math.max(0, ating) * peso);
         const qtd = prod.metric === "qtd"
           ? Math.max(1, Math.round(realMens))
           : Math.round(80 + Math.random() * 2200);
@@ -2322,8 +2914,8 @@ async function getData(){
   };
 }
 
-/* ===== Sidebar retrátil (criada por JS, sem CSS injetado) ===== */
-/* ===== Estado ===== */
+/* ===== Aqui eu monto a sidebar retrátil direto via JS, sem depender do CSS ===== */
+/* ===== Aqui eu guardo e manipulo o estado geral da aplicação ===== */
 const state = {
   _dataset:null,
   _rankingRaw:[],
@@ -2334,6 +2926,7 @@ const state = {
   tableRendered:false,
   isAnimating:false,
   period: getDefaultPeriodRange(),
+  accumulatedView:"mensal",
   datePopover:null,
   compact:false,
   contractIndex:[],
@@ -2354,6 +2947,15 @@ const state = {
     individualPreset:{},
   },
 
+  details:{
+    activeViewId: DETAIL_DEFAULT_VIEW.id,
+    activeColumns: [...DETAIL_DEFAULT_VIEW.columns],
+    savedViews: [],
+    customView: null,
+    designerDraft: null,
+    designerMessage: "",
+  },
+
   animations:{
     resumo:{
       kpiKey:null,
@@ -2366,6 +2968,175 @@ const state = {
     },
   }
 };
+
+hydrateDetailViewsFromStorage();
+
+function hydrateDetailViewsFromStorage(){
+  const savedRaw = readLocalStorageJSON(DETAIL_VIEW_STORAGE_KEY);
+  const savedList = Array.isArray(savedRaw)
+    ? savedRaw.map(normalizeDetailViewPayload).filter(Boolean)
+    : [];
+  state.details.savedViews = savedList.slice(0, DETAIL_MAX_CUSTOM_VIEWS);
+
+  const customRaw = readLocalStorageJSON(DETAIL_VIEW_CUSTOM_KEY);
+  if (customRaw && Array.isArray(customRaw.columns)) {
+    const label = limparTexto(customRaw.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL;
+    state.details.customView = {
+      name: label,
+      columns: sanitizeDetailColumns(customRaw.columns),
+    };
+  } else {
+    state.details.customView = null;
+  }
+
+  const activeId = readLocalStorageItem(DETAIL_VIEW_ACTIVE_KEY) || DETAIL_DEFAULT_VIEW.id;
+  const candidate = detailViewById(activeId);
+  if (candidate) {
+    state.details.activeViewId = candidate.id;
+    state.details.activeColumns = sanitizeDetailColumns(candidate.columns);
+    if (candidate.id === "__custom__") {
+      state.details.customView = {
+        name: candidate.name || DETAIL_CUSTOM_DEFAULT_LABEL,
+        columns: [...state.details.activeColumns],
+      };
+    }
+  } else {
+    state.details.activeViewId = DETAIL_DEFAULT_VIEW.id;
+    state.details.activeColumns = [...DETAIL_DEFAULT_VIEW.columns];
+  }
+  persistDetailState();
+}
+
+function getAllDetailViews(){
+  const saved = Array.isArray(state.details.savedViews) ? state.details.savedViews : [];
+  const base = [DETAIL_DEFAULT_VIEW, ...saved.map(view => ({
+    id: view.id,
+    name: limparTexto(view.name || "") || "Visão personalizada",
+    columns: sanitizeDetailColumns(view.columns),
+  }))];
+  const custom = state.details.customView;
+  if (custom && Array.isArray(custom.columns) && custom.columns.length) {
+    base.push({
+      id: "__custom__",
+      name: limparTexto(custom.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL,
+      columns: sanitizeDetailColumns(custom.columns),
+    });
+  }
+  return base;
+}
+
+function getActiveDetailColumns(){
+  const ids = sanitizeDetailColumns(state.details.activeColumns || DETAIL_DEFAULT_VIEW.columns);
+  return ids.map(id => getDetailColumnMeta(id)).filter(Boolean);
+}
+
+function detailViewById(viewId){
+  if (!viewId) return null;
+  if (viewId === DETAIL_DEFAULT_VIEW.id) return { ...DETAIL_DEFAULT_VIEW };
+  if (viewId === "__custom__") {
+    const custom = state.details.customView;
+    if (custom && Array.isArray(custom.columns) && custom.columns.length) {
+      return {
+        id: "__custom__",
+        name: limparTexto(custom.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL,
+        columns: sanitizeDetailColumns(custom.columns),
+      };
+    }
+    return null;
+  }
+  const saved = Array.isArray(state.details.savedViews) ? state.details.savedViews : [];
+  const match = saved.find(v => v.id === viewId);
+  return match ? {
+    id: match.id,
+    name: limparTexto(match.name || "") || "Visão personalizada",
+    columns: sanitizeDetailColumns(match.columns),
+  } : null;
+}
+
+function persistDetailViews(){
+  const payload = (Array.isArray(state.details.savedViews) ? state.details.savedViews : []).map(view => ({
+    id: view.id,
+    name: limparTexto(view.name || "") || "Visão personalizada",
+    columns: sanitizeDetailColumns(view.columns),
+  }));
+  writeLocalStorageJSON(DETAIL_VIEW_STORAGE_KEY, payload.length ? payload : null);
+}
+
+function persistActiveDetailState(){
+  writeLocalStorageItem(DETAIL_VIEW_ACTIVE_KEY, state.details.activeViewId || DETAIL_DEFAULT_VIEW.id);
+  if (state.details.customView && Array.isArray(state.details.customView.columns) && state.details.customView.columns.length) {
+    writeLocalStorageJSON(DETAIL_VIEW_CUSTOM_KEY, {
+      name: limparTexto(state.details.customView.name || "") || DETAIL_CUSTOM_DEFAULT_LABEL,
+      columns: sanitizeDetailColumns(state.details.customView.columns),
+    });
+  } else {
+    writeLocalStorageItem(DETAIL_VIEW_CUSTOM_KEY, null);
+  }
+}
+
+function persistDetailState(){
+  persistDetailViews();
+  persistActiveDetailState();
+}
+
+function updateActiveDetailConfiguration(viewId, columns, options = {}){
+  const sanitized = sanitizeDetailColumns(columns);
+  const label = limparTexto(options.label || "");
+  if (viewId === "__custom__") {
+    const name = label || state.details.customView?.name || DETAIL_CUSTOM_DEFAULT_LABEL;
+    state.details.customView = {
+      name,
+      columns: [...sanitized],
+    };
+  }
+  state.details.activeViewId = viewId;
+  state.details.activeColumns = [...sanitized];
+  persistDetailState();
+  return [...sanitized];
+}
+
+function updateSavedDetailView(viewId, columns){
+  if (!viewId) return null;
+  const saved = Array.isArray(state.details.savedViews) ? state.details.savedViews : [];
+  const idx = saved.findIndex(v => v.id === viewId);
+  if (idx < 0) return null;
+  const next = {
+    id: saved[idx].id,
+    name: saved[idx].name,
+    columns: sanitizeDetailColumns(columns),
+  };
+  saved[idx] = next;
+  persistDetailViews();
+  return next;
+}
+
+function createDetailView(columns, name){
+  const saved = Array.isArray(state.details.savedViews) ? state.details.savedViews : [];
+  if (saved.length >= DETAIL_MAX_CUSTOM_VIEWS) return null;
+  const sanitized = sanitizeDetailColumns(columns);
+  const label = limparTexto(name || "") || `Visão ${saved.length + 1}`;
+  const view = { id: generateDetailViewId(), name: label, columns: sanitized };
+  saved.push(view);
+  state.details.savedViews = saved;
+  persistDetailViews();
+  return view;
+}
+
+function deleteDetailView(viewId){
+  if (!viewId || viewId === DETAIL_DEFAULT_VIEW.id) return false;
+  const saved = Array.isArray(state.details.savedViews) ? state.details.savedViews : [];
+  const idx = saved.findIndex(v => v.id === viewId);
+  if (idx < 0) return false;
+  saved.splice(idx, 1);
+  state.details.savedViews = saved;
+  persistDetailViews();
+  if (state.details.activeViewId === viewId) {
+    updateActiveDetailConfiguration(DETAIL_DEFAULT_VIEW.id, DETAIL_DEFAULT_VIEW.columns);
+  } else {
+    persistActiveDetailState();
+  }
+  return true;
+}
 
 function prefersReducedMotion(){
   if (typeof window === "undefined" || !window.matchMedia) return false;
@@ -2451,7 +3222,7 @@ const contractSuggestState = { items: [], highlight: -1, open: false, term: "", 
 let contractSuggestDocBound = false;
 let contractSuggestPanelBound = false;
 
-/* ===== Utils UI ===== */
+/* ===== Aqui eu junto utilidades de interface que reaproveito em várias telas ===== */
 function injectStyles(){
   if(document.getElementById("dynamic-styles")) return;
   const style = document.createElement("style");
@@ -2503,7 +3274,7 @@ function injectStyles(){
   ["#view-cards", "#view-table"].forEach(sel => $(sel)?.classList.add("view-panel"));
 }
 
-/* ===== Popover de data ===== */
+/* ===== Aqui eu trato o popover de data para facilitar a seleção de período ===== */
 function openDatePopover(anchor){
   closeDatePopover();
 
@@ -2547,6 +3318,9 @@ function openDatePopover(anchor){
     if(!s || !e || new Date(s) > new Date(e)){ alert("Período inválido."); return; }
     state.period.start = s;
     state.period.end   = e;
+    state.accumulatedView = "mensal";
+    const visaoSelect = document.getElementById("f-visao");
+    if (visaoSelect) visaoSelect.value = "mensal";
     document.getElementById("lbl-periodo-inicio").textContent = formatBRDate(s);
     document.getElementById("lbl-periodo-fim").textContent    = formatBRDate(e);
     closeDatePopover();
@@ -2565,7 +3339,7 @@ function closeDatePopover(){
   state.datePopover = null;
 }
 
-/* ===== Botão “Limpar filtros” ===== */
+/* ===== Aqui eu configuro o botão de limpar filtros e mantenho o fluxo claro ===== */
 function wireClearFiltersButton() {
   const btn = $("#btn-limpar");
   if (!btn || btn.dataset.wired === "1") return;
@@ -2580,7 +3354,7 @@ async function clearFilters() {
   [
     "#f-segmento","#f-diretoria","#f-gerencia","#f-gerente",
     "#f-agencia","#f-ggestao","#f-secao","#f-familia","#f-produto",
-    "#f-status-kpi"
+    "#f-status-kpi","#f-visao"
   ].forEach(sel => {
     const el = $(sel);
     if (!el) return;
@@ -2590,6 +3364,9 @@ async function clearFilters() {
 
   // valores padrão explícitos
   const st = $("#f-status-kpi"); if (st) st.value = "todos";
+  const visaoSelect = $("#f-visao");
+  if (visaoSelect) visaoSelect.value = "mensal";
+  state.accumulatedView = "mensal";
   const secaoSelect = $("#f-secao");
   if (secaoSelect) secaoSelect.dispatchEvent(new Event("change"));
   const familiaSelect = $("#f-familia");
@@ -2603,10 +3380,7 @@ async function clearFilters() {
   refreshContractSuggestions("");
   const defaultPeriod = getDefaultPeriodRange();
   state.period = defaultPeriod;
-  const lblInicio = $("#lbl-periodo-inicio");
-  const lblFim = $("#lbl-periodo-fim");
-  if (lblInicio) lblInicio.textContent = formatBRDate(state.period.start);
-  if (lblFim) lblFim.textContent = formatBRDate(state.period.end);
+  syncPeriodFromAccumulatedView(state.accumulatedView, defaultPeriod.end);
   if (state.tableView === "contrato") {
     state.tableView = "diretoria";
     state.lastNonContractView = "diretoria";
@@ -2855,7 +3629,7 @@ function initMobileCarousel(){
   };
 }
 
-/* ===== Avançado ===== */
+/* ===== Aqui eu descrevo as opções avançadas de filtro que ficam escondidas ===== */
 function ensureStatusFilterInAdvanced() {
   const adv = $("#advanced-filters");
   if (!adv) return;
@@ -2884,7 +3658,7 @@ function ensureStatusFilterInAdvanced() {
   if (gStart) gStart.remove();
 }
 
-/* ===== Chips (tabela) + Toolbar ===== */
+/* ===== Aqui eu monto os chips da tabela e a toolbar com as ações rápidas ===== */
 function ensureChipBarAndToolbar() {
   if ($("#table-controls")) return;
   const card = $("#table-section"); if (!card) return;
@@ -2894,7 +3668,13 @@ function ensureChipBarAndToolbar() {
   holder.innerHTML = `
     <div id="applied-bar" class="applied-bar"></div>
     <div id="chipbar" class="chipbar"></div>
-    <div id="tt-toolbar" class="table-toolbar"></div>`;
+    <div id="tt-toolbar" class="table-toolbar"></div>
+    <div id="detail-view-bar" class="detail-view-bar">
+      <div class="detail-view-bar__left">
+        <span class="detail-view-bar__label">Visões da tabela</span>
+        <div id="detail-view-chips" class="detail-view-chips"></div>
+      </div>
+    </div>`;
   const header = card.querySelector(".card__header") || card;
   header.insertAdjacentElement("afterend", holder);
 
@@ -2922,7 +3702,8 @@ function ensureChipBarAndToolbar() {
   $("#tt-toolbar").innerHTML = `
     <button type="button" id="btn-expandir" class="btn btn--sm"><i class="ti ti-chevrons-down"></i> Expandir tudo</button>
     <button type="button" id="btn-recolher" class="btn btn--sm"><i class="ti ti-chevrons-up"></i> Recolher tudo</button>
-    <button type="button" id="btn-compacto" class="btn btn--sm"><i class="ti ti-layout-collage"></i> Modo compacto</button>`;
+    <button type="button" id="btn-compacto" class="btn btn--sm"><i class="ti ti-layout-collage"></i> Modo compacto</button>
+    <button type="button" id="btn-manage-detail-columns" class="btn btn--ghost btn--sm detail-view-manage"><i class="ti ti-columns"></i> Personalizar colunas</button>`;
   $("#btn-expandir").addEventListener("click", expandAllRows);
   $("#btn-recolher").addEventListener("click", collapseAllRows);
   $("#btn-compacto").addEventListener("click", () => {
@@ -2930,11 +3711,485 @@ function ensureChipBarAndToolbar() {
     $("#table-section")?.classList.toggle("is-compact", state.compact);
   });
 
+  const detailChips = document.getElementById("detail-view-chips");
+  if (detailChips && !detailChips.dataset.bound) {
+    detailChips.dataset.bound = "1";
+    detailChips.addEventListener("click", handleDetailViewChipClick);
+  }
+
+  const manageBtn = document.getElementById("btn-manage-detail-columns");
+  if (manageBtn && !manageBtn.dataset.bound) {
+    manageBtn.dataset.bound = "1";
+    manageBtn.addEventListener("click", () => openDetailDesigner());
+  }
+
+  renderDetailViewBar();
+  initDetailDesigner();
+
   const headerSearch = $("#busca");
   if (headerSearch) headerSearch.placeholder = "Contrato (Ex.: CT-AAAA-999999)";
   $$('#table-section input[placeholder*="Contrato" i]').forEach(el => { if (el !== headerSearch) el.remove(); });
 
   renderAppliedFilters();
+}
+
+function renderDetailViewBar(){
+  const chipsHolder = document.getElementById("detail-view-chips");
+  if (!chipsHolder) return;
+  const views = getAllDetailViews();
+  if (!views.length) {
+    chipsHolder.innerHTML = `<span class="detail-view-empty">Sem visões disponíveis</span>`;
+    return;
+  }
+  const activeId = state.details.activeViewId || DETAIL_DEFAULT_VIEW.id;
+  chipsHolder.innerHTML = views.map(view => {
+    const isActive = view.id === activeId;
+    const safeId = escapeHTML(view.id);
+    const safeName = escapeHTML(view.name || "Visão");
+    return `<button type="button" class="detail-chip${isActive ? " is-active" : ""}" data-view-id="${safeId}"><span>${safeName}</span></button>`;
+  }).join("");
+}
+
+function handleDetailViewChipClick(ev){
+  const chip = ev.target.closest(".detail-chip");
+  if (!chip) return;
+  const viewId = chip.dataset.viewId;
+  if (!viewId || viewId === state.details.activeViewId) return;
+  const view = detailViewById(viewId);
+  if (!view) return;
+  updateActiveDetailConfiguration(view.id, view.columns, { label: view.name });
+  if (state.tableRendered) renderTreeTable();
+  else renderDetailViewBar();
+}
+
+let detailDesignerInitialized = false;
+let detailDesignerDragState = null;
+let detailDesignerFeedbackTimer = null;
+
+function initDetailDesigner(){
+  if (detailDesignerInitialized) return;
+  const host = document.getElementById("detail-designer");
+  if (!host) return;
+  detailDesignerInitialized = true;
+
+  host.addEventListener("click", (ev) => {
+    if (ev.target.closest("[data-designer-close]")) {
+      ev.preventDefault();
+      closeDetailDesigner();
+    }
+  });
+
+  host.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") closeDetailDesigner();
+  });
+
+  host.querySelectorAll(".detail-designer__items").forEach(list => {
+    list.addEventListener("click", handleDetailDesignerListClick);
+    list.addEventListener("dragover", handleDetailDesignerDragOver);
+    list.addEventListener("drop", handleDetailDesignerDrop);
+    list.addEventListener("dragleave", handleDetailDesignerDragLeave);
+  });
+
+  const viewsContainer = document.getElementById("detail-designer-views");
+  if (viewsContainer) viewsContainer.addEventListener("click", handleDetailDesignerViewClick);
+
+  document.getElementById("detail-apply-columns")?.addEventListener("click", handleDetailDesignerApply);
+  document.getElementById("detail-save-view")?.addEventListener("click", handleDetailDesignerSave);
+  document.getElementById("detail-view-name")?.addEventListener("input", () => updateDetailDesignerControls());
+}
+
+function openDetailDesigner(){
+  const host = document.getElementById("detail-designer");
+  if (!host) return;
+  const current = detailViewById(state.details.activeViewId) || DETAIL_DEFAULT_VIEW;
+  const baseColumns = sanitizeDetailColumns(current.columns);
+  state.details.designerDraft = {
+    viewId: current.id,
+    name: current.name,
+    columns: [...baseColumns],
+    original: [...baseColumns],
+    modified: false,
+  };
+  state.details.designerMessage = "";
+
+  const nameInput = document.getElementById("detail-view-name");
+  if (nameInput) nameInput.value = "";
+
+  renderDetailDesigner();
+  host.hidden = false;
+  host.setAttribute("aria-hidden", "false");
+  host.classList.add("is-open");
+  document.body.classList.add("has-modal-open");
+  const panel = host.querySelector(".detail-designer__panel");
+  if (panel) {
+    if (!panel.hasAttribute("tabindex")) panel.setAttribute("tabindex", "-1");
+    panel.focus({ preventScroll: true });
+  }
+}
+
+function closeDetailDesigner(){
+  const host = document.getElementById("detail-designer");
+  if (!host) return;
+  host.classList.remove("is-open");
+  host.setAttribute("aria-hidden", "true");
+  host.hidden = true;
+  document.body.classList.remove("has-modal-open");
+  state.details.designerDraft = null;
+  state.details.designerMessage = "";
+  if (detailDesignerFeedbackTimer) {
+    clearTimeout(detailDesignerFeedbackTimer);
+    detailDesignerFeedbackTimer = null;
+  }
+  const nameInput = document.getElementById("detail-view-name");
+  if (nameInput) nameInput.value = "";
+}
+
+function renderDetailDesigner(){
+  const host = document.getElementById("detail-designer");
+  const draft = state.details.designerDraft;
+  if (!host || !draft) return;
+
+  const selectedWrap = host.querySelector('[data-items="selected"]');
+  const availableWrap = host.querySelector('[data-items="available"]');
+  if (!selectedWrap || !availableWrap) return;
+
+  const selectedIds = sanitizeDetailColumns(draft.columns);
+  if (!detailColumnsEqual(selectedIds, draft.columns)) draft.columns = [...selectedIds];
+  draft.modified = !detailColumnsEqual(selectedIds, draft.original || []);
+
+  const available = DETAIL_COLUMNS.filter(col => !selectedIds.includes(col.id));
+  const canRemove = selectedIds.length > 1;
+
+  selectedWrap.innerHTML = selectedIds.length
+    ? selectedIds.map(id => {
+        const meta = getDetailColumnMeta(id);
+        if (!meta) return "";
+        const safeId = escapeHTML(meta.id);
+        const safeLabel = escapeHTML(meta.label);
+        const disabledAttr = canRemove ? "" : " disabled";
+        const disabledClass = canRemove ? "" : " is-disabled";
+        return `
+          <div class="detail-item" data-col="${safeId}" draggable="true">
+            <span class="detail-item__handle" aria-hidden="true"><i class="ti ti-grip-vertical"></i></span>
+            <span class="detail-item__label">${safeLabel}</span>
+            <button type="button" class="detail-item__remove${disabledClass}" data-action="remove" aria-label="Remover ${safeLabel}"${disabledAttr}><i class="ti ti-x"></i></button>
+          </div>`;
+      }).join("")
+    : `<p class="detail-designer__empty">Escolha ao menos uma coluna.</p>`;
+
+  availableWrap.innerHTML = available.length
+    ? available.map(meta => {
+        const safeId = escapeHTML(meta.id);
+        const safeLabel = escapeHTML(meta.label);
+        return `
+          <div class="detail-item detail-item--available" data-col="${safeId}" draggable="true">
+            <span class="detail-item__handle" aria-hidden="true"><i class="ti ti-grip-vertical"></i></span>
+            <span class="detail-item__label">${safeLabel}</span>
+            <button type="button" class="detail-item__add" data-action="add" aria-label="Adicionar ${safeLabel}"><i class="ti ti-plus"></i></button>
+          </div>`;
+      }).join("")
+    : `<p class="detail-designer__empty">Todas as colunas já estão na tabela.</p>`;
+
+  selectedWrap.querySelectorAll(".detail-item").forEach(item => {
+    item.addEventListener("dragstart", handleDetailDesignerDragStart);
+    item.addEventListener("dragend", handleDetailDesignerDragEnd);
+  });
+  availableWrap.querySelectorAll(".detail-item").forEach(item => {
+    item.addEventListener("dragstart", handleDetailDesignerDragStart);
+    item.addEventListener("dragend", handleDetailDesignerDragEnd);
+  });
+
+  renderDetailDesignerViews();
+  updateDetailDesignerControls();
+  updateDetailDesignerFeedback();
+}
+
+function renderDetailDesignerViews(){
+  const container = document.getElementById("detail-designer-views");
+  const draft = state.details.designerDraft;
+  if (!container || !draft) return;
+  const views = getAllDetailViews();
+  if (!views.length) {
+    container.innerHTML = `<span class="detail-view-empty">Nenhuma visão salva.</span>`;
+    return;
+  }
+  const currentId = draft.viewId;
+  container.innerHTML = views.map(view => {
+    const safeId = escapeHTML(view.id);
+    const safeName = escapeHTML(view.name || "Visão");
+    const isActive = view.id === currentId;
+    const deletable = view.id !== DETAIL_DEFAULT_VIEW.id && view.id !== "__custom__";
+    const deleteBtn = deletable
+      ? `<button type="button" class="detail-chip__remove" data-action="delete" data-view-id="${safeId}" aria-label="Excluir ${safeName}"><i class="ti ti-trash"></i></button>`
+      : "";
+    return `
+      <div class="detail-chip detail-chip--designer${isActive ? " is-active" : ""}" data-view-id="${safeId}">
+        <button type="button" class="detail-chip__action" data-action="load" data-view-id="${safeId}">${safeName}</button>
+        ${deleteBtn}
+      </div>`;
+  }).join("");
+}
+
+function updateDetailDesignerControls(){
+  const draft = state.details.designerDraft;
+  const saveBtn = document.getElementById("detail-save-view");
+  const nameInput = document.getElementById("detail-view-name");
+  const applyBtn = document.getElementById("detail-apply-columns");
+  const hint = document.getElementById("detail-save-hint");
+  if (!draft) {
+    if (saveBtn) saveBtn.disabled = true;
+    if (applyBtn) applyBtn.disabled = true;
+    return;
+  }
+  const selectedIds = sanitizeDetailColumns(draft.columns);
+  if (applyBtn) applyBtn.disabled = !selectedIds.length;
+  const limitReached = (state.details.savedViews || []).length >= DETAIL_MAX_CUSTOM_VIEWS;
+  if (saveBtn && nameInput && hint) {
+    const name = limparTexto(nameInput.value || "");
+    if (limitReached) {
+      saveBtn.disabled = true;
+      hint.textContent = `Você já salvou ${DETAIL_MAX_CUSTOM_VIEWS} visões. Apague uma para liberar espaço.`;
+    } else {
+      saveBtn.disabled = name.length < 3 || !selectedIds.length;
+      hint.textContent = `Você pode guardar até ${DETAIL_MAX_CUSTOM_VIEWS} visões personalizadas.`;
+    }
+  }
+}
+
+function updateDetailDesignerFeedback(){
+  const feedback = document.getElementById("detail-designer-feedback");
+  if (!feedback) return;
+  if (detailDesignerFeedbackTimer) {
+    clearTimeout(detailDesignerFeedbackTimer);
+    detailDesignerFeedbackTimer = null;
+  }
+  const message = state.details.designerMessage || "";
+  if (message) {
+    feedback.textContent = message;
+    feedback.hidden = false;
+    detailDesignerFeedbackTimer = setTimeout(() => {
+      state.details.designerMessage = "";
+      feedback.hidden = true;
+      feedback.textContent = "";
+      detailDesignerFeedbackTimer = null;
+    }, 3200);
+  } else {
+    feedback.textContent = "";
+    feedback.hidden = true;
+  }
+}
+
+function handleDetailDesignerListClick(ev){
+  const actionBtn = ev.target.closest("[data-action]");
+  if (!actionBtn) return;
+  const item = actionBtn.closest(".detail-item");
+  const colId = item?.dataset.col;
+  if (!colId) return;
+  ev.preventDefault();
+  if (actionBtn.dataset.action === "remove") {
+    removeColumnFromDesigner(colId);
+  } else if (actionBtn.dataset.action === "add") {
+    insertColumnIntoDesigner(colId);
+  }
+}
+
+function handleDetailDesignerViewClick(ev){
+  const button = ev.target.closest("[data-action][data-view-id]");
+  if (!button) return;
+  const action = button.dataset.action;
+  const viewId = button.dataset.viewId;
+  if (!viewId) return;
+  ev.preventDefault();
+  if (action === "load") {
+    const view = detailViewById(viewId);
+    if (!view) return;
+    const cols = sanitizeDetailColumns(view.columns);
+    state.details.designerDraft = {
+      viewId: view.id,
+      name: view.name,
+      columns: [...cols],
+      original: [...cols],
+      modified: false,
+    };
+    state.details.designerMessage = "";
+    const nameInput = document.getElementById("detail-view-name");
+    if (nameInput) nameInput.value = "";
+    renderDetailDesigner();
+  } else if (action === "delete") {
+    if (!deleteDetailView(viewId)) return;
+    state.details.designerMessage = "Visão removida.";
+    renderDetailViewBar();
+    if (state.tableRendered) renderTreeTable();
+    const fallback = detailViewById(state.details.activeViewId) || DETAIL_DEFAULT_VIEW;
+    const cols = sanitizeDetailColumns(fallback.columns);
+    state.details.designerDraft = {
+      viewId: fallback.id,
+      name: fallback.name,
+      columns: [...cols],
+      original: [...cols],
+      modified: false,
+    };
+    renderDetailDesigner();
+  }
+}
+
+function handleDetailDesignerApply(){
+  const draft = state.details.designerDraft;
+  if (!draft) { closeDetailDesigner(); return; }
+  const columns = sanitizeDetailColumns(draft.columns);
+  if (!columns.length) {
+    state.details.designerMessage = "Escolha ao menos uma coluna para aplicar.";
+    updateDetailDesignerFeedback();
+    return;
+  }
+
+  let targetId = draft.viewId;
+  if (!targetId || targetId === DETAIL_DEFAULT_VIEW.id) targetId = "__custom__";
+  if (targetId !== "__custom__" && draft.modified) {
+    updateSavedDetailView(targetId, columns);
+    draft.original = [...columns];
+    draft.modified = false;
+  }
+
+  let label;
+  if (targetId === "__custom__") {
+    label = draft.viewId === "__custom__"
+      ? (draft.name || state.details.customView?.name || DETAIL_CUSTOM_DEFAULT_LABEL)
+      : DETAIL_CUSTOM_DEFAULT_LABEL;
+  } else {
+    const viewMeta = detailViewById(targetId) || detailViewById(draft.viewId);
+    label = viewMeta?.name || draft.name || DETAIL_CUSTOM_DEFAULT_LABEL;
+  }
+
+  updateActiveDetailConfiguration(targetId, columns, { label });
+  renderDetailViewBar();
+  if (state.tableRendered) renderTreeTable();
+  closeDetailDesigner();
+}
+
+function handleDetailDesignerSave(){
+  const draft = state.details.designerDraft;
+  if (!draft) return;
+  const nameInput = document.getElementById("detail-view-name");
+  if (!nameInput) return;
+  const name = limparTexto(nameInput.value || "");
+  const columns = sanitizeDetailColumns(draft.columns);
+  if (!columns.length) {
+    state.details.designerMessage = "Adicione ao menos uma coluna antes de salvar.";
+    updateDetailDesignerFeedback();
+    return;
+  }
+  if (name.length < 3) {
+    state.details.designerMessage = "Use um nome com pelo menos 3 caracteres.";
+    updateDetailDesignerFeedback();
+    return;
+  }
+  if ((state.details.savedViews || []).length >= DETAIL_MAX_CUSTOM_VIEWS) {
+    state.details.designerMessage = "Limite de visões atingido. Remova uma visão antes de salvar outra.";
+    updateDetailDesignerFeedback();
+    return;
+  }
+
+  const view = createDetailView(columns, name);
+  if (!view) {
+    state.details.designerMessage = "Não foi possível salvar a visão.";
+    updateDetailDesignerFeedback();
+    return;
+  }
+
+  nameInput.value = "";
+  state.details.designerDraft = {
+    viewId: view.id,
+    name: view.name,
+    columns: [...view.columns],
+    original: [...view.columns],
+    modified: false,
+  };
+  state.details.designerMessage = "Visão salva com sucesso.";
+  updateActiveDetailConfiguration(view.id, view.columns, { label: view.name });
+  renderDetailViewBar();
+  if (state.tableRendered) renderTreeTable();
+  renderDetailDesigner();
+}
+
+function insertColumnIntoDesigner(colId, beforeId = null){
+  const draft = state.details.designerDraft;
+  if (!draft) return;
+  const sanitized = sanitizeDetailColumns(draft.columns);
+  let next = sanitized.filter(id => id !== colId);
+  if (beforeId && next.includes(beforeId)) {
+    next.splice(next.indexOf(beforeId), 0, colId);
+  } else if (!next.includes(colId)) {
+    next.push(colId);
+  }
+  draft.columns = [...next];
+  draft.modified = !detailColumnsEqual(draft.columns, draft.original || []);
+  state.details.designerMessage = "";
+  renderDetailDesigner();
+}
+
+function removeColumnFromDesigner(colId){
+  const draft = state.details.designerDraft;
+  if (!draft) return;
+  const sanitized = sanitizeDetailColumns(draft.columns);
+  if (sanitized.length <= 1) {
+    state.details.designerMessage = "Mantenha pelo menos uma coluna visível.";
+    updateDetailDesignerFeedback();
+    return;
+  }
+  const next = sanitized.filter(id => id !== colId);
+  draft.columns = [...next];
+  draft.modified = !detailColumnsEqual(draft.columns, draft.original || []);
+  state.details.designerMessage = "";
+  renderDetailDesigner();
+}
+
+function handleDetailDesignerDragStart(ev){
+  const item = ev.currentTarget;
+  const colId = item?.dataset.col;
+  if (!colId) return;
+  detailDesignerDragState = {
+    colId,
+    from: item.closest('[data-items]')?.dataset.items || "",
+  };
+  if (ev.dataTransfer) {
+    ev.dataTransfer.effectAllowed = "move";
+    ev.dataTransfer.setData("text/plain", colId);
+  }
+  item.classList.add("is-dragging");
+}
+
+function handleDetailDesignerDragEnd(ev){
+  ev.currentTarget?.classList?.remove("is-dragging");
+  detailDesignerDragState = null;
+}
+
+function handleDetailDesignerDragOver(ev){
+  ev.preventDefault();
+  const container = ev.currentTarget.closest('[data-items]');
+  if (container) container.classList.add("is-drag-over");
+}
+
+function handleDetailDesignerDragLeave(ev){
+  const container = ev.currentTarget.closest('[data-items]');
+  if (container) container.classList.remove("is-drag-over");
+}
+
+function handleDetailDesignerDrop(ev){
+  ev.preventDefault();
+  const container = ev.currentTarget.closest('[data-items]');
+  if (!container) return;
+  container.classList.remove("is-drag-over");
+  const colId = (ev.dataTransfer && ev.dataTransfer.getData("text/plain")) || detailDesignerDragState?.colId;
+  if (!colId) return;
+  const beforeItem = ev.target.closest(".detail-item");
+  const beforeId = beforeItem?.dataset.col || null;
+  if (container.dataset.items === "selected") {
+    if (beforeId === colId) return;
+    insertColumnIntoDesigner(colId, beforeId);
+  } else {
+    removeColumnFromDesigner(colId);
+  }
 }
 function setActiveChip(viewId) {
   $$("#chipbar .chip").forEach(c => c.classList.toggle("is-active", c.dataset.view === viewId));
@@ -2943,7 +4198,7 @@ function setActiveChip(viewId) {
   }
 }
 
-/* ===== “Filtros aplicados” ===== */
+/* ===== Aqui eu mostro o resumo dos filtros aplicados para o usuário não se perder ===== */
 function renderAppliedFilters() {
   const bar = $("#applied-bar"); if (!bar) return;
   const vals = getFilterValues();
@@ -3005,14 +4260,24 @@ function renderAppliedFilters() {
       || PRODUCT_INDEX.get(vals.produtoId)?.name
       || PRODUTOS_DATA.find(p => p.produtoId === vals.produtoId)?.produtoNome
       || vals.produtoId;
-    push("Produto", prodLabel, () => $("#f-produto").selectedIndex = 0);
+    push("Indicador", prodLabel, () => $("#f-produto").selectedIndex = 0);
   }
   if (vals.status && vals.status !== "todos") {
     const statusEntry = getStatusEntry(vals.status);
     const statusLabel = statusEntry?.nome
       || $("#f-status-kpi")?.selectedOptions?.[0]?.text
-      || getStatusLabelFromKey(vals.status);
+      || obterRotuloStatus(vals.status);
     push("Status", statusLabel, () => $("#f-status-kpi").selectedIndex = 0);
+  }
+  if (vals.visao && vals.visao !== "mensal") {
+    const visaoEntry = ACCUMULATED_VIEW_OPTIONS.find(opt => opt.value === vals.visao);
+    const visaoLabel = visaoEntry?.label || $("#f-visao")?.selectedOptions?.[0]?.text || vals.visao;
+    push("Visão", visaoLabel, () => {
+      const sel = $("#f-visao");
+      if (sel) sel.value = "mensal";
+      state.accumulatedView = "mensal";
+      syncPeriodFromAccumulatedView("mensal");
+    });
   }
 
   items.forEach(ch => bar.appendChild(ch));
@@ -3094,7 +4359,7 @@ function getHierarchySelectionFromDOM(){
   HIERARCHY_FIELDS_DEF.forEach(field => {
     const select = $(field.select);
     if (!select) return;
-    const value = sanitizeText(select.value);
+    const value = limparTexto(select.value);
     values[field.key] = value || field.defaultValue;
   });
   return values;
@@ -3104,11 +4369,10 @@ function hierarchyRowMatchesField(row, field, value){
   if (!field) return true;
   const def = HIERARCHY_FIELD_MAP.get(field);
   if (!def) return true;
-  const normalizedValue = sanitizeText(value);
-  if (!normalizedValue || normalizedValue === def.defaultValue) return true;
-  const rowId = sanitizeText(row[def.idKey]);
-  const rowLabel = sanitizeText(row[def.labelKey]);
-  return normalizedValue === rowId || normalizedValue === rowLabel;
+  if (selecaoPadrao(value) || value === def.defaultValue) return true;
+  const rowId = limparTexto(row[def.idKey]);
+  const rowLabel = limparTexto(row[def.labelKey]);
+  return matchesSelection(value, rowId, rowLabel);
 }
 
 function filterHierarchyRowsForField(targetField, selection, rows){
@@ -3122,21 +4386,40 @@ function buildHierarchyOptions(fieldKey, selection, rows){
   const def = HIERARCHY_FIELD_MAP.get(fieldKey);
   if (!def) return [];
   const filtered = filterHierarchyRowsForField(fieldKey, selection, rows);
-  const seen = new Set();
+  const labelIndex = new Map();
   const options = [];
 
-  const pushOption = (value, label) => {
-    const safeValue = sanitizeText(value);
-    if (!safeValue || seen.has(safeValue)) return;
-    const safeLabel = sanitizeText(label) || safeValue;
-    options.push({ value: safeValue, label: safeLabel });
-    seen.add(safeValue);
+  const register = (value, label) => {
+    const safeLabel = limparTexto(label) || limparTexto(value);
+    const safeValue = limparTexto(value);
+    if (!safeLabel && !safeValue) return;
+    const key = simplificarTexto(safeLabel || safeValue);
+    if (labelIndex.has(key)) {
+      const existing = labelIndex.get(key);
+      if (safeValue && safeValue !== existing.value && !existing.aliases.includes(safeValue)) {
+        existing.aliases.push(safeValue);
+      }
+      if (safeLabel && safeLabel !== existing.value && !existing.aliases.includes(safeLabel)) {
+        existing.aliases.push(safeLabel);
+      }
+      return;
+    }
+    const optionValue = safeValue || safeLabel;
+    const entry = {
+      value: optionValue,
+      label: safeLabel || optionValue,
+      aliases: []
+    };
+    if (safeLabel && safeLabel !== optionValue) entry.aliases.push(safeLabel);
+    if (safeValue && safeValue !== optionValue) entry.aliases.push(safeValue);
+    labelIndex.set(key, entry);
+    options.push(entry);
   };
 
   filtered.forEach(row => {
     const value = row[def.idKey] || row[def.labelKey];
     const label = row[def.labelKey] || row[def.idKey];
-    pushOption(value, label);
+    register(value, label);
   });
 
   if (!options.length && typeof def.fallback === "function") {
@@ -3144,26 +4427,212 @@ function buildHierarchyOptions(fieldKey, selection, rows){
     fallback.forEach(item => {
       const value = item?.id ?? item?.value ?? item?.nome ?? item?.name;
       const label = item?.nome ?? item?.name ?? item?.label ?? item?.id ?? item?.value;
-      pushOption(value, label);
+      register(value, label);
     });
   }
 
   options.sort((a,b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
-  return [{ value: def.defaultValue, label: def.defaultLabel }].concat(options);
+  const defaultEntry = {
+    value: def.defaultValue,
+    label: def.defaultLabel,
+    aliases: [def.defaultValue]
+  };
+  return [defaultEntry].concat(options);
 }
 
 function setSelectOptions(select, options, desiredValue, defaultValue){
-  const current = sanitizeText(desiredValue);
+  const current = limparTexto(desiredValue);
   select.innerHTML = "";
+  let chosen = null;
   options.forEach(opt => {
     const option = document.createElement("option");
     option.value = opt.value;
     option.textContent = opt.label;
     select.appendChild(option);
+    if (!chosen && optionMatchesValue(opt, current)) {
+      chosen = opt;
+    }
   });
-  const next = options.some(opt => opt.value === current) ? current : defaultValue;
-  select.value = next;
-  return next;
+  if (!chosen) {
+    chosen = options.find(opt => optionMatchesValue(opt, defaultValue)) || options[0] || null;
+  }
+  const nextValue = chosen ? chosen.value : "";
+  select.value = nextValue;
+  if (select.value !== nextValue) {
+    select.selectedIndex = 0;
+  }
+  if (select.dataset.search === "true") {
+    ensureSelectSearch(select);
+    storeSelectSearchOptions(select, options);
+    syncSelectSearchInput(select);
+  }
+  return select.value || nextValue;
+}
+
+function ensureSelectSearchGlobalListeners(){
+  if (SELECT_SEARCH_GLOBAL_LISTENERS) return;
+  document.addEventListener("click", (ev) => {
+    SELECT_SEARCH_REGISTRY.forEach(data => {
+      if (data.wrapper?.contains(ev.target)) return;
+      if (typeof data.hidePanel === "function") data.hidePanel();
+    });
+  });
+  SELECT_SEARCH_GLOBAL_LISTENERS = true;
+}
+
+function ensureSelectSearch(select){
+  if (!select || select.dataset.searchBound === "1" || select.dataset.search !== "true") return;
+  const group = select.closest(".filters__group");
+  if (!group) return;
+  const labelText = limparTexto(group.querySelector("label")?.textContent) || "opção";
+  const wrapper = document.createElement("div");
+  wrapper.className = "select-search";
+  select.parentNode.insertBefore(wrapper, select);
+  wrapper.appendChild(select);
+
+  const panel = document.createElement("div");
+  panel.className = "select-search__panel";
+  panel.setAttribute("role", "listbox");
+  panel.setAttribute("aria-label", `Sugestões de ${labelText}`);
+  panel.hidden = true;
+  panel.innerHTML = `
+    <div class="select-search__box">
+      <input type="search" class="input input--xs select-search__input" placeholder="Pesquisar ${labelText.toLowerCase()}" aria-label="Pesquisar ${labelText}">
+    </div>
+    <div class="select-search__results"></div>`;
+  wrapper.appendChild(panel);
+
+  const input = panel.querySelector("input");
+  const list = panel.querySelector(".select-search__results");
+  const hidePanel = () => {
+    panel.hidden = true;
+    wrapper.classList.remove("is-open");
+  };
+  const showPanel = () => {
+    panel.hidden = false;
+    wrapper.classList.add("is-open");
+    updateSelectSearchResults(select, { limit: 12, forceAll: true });
+    window.requestAnimationFrame(() => input.focus());
+  };
+
+  const data = { select, input, panel, list, options: [], wrapper, hidePanel, showPanel };
+  SELECT_SEARCH_DATA.set(select, data);
+  SELECT_SEARCH_REGISTRY.add(data);
+  ensureSelectSearchGlobalListeners();
+
+  input.addEventListener("input", () => updateSelectSearchResults(select));
+  input.addEventListener("focus", () => updateSelectSearchResults(select));
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      input.value = "";
+      hidePanel();
+    }
+    if (ev.key === "Enter") {
+      const first = list.querySelector(".select-search__item");
+      if (first) {
+        ev.preventDefault();
+        first.click();
+      }
+    }
+  });
+  input.addEventListener("blur", () => setTimeout(hidePanel, 120));
+
+  panel.addEventListener("mousedown", (ev) => ev.preventDefault());
+  panel.addEventListener("click", (ev) => {
+    const item = ev.target.closest(".select-search__item");
+    if (!item) return;
+    ev.preventDefault();
+    aplicarSelecaoBusca(select, item.dataset.value || item.getAttribute("data-value") || "");
+    hidePanel();
+  });
+
+  select.addEventListener("mousedown", (ev) => {
+    ev.preventDefault();
+    if (panel.hidden) showPanel(); else hidePanel();
+  });
+  select.addEventListener("keydown", (ev) => {
+    if (["ArrowDown", "ArrowUp", " ", "Enter"].includes(ev.key)) {
+      ev.preventDefault();
+      showPanel();
+    }
+  });
+  select.addEventListener("change", () => {
+    const meta = SELECT_SEARCH_DATA.get(select);
+    if (!meta) return;
+    meta.input.value = "";
+    meta.hidePanel();
+  });
+
+  select.dataset.searchBound = "1";
+}
+
+function storeSelectSearchOptions(select, options){
+  const data = SELECT_SEARCH_DATA.get(select);
+  if (!data) return;
+  data.options = options.map(opt => ({
+    value: opt.value,
+    label: opt.label,
+    aliases: Array.isArray(opt.aliases) ? opt.aliases.map(item => limparTexto(item)) : []
+  }));
+  if (data.list) data.list.innerHTML = "";
+  if (typeof data.hidePanel === "function") data.hidePanel();
+}
+
+function syncSelectSearchInput(select){
+  const data = SELECT_SEARCH_DATA.get(select);
+  if (!data) return;
+  data.input.value = "";
+  if (typeof data.hidePanel === "function") data.hidePanel();
+}
+
+function updateSelectSearchResults(select, opts = {}){
+  const data = SELECT_SEARCH_DATA.get(select);
+  if (!data) return;
+  const { input, panel, list, options } = data;
+  if (!options || !options.length) {
+    panel.hidden = true;
+    if (list) list.innerHTML = "";
+    return;
+  }
+  const term = simplificarTexto(input.value);
+  const base = options.slice();
+  const matches = base.filter(opt => {
+    if (!term) return true;
+    if (simplificarTexto(opt.label).includes(term)) return true;
+    return (opt.aliases || []).some(alias => simplificarTexto(alias).includes(term));
+  });
+  const selected = term ? matches : matches.slice(0, 10);
+  const finalList = selected.slice(0, 10);
+  if (!finalList.length) {
+    if (!term) {
+      panel.hidden = true;
+      if (list) list.innerHTML = "";
+      return;
+    }
+    if (list) list.innerHTML = `<div class="select-search__empty">Nenhum resultado encontrado</div>`;
+    panel.hidden = false;
+    return;
+  }
+  const limit = Number.isFinite(opts.limit) ? opts.limit : 10;
+  const rows = finalList.slice(0, limit).map(opt => `<button type="button" class="select-search__item" data-value="${escapeHTML(opt.value)}">${escapeHTML(opt.label)}</button>`).join("\n");
+  if (list) list.innerHTML = rows;
+  panel.hidden = false;
+}
+
+function aplicarSelecaoBusca(select, rawValue){
+  const data = SELECT_SEARCH_DATA.get(select);
+  if (!data) return;
+  const options = data.options || [];
+  const match = options.find(opt => optionMatchesValue(opt, rawValue));
+  const targetValue = match ? match.value : rawValue;
+  select.value = targetValue;
+  if (select.value !== targetValue) {
+    const fallback = options.find(opt => opt.value === targetValue);
+    if (!fallback) select.selectedIndex = 0;
+  }
+  data.input.value = "";
+  if (typeof data.hidePanel === "function") data.hidePanel();
+  select.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function refreshHierarchyCombos(opts = {}){
@@ -3183,51 +4652,51 @@ function refreshHierarchyCombos(opts = {}){
 function adjustHierarchySelection(selection, changedField){
   const def = HIERARCHY_FIELD_MAP.get(changedField);
   if (!def) return selection;
-  const value = sanitizeText(selection[changedField]);
+  const value = limparTexto(selection[changedField]);
   const effective = value || def.defaultValue;
   selection[changedField] = effective;
 
   const setIf = (key, next) => {
     if (!next) return;
     const meta = HIERARCHY_FIELD_MAP.get(key);
-    const normalized = sanitizeText(next);
+    const normalized = limparTexto(next);
     if (!meta) return;
     selection[key] = normalized || meta.defaultValue;
   };
 
   if (changedField === "agencia" && effective !== def.defaultValue){
-    const meta = AGENCIA_INDEX.get(effective) || MESU_BY_AGENCIA.get(effective) || {};
+    const meta = findAgenciaMeta(effective) || {};
     setIf("gerencia", meta.gerencia || meta.regionalId || meta.regional);
     setIf("diretoria", meta.diretoria || meta.diretoriaId);
     setIf("segmento", meta.segmento || meta.segmentoId);
   }
 
   if (changedField === "gerencia" && effective !== def.defaultValue){
-    const meta = GERENCIA_INDEX.get(effective) || {};
+    const meta = findGerenciaMeta(effective) || {};
     setIf("diretoria", meta.diretoria);
     setIf("segmento", meta.segmentoId);
   }
 
   if (changedField === "diretoria" && effective !== def.defaultValue){
-    const meta = DIRETORIA_INDEX.get(effective) || {};
+    const meta = findDiretoriaMeta(effective) || {};
     setIf("segmento", meta.segmento);
   }
 
   if (changedField === "ggestao" && effective !== def.defaultValue){
-    const meta = GGESTAO_INDEX.get(effective) || {};
+    const meta = findGerenteGestaoMeta(effective) || {};
     setIf("agencia", meta.agencia);
     setIf("gerencia", meta.gerencia);
     setIf("diretoria", meta.diretoria);
-    const agMeta = meta.agencia ? (AGENCIA_INDEX.get(meta.agencia) || MESU_BY_AGENCIA.get(meta.agencia) || {}) : {};
+    const agMeta = meta.agencia ? (findAgenciaMeta(meta.agencia) || {}) : {};
     setIf("segmento", agMeta.segmento || agMeta.segmentoId);
   }
 
   if (changedField === "gerente" && effective !== def.defaultValue){
-    const meta = GERENTE_INDEX.get(effective) || {};
+    const meta = findGerenteMeta(effective) || {};
     setIf("agencia", meta.agencia);
     setIf("gerencia", meta.gerencia);
     setIf("diretoria", meta.diretoria);
-    const agMeta = meta.agencia ? (AGENCIA_INDEX.get(meta.agencia) || MESU_BY_AGENCIA.get(meta.agencia) || {}) : {};
+    const agMeta = meta.agencia ? (findAgenciaMeta(meta.agencia) || {}) : {};
     setIf("segmento", agMeta.segmento || agMeta.segmentoId);
   }
 
@@ -3239,7 +4708,7 @@ function handleHierarchySelectionChange(changedField){
   refreshHierarchyCombos({ selection });
 }
 
-/* ===== Filtros superiores ===== */
+/* ===== Aqui eu organizo os filtros superiores (diretoria, agência etc.) ===== */
 function ensureSegmentoField() {
   if ($("#f-segmento")) return;
   const filters = $(".filters");
@@ -3247,14 +4716,14 @@ function ensureSegmentoField() {
   const actions = filters.querySelector(".filters__actions");
   const wrap = document.createElement("div");
   wrap.className = "filters__group";
-  wrap.innerHTML = `<label>Segmento</label><select id="f-segmento" class="input"></select>`;
+  wrap.innerHTML = `<label>Segmento</label><select id="f-segmento" class="input" data-search="true"></select>`;
   filters.insertBefore(wrap, actions);
 }
 function getFilterValues() {
   const val = (sel) => $(sel)?.value || "";
   const statusSelect = $("#f-status-kpi");
   const statusOption = statusSelect?.selectedOptions?.[0] || null;
-  const statusKey = statusOption?.dataset.statusKey || normalizeStatusKey(statusSelect?.value) || (statusSelect?.value || "");
+  const statusKey = statusOption?.dataset.statusKey || normalizarChaveStatus(statusSelect?.value) || (statusSelect?.value || "");
   const statusCodigo = statusOption?.dataset.statusCodigo || statusOption?.value || "";
   const statusId = statusOption?.dataset.statusId || statusCodigo || "";
   return {
@@ -3270,10 +4739,11 @@ function getFilterValues() {
     status:    statusKey || "todos",
     statusCodigo,
     statusId,
+    visao:     val("#f-visao") || state.accumulatedView || "mensal",
   };
 }
 
-/* ===== Busca por contrato ===== */
+/* ===== Aqui eu construo a busca por contrato com autocomplete ===== */
 function rowMatchesSearch(r, term) {
   if (!term) return true;
   const t = term.toLowerCase();
@@ -3281,7 +4751,7 @@ function rowMatchesSearch(r, term) {
   return contracts.some(c => (c.id || "").toLowerCase().includes(t));
 }
 
-/* ===== Filtro base ===== */
+/* ===== Aqui eu aplico o filtro base que decide o que aparece em cada visão ===== */
 function filterRowsExcept(rows, except = {}, opts = {}) {
   const f = getFilterValues();
   const {
@@ -3295,20 +4765,20 @@ function filterRowsExcept(rows, except = {}, opts = {}) {
   const endISO = ignoreDate ? "" : (dateEnd ?? state.period.end);
 
   return rows.filter(r => {
-    const okSeg = (f.segmento === "Todos" || f.segmento === "" || r.segmento === f.segmento);
-    const okDR  = (except.diretoria) || (f.diretoria === "Todas" || f.diretoria === "" || r.diretoria === f.diretoria);
-    const okGR  = (except.gerencia)  || (f.gerencia  === "Todas" || f.gerencia  === "" || r.gerenciaRegional === f.gerencia);
-    const okAg  = (except.agencia)   || (f.agencia   === "Todas" || f.agencia   === "" || r.agencia === f.agencia);
-    const okGG  = (f.ggestao   === "Todos" || f.ggestao   === "" || r.gerenteGestao === f.ggestao);
-    const okGer = (except.gerente)   || (f.gerente   === "Todos" || f.gerente   === "" || r.gerente === f.gerente);
+    const okSeg = selecaoPadrao(f.segmento) || matchesSelection(f.segmento, r.segmento, r.segmentoId, r.segmentoNome);
+    const okDR  = (except.diretoria) || selecaoPadrao(f.diretoria) || matchesSelection(f.diretoria, r.diretoria, r.diretoriaNome);
+    const okGR  = (except.gerencia)  || selecaoPadrao(f.gerencia)  || matchesSelection(f.gerencia, r.gerenciaRegional, r.gerenciaNome, r.regional);
+    const okAg  = (except.agencia)   || selecaoPadrao(f.agencia)   || matchesSelection(f.agencia, r.agencia, r.agenciaNome, r.agenciaCodigo);
+    const okGG  = selecaoPadrao(f.ggestao) || matchesSelection(f.ggestao, r.gerenteGestao, r.gerenteGestaoNome);
+    const okGer = (except.gerente)   || selecaoPadrao(f.gerente)   || matchesSelection(f.gerente, r.gerente, r.gerenteNome);
     const familiaMetaRow = r.produtoId ? PRODUTO_TO_FAMILIA.get(r.produtoId) : null;
     const rowSecaoId = r.secaoId
       || familiaMetaRow?.secaoId
       || (r.produtoId ? PRODUCT_INDEX.get(r.produtoId)?.sectionId : "")
       || (SECTION_IDS.has(r.familiaId) ? r.familiaId : "");
-    const okSec = (f.secaoId === "Todas" || f.secaoId === "" || rowSecaoId === f.secaoId || r.familiaId === f.secaoId || r.familia === f.secaoId);
-    const okFam = (f.familiaId === "Todas" || f.familiaId === "" || r.familiaId === f.familiaId || (!r.familiaId && r.familia === f.familiaId));
-    const okProd= (f.produtoId === "Todas" || f.produtoId === "Todos" || f.produtoId === "" || r.produtoId === f.produtoId);
+    const okSec = selecaoPadrao(f.secaoId) || matchesSelection(f.secaoId, rowSecaoId, r.secaoId, r.secaoNome, r.secao, getSectionLabel(rowSecaoId));
+    const okFam = selecaoPadrao(f.familiaId) || matchesSelection(f.familiaId, r.familiaId, r.familia);
+    const okProd= selecaoPadrao(f.produtoId) || matchesSelection(f.produtoId, r.produtoId, r.produtoNome, r.produto, r.prodOrSub, r.subproduto);
     let rowDate = r.data || r.competencia || "";
     if (rowDate && typeof rowDate !== "string") {
       if (rowDate instanceof Date) {
@@ -3320,7 +4790,7 @@ function filterRowsExcept(rows, except = {}, opts = {}) {
     const okDt  = (!startISO || !rowDate || rowDate >= startISO) && (!endISO || !rowDate || rowDate <= endISO);
 
     const ating = r.meta ? (r.realizado / r.meta) : 0;
-    const statusKey = normalizeStatusKey(f.status) || "todos";
+    const statusKey = normalizarChaveStatus(f.status) || "todos";
     let okStatus = true;
     if (statusKey === "atingidos") {
       okStatus = ating >= 1;
@@ -3348,7 +4818,7 @@ function autoSnapViewToFilters() {
   if (snap && state.tableView !== snap) { state.tableView = snap; setActiveChip(snap); }
 }
 
-/* ===== Árvore da tabela ===== */
+/* ===== Aqui eu monto a árvore da tabela detalhada ===== */
 function ensureContracts(r) {
   if (r._contracts) return r._contracts;
   const n = 2 + Math.floor(Math.random() * 3), arr = [];
@@ -3761,7 +5231,7 @@ async function commitContractSearch(rawTerm, opts = {}) {
   }
 }
 
-/* ===== UI ===== */
+/* ===== Aqui eu cuido das interações gerais de UI que não se encaixaram em outro bloco ===== */
 function initCombos() {
   ensureSegmentoField();
 
@@ -3782,15 +5252,22 @@ function initCombos() {
 
   const compareLabels = (a, b) => String(a.label || "").localeCompare(String(b.label || ""), "pt-BR", { sensitivity: "base" });
   const dedupeOptions = (items, valueGetter, labelGetter) => {
-    const seen = new Set();
+    const seenValues = new Set();
+    const seenLabels = new Set();
     const list = [];
     items.forEach(item => {
       const rawValue = valueGetter(item);
       const rawLabel = labelGetter(item);
-      const value = sanitizeText(rawValue);
-      const label = sanitizeText(rawLabel) || value;
-      if (!value || seen.has(value)) return;
-      seen.add(value);
+      const value = limparTexto(rawValue) || limparTexto(rawLabel);
+      const label = rawLabel != null && rawLabel !== ""
+        ? String(rawLabel).trim()
+        : (value || "");
+      if (!value || !label) return;
+      const valueKey = value.toLowerCase();
+      const labelKey = label.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      if (seenValues.has(valueKey) || seenLabels.has(labelKey)) return;
+      seenValues.add(valueKey);
+      seenLabels.add(labelKey);
       list.push({ value, label });
     });
     list.sort(compareLabels);
@@ -3840,7 +5317,9 @@ function initCombos() {
         const prodSecao = meta?.sectionId || familiaMeta?.secaoId || "";
         if (prodSecao !== filtroSecao) return;
       }
-      options.push({ value: prod.id, label: prod.nome || prod.id });
+      const aliasSet = CARD_ALIAS_INDEX.get(prod.id);
+      const aliases = aliasSet ? Array.from(aliasSet) : [];
+      options.push({ value: prod.id, label: prod.nome || prod.id, aliases });
       added.add(prod.id);
     };
     if (!familiaId || familiaId === "Todas") {
@@ -3879,6 +5358,23 @@ function initCombos() {
   }
 
   updateStatusFilterOptions();
+
+  const visaoSelect = $("#f-visao");
+  if (visaoSelect) {
+    const current = visaoSelect.value || state.accumulatedView || "mensal";
+    visaoSelect.innerHTML = "";
+    ACCUMULATED_VIEW_OPTIONS.forEach(opt => {
+      const option = document.createElement("option");
+      option.value = opt.value;
+      option.textContent = opt.label;
+      visaoSelect.appendChild(option);
+    });
+    visaoSelect.value = ACCUMULATED_VIEW_OPTIONS.some(opt => opt.value === current)
+      ? current
+      : "mensal";
+    state.accumulatedView = visaoSelect.value || "mensal";
+    syncPeriodFromAccumulatedView(state.accumulatedView);
+  }
 }
 function bindEvents() {
   $("#btn-consultar")?.addEventListener("click", async () => {
@@ -3909,7 +5405,7 @@ function bindEvents() {
     t.addEventListener("click", () => {
       if (t.classList.contains("is-active")) return;
       const view = t.dataset.view;
-      setActiveTab(view);
+      definirAbaAtiva(view);
       if (view === "table") switchView("table");
       else if (view === "ranking") switchView("ranking");
       else if (view === "exec") switchView("exec");
@@ -3929,6 +5425,23 @@ function bindEvents() {
       }, "Atualizando filtros…");
     });
   });
+
+  const visaoSelect = $("#f-visao");
+  if (visaoSelect && !visaoSelect.dataset.bound) {
+    visaoSelect.dataset.bound = "1";
+    visaoSelect.addEventListener("change", async () => {
+      const nextView = visaoSelect.value || "mensal";
+      state.accumulatedView = nextView;
+      syncPeriodFromAccumulatedView(nextView);
+      await withSpinner(async () => {
+        autoSnapViewToFilters();
+        applyFiltersAndRender();
+        renderAppliedFilters();
+        renderCampanhasView();
+        if (state.activeView === "ranking") renderRanking();
+      }, "Atualizando visão acumulada…");
+    });
+  }
 
   const searchInput = $("#busca");
   if (searchInput) {
@@ -4008,18 +5521,19 @@ function reorderFiltersUI() {
   const gFam = groupOf("#f-familia");
   const gProd= groupOf("#f-produto");
   const gStatus = groupOf("#f-status-kpi");
+  const gVisao = groupOf("#f-visao");
 
   const actions = area.querySelector(".filters__actions") || area.lastElementChild;
 
   [gSeg,gDR,gGR].filter(Boolean).forEach(el => area.insertBefore(el, actions));
-  [gAg,gGG,gGer,gSec,gFam,gProd,gStatus].filter(Boolean).forEach(el => adv?.appendChild(el));
+  [gAg,gGG,gGer,gSec,gFam,gProd,gStatus,gVisao].filter(Boolean).forEach(el => adv?.appendChild(el));
 
   const gStart = $("#f-inicio")?.closest(".filters__group"); if (gStart) gStart.remove();
 }
 
 
 
-/* ===== Loader overlay ===== */   // <- COLE AQUI O BLOCO INTEIRO
+/* ===== Aqui eu controlo o overlay de carregamento para indicar processamento ===== */   // <- COLE AQUI O BLOCO INTEIRO
 function ensureLoader(){
   if (document.getElementById('__loader')) return;
   const el = document.createElement('div');
@@ -4049,7 +5563,7 @@ async function withSpinner(fn, text='Carregando…'){
   try { await fn(); } finally { hideLoader(); }
 }
 
-/* ===== Chat widget (flutuante) ===== */
+/* ===== Aqui eu monto o widget de chat flutuante e seus eventos ===== */
 function ensureChatWidget(){
   if (document.getElementById("chat-widget")) return;
 
@@ -4196,7 +5710,7 @@ function ensureChatWidget(){
 
 
 
-/* ===== Troca de view (com spinner) ===== */
+/* ===== Aqui eu gerencio a troca entre as abas principais mostrando um spinner decente ===== */
 async function switchView(next) {
   const label =
     next === "table"     ? "Montando detalhamento…" :
@@ -4205,7 +5719,7 @@ async function switchView(next) {
     next === "campanhas" ? "Abrindo campanhas…" :
                            "Carregando…";
 
-  setActiveTab(next);
+  definirAbaAtiva(next);
 
   await withSpinner(async () => {
     const views = { cards:"#view-cards", table:"#view-table", ranking:"#view-ranking", exec:"#view-exec", campanhas:"#view-campanhas" };
@@ -4238,7 +5752,7 @@ async function switchView(next) {
 
 
 
-/* ===== Resumo (Indicadores / Pontos) ===== */
+/* ===== Aqui eu monto o resumo com os indicadores e pontos principais ===== */
 function hitbarClass(p){ return p<50 ? "hitbar--low" : (p<100 ? "hitbar--warn" : "hitbar--ok"); }
 function renderResumoKPI(summary, context = {}) {
   const {
@@ -4280,10 +5794,21 @@ function renderResumoKPI(summary, context = {}) {
   const nextResumoKey = keyParts.join('|');
   const shouldAnimateResumo = resumoAnim?.kpiKey !== nextResumoKey;
 
-  const formatDisplay = (type, value) => type === "brl" ? formatBRLReadable(value) : formatIntReadable(value);
+  const formatDisplay = (type, value) => {
+    if (type === "brl") return formatBRLReadable(value);
+    if (type === "pts") return formatPoints(value);
+    return formatIntReadable(value);
+  };
   const formatFull = (type, value) => {
+    if (type === "brl") {
+      const n = Math.round(toNumber(value));
+      return fmtBRL.format(n);
+    }
+    if (type === "pts") {
+      return formatPoints(value, { withUnit: true });
+    }
     const n = Math.round(toNumber(value));
-    return type === "brl" ? fmtBRL.format(n) : fmtINT.format(n);
+    return fmtINT.format(n);
   };
   const buildTitle = (label, type, globalValue, visibleValue) => {
     let title = `${label}: ${formatFull(type, globalValue)}`;
@@ -4330,19 +5855,16 @@ function renderResumoKPI(summary, context = {}) {
 
   kpi.innerHTML = [
     buildCard("Indicadores", "ti ti-list-check", indicadoresAtingidos, indicadoresTotal, "int", visibleItemsHitCount),
-    buildCard("Pontos", "ti ti-medal", pontosAtingidos, pontosTotal, "int", visiblePointsHit),
+    buildCard("Pontos", "ti ti-medal", pontosAtingidos, pontosTotal, "pts", visiblePointsHit),
     buildCard("Variável", "ti ti-cash", varRealBase, varTotalBase, "brl", visibleVarAtingido, visibleVarMeta)
   ].join("");
 
   triggerBarAnimation(kpi.querySelectorAll('.hitbar'), shouldAnimateResumo);
   if (resumoAnim) resumoAnim.kpiKey = nextResumoKey;
 }
-/* ===== Tooltip dos cards ===== */
+/* ===== Aqui eu cuido do tooltip dos cards para explicar cada indicador ===== */
 function buildCardTooltipHTML(item) {
-  const start = state.period.start, end = state.period.end;
-  const diasTotais     = businessDaysBetweenInclusive(start, end);
-  const diasRestantes  = businessDaysRemainingFromToday(start, end);
-  const diasDecorridos = Math.max(0, Math.min(diasTotais, diasTotais - diasRestantes));
+  const { total: diasTotais, elapsed: diasDecorridos, remaining: diasRestantes } = getCurrentMonthBusinessSnapshot();
 
   let meta = toNumber(item.meta);
   let realizado = toNumber(item.realizado);
@@ -4355,24 +5877,25 @@ function buildCardTooltipHTML(item) {
     return fmtBRL.format(Math.round(v));
   };
 
-  const faltaTotal       = Math.max(0, meta - realizado);
-  const necessarioPorDia = diasRestantes > 0 ? (faltaTotal / diasRestantes) : 0;
-  const mediaDiaria      = diasDecorridos > 0 ? (realizado / diasDecorridos) : 0;
-  const forecast         = mediaDiaria * (diasTotais || 0);
+  const faltaTotal         = Math.max(0, meta - realizado);
+  const necessarioPorDia   = diasRestantes > 0 ? (faltaTotal / diasRestantes) : 0;
+  const mediaDiariaAtual   = diasDecorridos > 0 ? (realizado / diasDecorridos) : 0;
+  const projecaoRitmoAtual = mediaDiariaAtual * (diasTotais || 0);
+  const referenciaHoje     = diasTotais > 0 ? (meta / diasTotais) * diasDecorridos : 0;
 
   const necessarioPorDiaDisp = diasRestantes > 0 ? fmt(item.metric, necessarioPorDia) : "—";
-  const mediaDiariaDisp      = diasDecorridos > 0 ? fmt(item.metric, mediaDiaria) : "—";
+  const referenciaHojeDisp   = diasDecorridos > 0 ? fmt(item.metric, referenciaHoje) : "—";
 
   return `
     <div class="kpi-tip" role="dialog" aria-label="Detalhes do indicador">
       <h5>Projeção e metas</h5>
-      <div class="row"><span>Dias úteis no período</span><span>${fmtINT.format(diasTotais)}</span></div>
+      <div class="row"><span>Quantidade de dias úteis no mês</span><span>${fmtINT.format(diasTotais)}</span></div>
       <div class="row"><span>Dias úteis trabalhados</span><span>${fmtINT.format(diasDecorridos)}</span></div>
       <div class="row"><span>Dias úteis que faltam</span><span>${fmtINT.format(diasRestantes)}</span></div>
       <div class="row"><span>Falta para a meta</span><span>${fmt(item.metric, faltaTotal)}</span></div>
+      <div class="row"><span>Referência para hoje</span><span>${referenciaHojeDisp}</span></div>
       <div class="row"><span>Meta diária necessária</span><span>${necessarioPorDiaDisp}</span></div>
-      <div class="row"><span>Média diária atual</span><span>${mediaDiariaDisp}</span></div>
-      <div class="row"><span>Forecast (ritmo atual)</span><span>${fmt(item.metric, forecast)}</span></div>
+      <div class="row"><span>Projeção (ritmo atual)</span><span>${fmt(item.metric, projecaoRitmoAtual)}</span></div>
     </div>
   `;
 }
@@ -4449,12 +5972,13 @@ function bindBadgeTooltip(card){
   wireTipGlobalsOnce();
 }
 
-/* ===== Cards por seção ===== */
+/* ===== Aqui eu gero os cards de cada seção/família com métricas e metas ===== */
 function getStatusFilter(){
   const raw = $("#f-status-kpi")?.value;
-  return normalizeStatusKey(raw) || "todos";
+  return normalizarChaveStatus(raw) || "todos";
 }
 function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
+  SUBPRODUTO_TO_INDICADOR.clear();
   const productMeta = new Map();
   CARD_SECTIONS_DEF.forEach(sec => {
     sec.items.forEach(item => {
@@ -4492,6 +6016,7 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
         pontos: 0,
         ultimaAtualizacao: ""
       };
+      aplicarIndicadorAliases(agg, agg.id, agg.nome);
       aggregated.set(productId, agg);
     } else {
       if (!agg.familiaId && familiaId) {
@@ -4523,6 +6048,29 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
     if (row.data && row.data > agg.ultimaAtualizacao) {
       agg.ultimaAtualizacao = row.data;
     }
+
+    const aliasCandidates = [
+      row.id_indicador,
+      row.ds_indicador,
+      row.produtoId,
+      row.produtoNome,
+      row.produto,
+      row.prodOrSub,
+    ];
+    if (!agg.aliases) agg.aliases = new Set();
+    aliasCandidates.forEach(val => {
+      const texto = limparTexto(val);
+      if (!texto) return;
+      agg.aliases.add(texto);
+      registrarAliasIndicador(agg.id, texto);
+    });
+    const subprodutoTexto = limparTexto(row.subproduto || row.subProduto || "");
+    if (subprodutoTexto) {
+      if (!agg.subProdutos) agg.subProdutos = new Set();
+      agg.subProdutos.add(subprodutoTexto);
+      registrarAliasIndicador(agg.id, subprodutoTexto);
+      SUBPRODUTO_TO_INDICADOR.set(simplificarTexto(subprodutoTexto), agg.id);
+    }
   });
 
   const sections = [];
@@ -4533,8 +6081,11 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
       if (agg.secaoId && agg.secaoId !== sec.id) return null;
       const ating = agg.metaTotal ? (agg.realizadoTotal / agg.metaTotal) : 0;
       const variavelAting = agg.variavelMeta ? (agg.variavelReal / agg.variavelMeta) : ating;
+      const pontosMeta = Number(item.peso) || 0;
+      const pontosBrutos = Number.isFinite(agg.pontos) ? agg.pontos : 0;
+      const pontosCumpridos = Math.max(0, Math.min(pontosMeta, pontosBrutos));
       const ultimaISO = agg.ultimaAtualizacao || period.end || period.start || todayISO();
-      return {
+      const cardBase = {
         id: agg.id,
         nome: agg.nome,
         icon: agg.icon,
@@ -4551,9 +6102,16 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
         ating,
         atingVariavel: variavelAting,
         atingido: ating >= 1,
-        pontos: agg.pontos,
+        pontos: pontosCumpridos,
+        pontosMeta,
+        pontosBrutos,
         ultimaAtualizacao: formatBRDate(ultimaISO)
       };
+      aplicarIndicadorAliases(cardBase, agg.id, agg.nome);
+      cardBase.prodOrSub = agg.produtoNome || agg.nome || agg.id;
+      if (agg.aliases) cardBase.aliases = Array.from(agg.aliases);
+      if (agg.subProdutos) cardBase.subProdutos = Array.from(agg.subProdutos);
+      return cardBase;
     }).filter(Boolean);
     if (items.length) {
       sections.push({ id: sec.id, label: sec.label, items });
@@ -4563,8 +6121,8 @@ function buildDashboardDatasetFromRows(rows = [], period = state.period || {}) {
   const allItems = sections.flatMap(sec => sec.items);
   const indicadoresTotal = allItems.length;
   const indicadoresAtingidos = allItems.filter(item => item.atingido).length;
-  const pontosPossiveis = allItems.reduce((acc, item) => acc + (item.peso || 0), 0);
-  const pontosAtingidos = allItems.filter(item => item.atingido).reduce((acc, item) => acc + (item.peso || 0), 0);
+  const pontosPossiveis = allItems.reduce((acc, item) => acc + (item.pontosMeta ?? item.peso ?? 0), 0);
+  const pontosAtingidos = allItems.reduce((acc, item) => acc + (item.pontos ?? 0), 0);
   const metaTotal = allItems.reduce((acc, item) => acc + (item.meta || 0), 0);
   const realizadoTotal = allItems.reduce((acc, item) => acc + (item.realizado || 0), 0);
   const varPossivel = allItems.reduce((acc, item) => acc + (item.variavelMeta || 0), 0);
@@ -4616,6 +6174,8 @@ function renderFamilias(sections, summary){
   const secaoFilterId = $("#f-secao")?.value || "Todas";
   const familiaFilterId = $("#f-familia")?.value || "Todas";
   const produtoFilterId = $("#f-produto")?.value || "Todos";
+  const produtoFilterSlug = simplificarTexto(produtoFilterId);
+  const produtoFilterResolved = produtoFilterSlug ? (SUBPRODUTO_TO_INDICADOR.get(produtoFilterSlug) || resolverIndicadorPorAlias(produtoFilterId)) : resolverIndicadorPorAlias(produtoFilterId);
 
   let atingidosVisiveis = 0;
   let pontosAtingidosVisiveis = 0;
@@ -4640,7 +6200,10 @@ function renderFamilias(sections, summary){
 
     const itemsFiltered = sec.items.filter(it=>{
       const okStatus = status === "atingidos" ? it.atingido : (status === "nao" ? !it.atingido : true);
-      const okProduto = (produtoFilterId === "Todos" || produtoFilterId === "Todas" || it.id === produtoFilterId);
+      const aliasList = [it.id, it.nome, it.produtoNome, it.ds_indicador, it.prodOrSub, it.aliases || [], it.subProdutos || []];
+      const okProduto = (produtoFilterId === "Todos" || produtoFilterId === "Todas")
+        || matchesSelection(produtoFilterId, aliasList)
+        || (produtoFilterResolved && (it.id === produtoFilterResolved || matchesSelection(produtoFilterResolved, aliasList)));
       const okFamilia = !applyFamiliaFilter
         || it.familiaId === familiaFilterId
         || it.familiaLabel === familiaFilterId
@@ -4649,12 +6212,12 @@ function renderFamilias(sections, summary){
     });
     if (!itemsFiltered.length) return;
 
-    const sectionTotalPoints = sec.items.reduce((acc,i)=> acc + (i.peso||0), 0);
-    const sectionPointsHit   = sec.items.filter(i=> i.atingido).reduce((acc,i)=> acc + (i.peso||0), 0);
-    const sectionPointsHitDisp = formatIntReadable(sectionPointsHit);
-    const sectionPointsTotalDisp = formatIntReadable(sectionTotalPoints);
-    const sectionPointsHitFull = fmtINT.format(Math.round(sectionPointsHit));
-    const sectionPointsTotalFull = fmtINT.format(Math.round(sectionTotalPoints));
+    const sectionTotalPoints = itemsFiltered.reduce((acc,i)=> acc + (i.pontosMeta ?? i.peso ?? 0), 0);
+    const sectionPointsHit   = itemsFiltered.reduce((acc,i)=> acc + Math.max(0, Number(i.pontos ?? 0)), 0);
+    const sectionPointsHitDisp = formatPoints(sectionPointsHit);
+    const sectionPointsTotalDisp = formatPoints(sectionTotalPoints);
+    const sectionPointsHitFull = formatPoints(sectionPointsHit, { withUnit: true });
+    const sectionPointsTotalFull = formatPoints(sectionTotalPoints, { withUnit: true });
 
     const sectionEl = document.createElement("section");
     sectionEl.className = "fam-section";
@@ -4672,7 +6235,10 @@ function renderFamilias(sections, summary){
     const grid = sectionEl.querySelector(".fam-section__grid");
 
     itemsFiltered.forEach(f=>{
-      if (f.atingido){ atingidosVisiveis += 1; pontosAtingidosVisiveis += (f.peso||0); }
+      if (f.atingido){ atingidosVisiveis += 1; }
+      const pontosMetaItem = Number(f.pontosMeta ?? f.peso) || 0;
+      const pontosRealItem = Math.max(0, Number(f.pontos ?? 0));
+      pontosAtingidosVisiveis += Math.min(pontosRealItem, pontosMetaItem);
       const variavelMeta = Number(f.variavelMeta) || 0;
       const variavelReal = Number(f.variavelReal) || 0;
       if (variavelMeta || variavelReal) hasVisibleVar = true;
@@ -4688,8 +6254,8 @@ function renderFamilias(sections, summary){
       const realizadoFull = formatMetricFull(f.metric, f.realizado);
       const metaFull      = formatMetricFull(f.metric, f.meta);
 
-      const pontosMeta = Number(f.peso) || 0;
-      const pontosReal = Number(f.pontos) || 0;
+      const pontosMeta = pontosMetaItem;
+      const pontosReal = pontosRealItem;
       const pontosRatio = pontosMeta ? (pontosReal / pontosMeta) : 0;
       const pontosPct = Math.max(0, pontosRatio * 100);
       const pontosPctLabel = `${pontosPct.toFixed(1)}%`;
@@ -4709,8 +6275,8 @@ function renderFamilias(sections, summary){
           </div>
 
           <div class="prod-card__meta">
-            <span class="pill">Pontos: ${fmtINT.format(f.peso)}/${fmtINT.format(sectionTotalPoints)}</span>
-            <span class="pill">Peso: ${fmtINT.format(f.peso)}</span>
+            <span class="pill">Pontos: ${formatPoints(pontosReal)} / ${formatPoints(pontosMeta)}</span>
+            <span class="pill">Peso: ${formatPoints(pontosMeta)}</span>
             <span class="pill">${f.metric === "valor" ? "Valor" : f.metric === "qtd" ? "Quantidade" : "Percentual"}</span>
           </div>
 
@@ -4813,7 +6379,7 @@ function renderFamilias(sections, summary){
     });
   });
 }
-/* ===== Abas extras ===== */
+/* ===== Aqui eu preparo comportamentos extras das abas quando surgirem novas ===== */
 function ensureExtraTabs(){
   const tabs = document.querySelector(".tabs"); 
   if(!tabs) return;
@@ -4834,7 +6400,7 @@ function ensureExtraTabs(){
   }
 }
 
-/* ===== Estilos adicionais da executiva (injetados por JS) ===== */
+/* ===== Aqui eu injeto estilos extras da visão executiva direto via JS ===== */
 function ensureExecStyles(){
   if (document.getElementById("exec-enhanced-styles")) return;
   const s = document.createElement("style");
@@ -4856,7 +6422,7 @@ function ensureExecStyles(){
   document.head.appendChild(s);
 }
 
-/* ===== Visão Executiva ===== */
+/* ===== Aqui eu construo toda a visão executiva com gráficos, rankings e heatmap ===== */
 function createExecutiveView(){
   ensureExecStyles();
 
@@ -5001,7 +6567,7 @@ function levelLabel(start){
     agencia:  {sing:"Agência", plural:"Agências", short:"Agências"},
     gGestao:  {sing:"Ger. de Gestão", plural:"Ger. de Gestão", short:"GG"},
     gerente:  {sing:"Gerente", plural:"Gerentes", short:"Gerentes"},
-    prodsub:  {sing:"Produto/Subproduto", plural:"Produtos", short:"Produtos"}
+    prodsub:  {sing:"Indicador/Subproduto", plural:"Indicadores", short:"Indicadores"}
   }[start];
 }
 
@@ -5212,7 +6778,7 @@ function buildExecMonthlyLines(container, dataset){
     </svg>`;
 }
 
-/* ===== Render principal da Visão Executiva ===== */
+/* ===== Aqui eu orquestro o render principal da visão executiva ===== */
 function renderExecutiveView(){
   const host = document.getElementById("view-exec"); 
   if(!host) return;
@@ -5281,8 +6847,8 @@ function renderExecutiveView(){
   const defas = total.real_mens - total.meta_mens;
 
   const diasTotais     = businessDaysBetweenInclusive(state.period.start, state.period.end);
-  const diasRestantes  = businessDaysRemainingFromToday(state.period.start, state.period.end);
-  const diasDecorridos = Math.max(0, diasTotais - diasRestantes);
+  const diasDecorridos = businessDaysElapsedUntilToday(state.period.start, state.period.end);
+  const diasRestantes  = Math.max(0, diasTotais - diasDecorridos);
   const mediaDiaria    = diasDecorridos>0 ? (total.real_mens/diasDecorridos) : 0;
   const necessarioDia  = diasRestantes>0 ? Math.max(0, (total.meta_mens-total.real_mens)/diasRestantes) : 0;
   const forecast       = mediaDiaria * diasTotais;
@@ -5682,10 +7248,10 @@ function renderExecHeatmapMeta(hm, rows, period){
       } else if (delta === 0) {
         cls += " hm-ok";
         text = `0.0%`;
-      } else if (delta <= 10) {
+      } else if (delta <= 5) {
         cls += " hm-ok";
         text = `+${delta.toFixed(1)}%`;
-      } else if (delta <= 20) {
+      } else if (delta <= 10) {
         cls += " hm-warn";
         text = `+${delta.toFixed(1)}%`;
       } else {
@@ -5709,8 +7275,8 @@ function renderExecHeatmapMeta(hm, rows, period){
   hm.innerHTML = html;
 }
 
-/* ===== Ranking ===== */
-/* ===== Campanhas ===== */
+/* ===== Aqui eu calculo e exibo os rankings de cada nível ===== */
+/* ===== Aqui eu trato toda a lógica das campanhas e simuladores ===== */
 function currentSprintConfig(){
   if (!Array.isArray(CAMPAIGN_SPRINTS) || !CAMPAIGN_SPRINTS.length) return null;
   const id = state.campanhas?.sprintId;
@@ -5775,7 +7341,7 @@ function detectPresetMatch(values, presets){
 }
 
 function formatCampPoints(value){
-  return `${fmtONE.format(toNumber(value))} pts`;
+  return `${fmtINT.format(Math.round(toNumber(value)))} pts`;
 }
 
 function formatCampPercent(value){
@@ -5829,7 +7395,7 @@ function computeCampaignScore(config, values){
   const shortfall = Math.max(0, minTotal - totalPoints);
   const progressPct = minTotal ? Math.max(0, Math.min(1, totalPoints / minTotal)) : 0;
   const progressLabel = shortfall > 0
-    ? `${fmtONE.format(shortfall)} pts para elegibilidade`
+    ? `${fmtINT.format(Math.round(shortfall))} pts para elegibilidade`
     : (hasAllStretch ? "Acima do stretch" : "Meta mínima atingida");
 
   return { rows, totalPoints, finalStatus, finalClass, progressPct, progressLabel, shortfall, hasAllMin, hasAllStretch, minThreshold: min, superThreshold: stretch, cap, eligibilityMinimum: minTotal };
@@ -6355,6 +7921,15 @@ function renderCampanhasView(){
     periodEl.textContent = start && end ? `De ${start} até ${end}` : "Período não informado";
   }
 
+  const validityEl = document.getElementById("camp-validity");
+  if (validityEl) {
+    const start = sprint.period?.start ? formatBRDate(sprint.period.start) : "";
+    const end = sprint.period?.end ? formatBRDate(sprint.period.end) : "";
+    validityEl.textContent = start && end
+      ? `Vigência da campanha: de ${start} até ${end}`
+      : "Vigência não informada";
+  }
+
   const headline = document.getElementById("camp-headline");
   if (headline) {
     headline.innerHTML = (sprint.headStats || []).map(stat => `
@@ -6577,32 +8152,30 @@ function renderRanking(){
   hostTbl.appendChild(tbl);
 }
 
-/* ===== Tabela em árvore (Detalhamento) ===== */
+/* ===== Aqui eu renderizo a tabela em árvore usada no detalhamento ===== */
 function renderTreeTable() {
   ensureChipBarAndToolbar();
+  renderDetailViewBar();
 
   const def = TABLE_VIEWS.find(v=> v.id === state.tableView) || TABLE_VIEWS[0];
   const rowsFiltered = filterRows(state._rankingRaw);
   const nodes = buildTree(rowsFiltered, def.id);
+  const activeColumns = getActiveDetailColumns();
 
-  const host = document.getElementById("gridRanking"); 
+  const host = document.getElementById("gridRanking");
   if (!host) return;
   host.innerHTML = "";
 
   const table = document.createElement("table");
   table.className = "tree-table";
+  const headerCells = [
+    `<th>${escapeHTML(def.label)}</th>`,
+    ...activeColumns.map(col => `<th>${escapeHTML(col.label)}</th>`),
+    `<th class="col-actions">Ações</th>`,
+  ].join("");
   table.innerHTML = `
     <thead>
-      <tr>
-        <th>${def.label}</th>
-        <th>Quantidade</th>
-        <th>Realizado (R$)</th>
-        <th>Meta (R$)</th>
-        <th>Atingimento (R$)</th>
-        <th>Atingimento (%)</th>
-        <th>Data</th>
-        <th class="col-actions">Ações</th>
-      </tr>
+      <tr>${headerCells}</tr>
     </thead>
     <tbody></tbody>
   `;
@@ -6613,44 +8186,20 @@ function renderTreeTable() {
   else document.getElementById("table-section")?.classList.remove("is-compact");
 
   let seq=0; const mkId=()=>`n${++seq}`;
-  const attPct = (p)=>{ const pct=(p*100); const cls=pct<50?"att-low":(pct<100?"att-warn":"att-ok"); return `<span class="att-badge ${cls}">${pct.toFixed(1)}%</span>`; };
-  const attCurrency = (real, meta)=>{
-    const r = toNumber(real);
-    const m = toNumber(meta);
-    const hasMeta = m > 0;
-    const achieved = hasMeta ? Math.max(0, Math.min(r, m)) : Math.max(0, r);
-    const cls = hasMeta ? (r >= m ? "def-pos" : "def-neg") : "def-pos";
-    const full = fmtBRL.format(Math.round(achieved));
-    const display = formatBRLReadable(achieved);
-    return `<span class="def-badge ${cls}" title="${full}">${display}</span>`;
-  };
 
   const buildDetailTableHTML = (node = null) => {
     const groups = Array.isArray(node?.detailGroups) ? node.detailGroups : [];
     if (!groups.length) return "";
-    const fmtDate = iso => (iso ? formatBRDate(iso) : "—");
-    const rows = groups.map(g => {
-      const canal = escapeHTML(g.canal || "—");
-      const tipo = escapeHTML(g.tipo || "—");
-      const gerente = escapeHTML(g.gerente || "—");
-      const modalidade = escapeHTML(g.modalidade || "—");
-      const motivo = escapeHTML(g.motivoCancelamento || "—");
-      return `
-      <tr>
-        <td>${canal}</td>
-        <td>${tipo}</td>
-        <td>${gerente}</td>
-        <td>${modalidade}</td>
-        <td>${fmtDate(g.dataVencimento)}</td>
-        <td>${fmtDate(g.dataCancelamento)}</td>
-        <td>${motivo}</td>
-      </tr>`;
+    const columns = DETAIL_SUBTABLE_COLUMNS;
+    const rows = groups.map(group => {
+      const cells = columns.map(col => `<td>${col.render(group)}</td>`).join("");
+      return `<tr>${cells}</tr>`;
     }).join("");
 
     const cancelGroup = groups.find(g => g.dataCancelamento || g.motivoCancelamento);
     let alertHtml = "";
     if (cancelGroup) {
-      const dateText = cancelGroup.dataCancelamento ? `Cancelado em ${fmtDate(cancelGroup.dataCancelamento)}` : "";
+      const dateText = cancelGroup.dataCancelamento ? `Cancelado em ${formatBRDate(cancelGroup.dataCancelamento)}` : "";
       const reasonText = cancelGroup.motivoCancelamento ? cancelGroup.motivoCancelamento : "";
       const descriptionParts = [];
       if (dateText) descriptionParts.push(escapeHTML(dateText));
@@ -6664,15 +8213,7 @@ function renderTreeTable() {
         ${alertHtml}
         <table class="detail-table">
           <thead>
-            <tr>
-              <th>Canal da venda</th>
-              <th>Tipo da venda</th>
-              <th>Gerente</th>
-              <th>Condição de pagamento</th>
-              <th>Data de vencimento</th>
-              <th>Data de cancelamento</th>
-              <th>Motivo do cancelamento</th>
-            </tr>
+            <tr>${columns.map(col => `<th>${escapeHTML(col.label)}</th>`).join("")}</tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
@@ -6718,23 +8259,17 @@ function renderTreeTable() {
         ? `<div class="tree-label"><span class="label-strong">${fallbackLabel}</span>${statusBadge}</div>`
         : `<span class="label-strong">${fallbackLabel}</span>`);
 
-    const qtyFull = fmtINT.format(Math.round(node.qtd || 0));
-    const qtyDisplay = formatIntReadable(node.qtd || 0);
-    const realizadoFull = fmtBRL.format(Math.round(node.realizado || 0));
-    const realizadoDisplay = formatBRLReadable(node.realizado || 0);
-    const metaFull = fmtBRL.format(Math.round(node.meta || 0));
-    const metaDisplay = formatBRLReadable(node.meta || 0);
+    const dataCells = activeColumns.map(col => {
+      const cls = col.cellClass ? ` class="${col.cellClass}"` : "";
+      const content = col.render(node);
+      return `<td${cls}>${content}</td>`;
+    }).join("");
 
     tr.innerHTML=`
       <td><div class="tree-cell">
         <button class="toggle" type="button" ${has?"":"disabled"} aria-label="${has?"Expandir/colapsar":""}"><i class="ti ${has?"ti-chevron-right":"ti-dot"}"></i></button>
         ${labelHtml}</div></td>
-      <td><span title="${qtyFull}">${qtyDisplay}</span></td>
-      <td><span title="${realizadoFull}">${realizadoDisplay}</span></td>
-      <td><span title="${metaFull}">${metaDisplay}</span></td>
-      <td>${attCurrency(node.realizado,node.meta)}</td>
-      <td>${attPct(node.ating||0)}</td>
-      <td>${formatBRDate(node.data||"")}</td>
+      ${dataCells}
       <td class="actions-cell">
         <span class="actions-group">
           <button type="button" class="icon-btn" title="Abrir chamado"><i class="ti ti-ticket"></i></button>
@@ -6774,7 +8309,8 @@ function renderTreeTable() {
           detailTr.classList.add("is-cancelled-detail");
           detailTr.dataset.cancelled = "1";
         }
-        detailTr.innerHTML=`<td colspan="8">${detailHTML}</td>`;
+        const detailColspan = activeColumns.length + 2;
+        detailTr.innerHTML=`<td colspan="${detailColspan}">${detailHTML}</td>`;
         tbody.appendChild(detailTr);
 
         tr.addEventListener("click", (ev)=>{
@@ -6820,6 +8356,7 @@ function renderTreeTable() {
   nodes.forEach(n=>renderNode(n,null,[]));
 }
 function applyFiltersAndRender(){
+  updatePeriodLabels();
   updateDashboardCards();
   if(state.tableRendered) renderTreeTable();
   if (state.activeView === "campanhas") renderCampanhasView();
@@ -6841,7 +8378,7 @@ function collapseAllRows(){
   });
 }
 
-/* ===== Tooltip simples (para .has-ellipsis com title) ===== */
+/* ===== Aqui eu crio um tooltip simples para qualquer campo com elipse ===== */
 function enableSimpleTooltip(){
   let tip = document.getElementById("__tip");
   if(!tip){
@@ -6913,7 +8450,7 @@ function enableSimpleTooltip(){
   window.addEventListener('scroll', hide, {passive:true});
 }
 
-/* ===== Refresh (carrega dados e repinta) ===== */
+/* ===== Aqui eu faço o refresh geral: carrego dados e redesenho tudo ===== */
 async function refresh(){
   try{
     const dataset = await getData();
@@ -6939,6 +8476,7 @@ async function refresh(){
           </button>
         </div>`;
       document.getElementById("btn-alterar-data")?.addEventListener("click", (e)=> openDatePopover(e.currentTarget));
+      updatePeriodLabels();
     }
 
     updateDashboardCards();
@@ -6958,7 +8496,7 @@ async function refresh(){
 
 
 
-/* ===== CSV loader tolerante (codificação e separador) ===== */
+/* ===== Aqui eu escrevi um loader de CSV que aguenta diferentes codificações e separadores ===== */
 async function loadCSVAuto(url) {
   // Busca como binário para poder detectar a codificação.
   const res = await fetch(url);
@@ -6994,7 +8532,7 @@ async function loadCSVAuto(url) {
 
 
 
-/* ===== Boot ===== */
+/* ===== Aqui eu disparo o boot do painel assim que a página carrega ===== */
 (async function(){
   ensureLoader();
   enableSimpleTooltip();
