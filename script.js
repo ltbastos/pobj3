@@ -874,7 +874,18 @@ function normalizarLinhasProdutos(rows){
       familiaNome,
       familiaId,
     };
-    return aplicarIndicadorAliases(base, produtoId, produtoNome);
+    const resultado = aplicarIndicadorAliases(base, produtoId, produtoNome);
+    const familiaAlias = resolverIndicadorPorAlias(familiaNome) || resolverIndicadorPorAlias(familiaId);
+    if (familiaAlias) {
+      const candidatos = [produtoNome, produtoId];
+      candidatos.forEach(alias => {
+        const texto = limparTexto(alias);
+        if (!texto) return;
+        registrarAliasIndicador(familiaAlias, texto);
+        SUBPRODUTO_TO_INDICADOR.set(simplificarTexto(texto), familiaAlias);
+      });
+    }
+    return resultado;
   }).filter(row => row.familiaId && row.produtoId);
 }
 
@@ -883,6 +894,7 @@ function montarDadosProdutos(rows){
   const famMap = new Map();
   const byFamilia = new Map();
   PRODUTO_TO_FAMILIA = new Map();
+  SUBPRODUTO_TO_INDICADOR.clear();
 
   rows.forEach(row => {
     const familiaId = row.familiaId;
@@ -1673,7 +1685,11 @@ const DEFAULT_CAMPAIGN_UNIT_DATA = [
   { id: "sd-capital", diretoria: "DR 02", diretoriaNome: "Sudeste", gerenciaRegional: "GR 03", regional: "Regional São Paulo", gerenteGestao: "GG 03", agenciaCodigo: "Ag 1004", agencia: "Agência 1004 • Avenida Paulista", segmento: "Negócios", produtoId: "cartoes", subproduto: "À vista", gerente: "Gerente 4", gerenteNome: "Bruno Garcia", carteira: "Carteira Capital", linhas: 105.6, cash: 102.4, conquista: 100.2, atividade: true, data: "2025-09-18" },
   { id: "sc-curitiba", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 04", regional: "Regional Curitiba", gerenteGestao: "GG 02", agenciaCodigo: "Ag 1003", agencia: "Agência 1003 • Curitiba Batel", segmento: "MEI", produtoId: "seguros", subproduto: "Aplicação", gerente: "Gerente 5", gerenteNome: "Carla Menezes", carteira: "Carteira Curitiba", linhas: 109.6, cash: 101.2, conquista: 98.5, atividade: true, data: "2025-09-11" },
   { id: "sc-litoral", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 04", regional: "Regional Curitiba", gerenteGestao: "GG 02", agenciaCodigo: "Ag 1003", agencia: "Agência 1003 • Curitiba Batel", segmento: "MEI", produtoId: "bradesco_expresso", subproduto: "Resgate", gerente: "Gerente 5", gerenteNome: "Carla Menezes", carteira: "Carteira Litoral", linhas: 95.4, cash: 90.1, conquista: 92.8, atividade: true, data: "2025-09-07" },
-  { id: "sc-vale", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 04", regional: "Regional Curitiba", gerenteGestao: "GG 02", agenciaCodigo: "Ag 1003", agencia: "Agência 1003 • Curitiba Batel", segmento: "MEI", produtoId: "rec_credito", subproduto: "À vista", gerente: "Gerente 5", gerenteNome: "Carla Menezes", carteira: "Carteira Vale", linhas: 120.2, cash: 115.6, conquista: 110.4, atividade: true, data: "2025-09-17" }
+  { id: "sc-vale", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 04", regional: "Regional Curitiba", gerenteGestao: "GG 02", agenciaCodigo: "Ag 1003", agencia: "Agência 1003 • Curitiba Batel", segmento: "MEI", produtoId: "rec_credito", subproduto: "À vista", gerente: "Gerente 5", gerenteNome: "Carla Menezes", carteira: "Carteira Vale", linhas: 120.2, cash: 115.6, conquista: 110.4, atividade: true, data: "2025-09-17" },
+  { id: "nn-manaus", diretoria: "DR 01", diretoriaNome: "Norte & Nordeste", gerenciaRegional: "GR 05", regional: "Regional Manaus", gerenteGestao: "GG 05", agenciaCodigo: "Ag 2001", agencia: "Agência 2001 • Manaus Centro", segmento: "Negócios", produtoId: "captacao_bruta", subproduto: "Aplicação", gerente: "Lara Costa", gerenteNome: "Lara Costa", carteira: "Carteira Amazônia", linhas: 119.4, cash: 111.8, conquista: 103.2, atividade: true, data: "2025-09-12" },
+  { id: "sc-floripa", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 06", regional: "Regional Florianópolis", gerenteGestao: "GG 06", agenciaCodigo: "Ag 2002", agencia: "Agência 2002 • Florianópolis Beira-Mar", segmento: "Empresas", produtoId: "rotativo_pj_vol", subproduto: "Volume", gerente: "Sofia Martins", gerenteNome: "Sofia Martins", carteira: "Carteira Litoral", linhas: 108.6, cash: 116.3, conquista: 105.5, atividade: true, data: "2025-09-16" },
+  { id: "sc-goiania", diretoria: "DR 03", diretoriaNome: "Sul & Centro-Oeste", gerenciaRegional: "GR 07", regional: "Regional Goiânia", gerenteGestao: "GG 07", agenciaCodigo: "Ag 2003", agencia: "Agência 2003 • Goiânia Setor Bueno", segmento: "MEI", produtoId: "bradesco_expresso", subproduto: "Expresso", gerente: "Tiago Andrade", gerenteNome: "Tiago Andrade", carteira: "Carteira Centro-Oeste", linhas: 102.5, cash: 94.2, conquista: 97.1, atividade: true, data: "2025-09-15" },
+  { id: "sd-campinas", diretoria: "DR 02", diretoriaNome: "Sudeste", gerenciaRegional: "GR 05", regional: "Regional Campinas", gerenteGestao: "GG 05", agenciaCodigo: "Ag 2004", agencia: "Agência 2004 • Campinas Tech", segmento: "Negócios", produtoId: "centralizacao", subproduto: "Cash", gerente: "Eduardo Freitas", gerenteNome: "Eduardo Freitas", carteira: "Carteira Inovação", linhas: 123.1, cash: 129.4, conquista: 111.7, atividade: true, data: "2025-09-09" }
 ];
 DEFAULT_CAMPAIGN_UNIT_DATA.forEach(unit => aplicarIndicadorAliases(unit, unit.produtoId, unit.produtoNome || unit.produtoId));
 
@@ -2181,12 +2197,14 @@ const DETAIL_SUBTABLE_COLUMNS = [
 
 // Aqui eu montei os metadados das colunas da tabela principal para poder ligar/desligar conforme a visão escolhida.
 const DETAIL_COLUMNS = [
-  { id: "quantidade",    label: "Quantidade",       cellClass: "",        render: renderDetailQtyCell },
-  { id: "realizado",     label: "Realizado (R$)",   cellClass: "",        render: renderDetailRealizadoCell },
-  { id: "meta",          label: "Meta (R$)",        cellClass: "",        render: renderDetailMetaCell },
-  { id: "atingimento_v", label: "Atingimento (R$)", cellClass: "",        render: renderDetailAchievementValueCell },
-  { id: "atingimento_p", label: "Atingimento (%)",  cellClass: "",        render: renderDetailAchievementPercentCell },
-  { id: "data",          label: "Data",             cellClass: "",        render: renderDetailDateCellFromNode },
+  { id: "quantidade",    label: "Quantidade",          cellClass: "", render: renderDetailQtyCell },
+  { id: "realizado",     label: "Realizado (R$)",      cellClass: "", render: renderDetailRealizadoCell },
+  { id: "meta",          label: "Meta (R$)",           cellClass: "", render: renderDetailMetaCell },
+  { id: "atingimento_v", label: "Atingimento (R$)",    cellClass: "", render: renderDetailAchievementValueCell },
+  { id: "atingimento_p", label: "Atingimento (%)",     cellClass: "", render: renderDetailAchievementPercentCell },
+  { id: "pontos",        label: "Pontos (pts)",        cellClass: "", render: renderDetailPointsCell },
+  { id: "peso",          label: "Peso (pts)",          cellClass: "", render: renderDetailPesoCell },
+  { id: "data",          label: "Data",                cellClass: "", render: renderDetailDateCellFromNode },
 ];
 const DETAIL_DEFAULT_VIEW = {
   id: "default",
@@ -2238,6 +2256,18 @@ function renderDetailAchievementValueCell(node = {}){
 function renderDetailAchievementPercentCell(node = {}){
   const ratio = Number(node.ating || 0);
   return renderDetailAchievementPercent(ratio);
+}
+
+function renderDetailPointsCell(node = {}){
+  const pontos = Math.max(0, toNumber(node.pontos ?? node.pontosCumpridos ?? 0));
+  const formatted = formatPoints(pontos, { withUnit: true });
+  return `<span title="${formatted}">${formatted}</span>`;
+}
+
+function renderDetailPesoCell(node = {}){
+  const peso = Math.max(0, toNumber(node.peso ?? node.pontosMeta ?? 0));
+  const formatted = formatPoints(peso, { withUnit: true });
+  return `<span title="${formatted}">${formatted}</span>`;
 }
 
 function renderDetailDateCellFromNode(node = {}){
@@ -4716,7 +4746,7 @@ function ensureSegmentoField() {
   const actions = filters.querySelector(".filters__actions");
   const wrap = document.createElement("div");
   wrap.className = "filters__group";
-  wrap.innerHTML = `<label>Segmento</label><select id="f-segmento" class="input" data-search="true"></select>`;
+  wrap.innerHTML = `<label>Segmento</label><select id="f-segmento" class="input"></select>`;
   filters.insertBefore(wrap, actions);
 }
 function getFilterValues() {
@@ -4823,6 +4853,10 @@ function ensureContracts(r) {
   if (r._contracts) return r._contracts;
   const n = 2 + Math.floor(Math.random() * 3), arr = [];
   const periodYear = Number((state.period?.start || todayISO()).slice(0,4)) || new Date().getFullYear();
+  const totalPeso = Math.max(0, toNumber(r.peso ?? r.pontosMeta ?? 0));
+  const totalPontos = Math.max(0, toNumber(r.pontosBrutos ?? r.pontos ?? r.pontosCumpridos ?? 0));
+  let pesoDistribuido = 0;
+  let pontosDistribuidos = 0;
   for (let i = 0; i < n; i++) {
     const id = `CT-${periodYear}-${String(Math.floor(1e6 + Math.random() * 9e6)).padStart(7, "0")}`;
     const valor = Math.round((r.realizado / n) * (0.6 + Math.random() * 0.9)),
@@ -4844,6 +4878,12 @@ function ensureContracts(r) {
       dataCancelamento = isoFromUTCDate(cancelDateUTC);
       motivoCancelamento = MOTIVOS_CANCELAMENTO[Math.floor(Math.random() * MOTIVOS_CANCELAMENTO.length)];
     }
+    const restantes = n - i;
+    const pesoShare = restantes === 1 ? Math.max(0, totalPeso - pesoDistribuido) : (totalPeso / n);
+    pesoDistribuido += pesoShare;
+    const pontosShareBrutos = restantes === 1 ? Math.max(0, totalPontos - pontosDistribuidos) : (totalPontos / n);
+    pontosDistribuidos += pontosShareBrutos;
+    const pontosShare = Math.max(0, Math.min(pesoShare, pontosShareBrutos));
     arr.push({
       id,
       produto: r.produto,
@@ -4854,6 +4894,10 @@ function ensureContracts(r) {
       meta,
       ating: meta ? (valor / meta) : 0,
       data: r.data,
+      peso: pesoShare,
+      pontosMeta: pesoShare,
+      pontos: pontosShare,
+      pontosBrutos: pontosShareBrutos,
       canalVenda,
       tipoVenda,
       modalidadePagamento,
@@ -4897,8 +4941,11 @@ function buildTree(list, startKey) {
     const realizado = arr.reduce((a,b)=>a+(b.realizado||0),0),
           meta      = arr.reduce((a,b)=>a+(b.meta||0),0),
           qtd       = arr.reduce((a,b)=>a+(b.qtd||0),0),
-          data      = arr.reduce((mx,b)=> b.data>mx?b.data:mx, "0000-00-00");
-    return { realizado, meta, qtd, ating: meta? realizado/meta : 0, data };
+          data      = arr.reduce((mx,b)=> b.data>mx?b.data:mx, "0000-00-00"),
+          peso      = arr.reduce((a,b)=>a+Math.max(0, toNumber(b.peso ?? b.pontosMeta ?? 0)),0),
+          pontosBr  = arr.reduce((a,b)=>a+Math.max(0, toNumber(b.pontosBrutos ?? b.pontos ?? 0)),0);
+    const pontos = Math.max(0, Math.min(peso, pontosBr));
+    return { realizado, meta, qtd, ating: meta? realizado/meta : 0, data, peso, pontos, pontosMeta: peso, pontosBrutos: pontosBr };
   }
 
   function buildDetailGroups(arr){
@@ -4982,6 +5029,7 @@ function buildTree(list, startKey) {
       const labelText = resolveTreeLabel(levelKey, subset, k);
       return {
         type:"grupo", level, label:labelText, realizado:a.realizado, meta:a.meta, qtd:a.qtd, ating:a.ating, data:a.data,
+        peso:a.peso, pontos:a.pontos, pontosMeta:a.pontosMeta, pontosBrutos:a.pontosBrutos,
         breadcrumb:[labelText], detailGroups: [],
         children: next ? buildLevel(subset, next, level+1) : []
       };
@@ -5248,6 +5296,16 @@ function initCombos() {
     if (arr.some(opt => opt.value === current)) {
       el.value = current;
     }
+    if (el.dataset.search === "true") {
+      ensureSelectSearch(el);
+      const options = arr.map(opt => ({
+        value: opt.value,
+        label: opt.label,
+        aliases: Array.isArray(opt.aliases) ? opt.aliases : [],
+      }));
+      storeSelectSearchOptions(el, options);
+      syncSelectSearchInput(el);
+    }
   };
 
   const compareLabels = (a, b) => String(a.label || "").localeCompare(String(b.label || ""), "pt-BR", { sensitivity: "base" });
@@ -5295,14 +5353,19 @@ function initCombos() {
   );
   fill("#f-secao", secaoOptions);
 
-  const familiaOptionsRaw = [{ value: "Todas", label: "Todas" }].concat(
+  const familiaOptionsRaw = [{ value: "Todas", label: "Todas", aliases: ["Todas"] }].concat(
     dedupeOptions(
       FAMILIA_DATA,
       f => f?.id,
       f => f?.nome || f?.id
     )
   );
-  const familiaOptions = familiaOptionsRaw.filter(opt => opt.value === "Todas" || !SECTION_IDS.has(opt.value));
+  const familiaOptions = familiaOptionsRaw
+    .filter(opt => opt.value === "Todas" || !SECTION_IDS.has(opt.value))
+    .map(opt => ({
+      ...opt,
+      aliases: Array.isArray(opt.aliases) ? opt.aliases : [opt.label, opt.value],
+    }));
   fill("#f-familia", familiaOptions);
 
   const buildProdutoOptions = (familiaId, secaoId) => {
@@ -5318,8 +5381,13 @@ function initCombos() {
         if (prodSecao !== filtroSecao) return;
       }
       const aliasSet = CARD_ALIAS_INDEX.get(prod.id);
-      const aliases = aliasSet ? Array.from(aliasSet) : [];
-      options.push({ value: prod.id, label: prod.nome || prod.id, aliases });
+      const aliasList = new Set(Array.isArray(prod.aliases) ? prod.aliases : []);
+      if (aliasSet instanceof Set) {
+        aliasSet.forEach(item => aliasList.add(item));
+      }
+      aliasList.add(prod.id);
+      if (prod.nome) aliasList.add(prod.nome);
+      options.push({ value: prod.id, label: prod.nome || prod.id, aliases: Array.from(aliasList) });
       added.add(prod.id);
     };
     if (!familiaId || familiaId === "Todas") {
@@ -5819,6 +5887,9 @@ function renderResumoKPI(summary, context = {}) {
   };
 
   const buildCard = (titulo, iconClass, atingidos, total, fmtType, visibleAting = null, visibleTotal = null, options = {}) => {
+    const labelText = options.labelText || titulo;
+    const labelTitle = escapeHTML(labelText);
+    const labelHtml = options.labelHTML || escapeHTML(labelText);
     const pctRaw = total ? (atingidos / total) * 100 : 0;
     const pct100 = Math.max(0, Math.min(100, pctRaw));
     const hbClass = hitbarClass(pctRaw);
@@ -5837,7 +5908,7 @@ function renderResumoKPI(summary, context = {}) {
         <div class="kpi-strip__main">
           <span class="kpi-icon"><i class="${iconClass}"></i></span>
           <div class="kpi-strip__text">
-            <span class="kpi-strip__label" title="${titulo}">${titulo}</span>
+            <span class="kpi-strip__label" title="${labelTitle}">${labelHtml}</span>
             <div class="kpi-strip__stats">
               <span class="kpi-stat" title="${atgTitle}">Atg: <strong>${formatDisplay(fmtType, atingidos)}</strong></span>
               <span class="kpi-stat" title="${totTitle}">Total: <strong>${formatDisplay(fmtType, total)}</strong></span>
@@ -5856,7 +5927,19 @@ function renderResumoKPI(summary, context = {}) {
   kpi.innerHTML = [
     buildCard("Indicadores", "ti ti-list-check", indicadoresAtingidos, indicadoresTotal, "int", visibleItemsHitCount),
     buildCard("Pontos", "ti ti-medal", pontosAtingidos, pontosTotal, "pts", visiblePointsHit),
-    buildCard("Variável", "ti ti-cash", varRealBase, varTotalBase, "brl", visibleVarAtingido, visibleVarMeta)
+    buildCard(
+      "Variável Estimada",
+      "ti ti-cash",
+      varRealBase,
+      varTotalBase,
+      "brl",
+      visibleVarAtingido,
+      visibleVarMeta,
+      {
+        labelText: "Variável Estimada",
+        labelHTML: 'Variável <span class="kpi-label-emphasis">Estimada</span>'
+      }
+    )
   ].join("");
 
   triggerBarAnimation(kpi.querySelectorAll('.hitbar'), shouldAnimateResumo);
@@ -7872,6 +7955,24 @@ function renderCampaignRanking(container, sprint, options = {}){
   state.animations.campanhas.ranking = nextRanking;
 }
 
+function formatCampaignValidity(period) {
+  const startISO = period?.start ? converterDataISO(period.start) : "";
+  const endISO = period?.end ? converterDataISO(period.end) : "";
+  if (!startISO && !endISO) return "";
+  const startDate = startISO ? dateUTCFromISO(startISO) : null;
+  const endDate = endISO ? dateUTCFromISO(endISO) : null;
+  const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "long" });
+  const endFormatter = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  const capitalize = (txt) => txt ? txt.charAt(0).toUpperCase() + txt.slice(1) : "";
+  const startLabelRaw = startDate ? monthFormatter.format(startDate) : (startISO ? formatBRDate(startISO) : "");
+  const startLabel = capitalize(startLabelRaw);
+  const endLabel = endDate ? endFormatter.format(endDate) : (endISO ? formatBRDate(endISO) : "");
+  if (startLabel && endLabel) return `Vigência da campanha: de ${startLabel} até ${endLabel}`;
+  if (startLabel) return `Vigência da campanha a partir de ${startLabel}`;
+  if (endLabel) return `Vigência da campanha até ${endLabel}`;
+  return "";
+}
+
 function renderCampanhasView(){
   const host = document.getElementById("view-campanhas");
   if (!host) return;
@@ -7914,20 +8015,10 @@ function renderCampanhasView(){
     noteEl.textContent = `${base}${suffix}`.trim();
   }
 
-  const periodEl = document.getElementById("camp-period");
-  if (periodEl) {
-    const start = sprint.period?.start ? formatBRDate(sprint.period.start) : "";
-    const end = sprint.period?.end ? formatBRDate(sprint.period.end) : "";
-    periodEl.textContent = start && end ? `De ${start} até ${end}` : "Período não informado";
-  }
-
   const validityEl = document.getElementById("camp-validity");
   if (validityEl) {
-    const start = sprint.period?.start ? formatBRDate(sprint.period.start) : "";
-    const end = sprint.period?.end ? formatBRDate(sprint.period.end) : "";
-    validityEl.textContent = start && end
-      ? `Vigência da campanha: de ${start} até ${end}`
-      : "Vigência não informada";
+    const validityText = formatCampaignValidity(sprint.period || {});
+    validityEl.textContent = validityText || "Vigência não informada";
   }
 
   const headline = document.getElementById("camp-headline");
